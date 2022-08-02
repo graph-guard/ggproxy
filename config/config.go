@@ -125,9 +125,15 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 		return nil, fmt.Errorf("reading directory: %w", err)
 	}
 
+	id := filepath.Base(path)
+	if err := ValidateID(id); err != nil {
+		return nil, fmt.Errorf("validating %q: %w", path, err)
+	}
+	id = strings.ToLower(id)
+
 	var configFile bool
 	s := &Service{
-		ID: filepath.Base(path),
+		ID: id,
 	}
 
 	for _, o := range dir {
@@ -235,7 +241,7 @@ func readTemplatesDir(
 		}
 		p := filepath.Join(path, n)
 		id := n[:len(n)-len(filepath.Ext(n))]
-		if err := ValidateTemplateFileName(id); err != nil {
+		if err := ValidateID(id); err != nil {
 			return nil, fmt.Errorf("validating %q: %w", p, err)
 		}
 
@@ -271,27 +277,26 @@ func readTemplatesDir(
 	return t, nil
 }
 
-func ValidateTemplateFileName(n string) error {
-	// TODO
+func ValidateID(n string) error {
 	if n == "" {
 		return fmt.Errorf("empty")
 	}
 	for i := range n {
-		if strings.IndexByte(TemplateNameDict, n[i]) < 0 {
-			return ErrIllegalTemplateName
+		if strings.IndexByte(IDValidCharDict, n[i]) < 0 {
+			return ErrIllegalID
 		}
 	}
 	return nil
 }
 
-const TemplateNameDict = "abcdefghijklmnopqrstuvwxyz" +
+const IDValidCharDict = "abcdefghijklmnopqrstuvwxyz" +
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
 	"0123456789" +
 	"_-"
 
 var ErrMissingConfigFile = fmt.Errorf("missing %s", ServiceConfigFile1)
 var ErrMissingForwardURL = fmt.Errorf("missing forward_url")
-var ErrIllegalTemplateName = fmt.Errorf("illegal template name")
+var ErrIllegalID = fmt.Errorf("illegal identifier")
 
 func duplicate[T any](a, b []T, isEqual func(a, b T) bool) (d T) {
 	for i := range a {

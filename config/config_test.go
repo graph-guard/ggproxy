@@ -196,7 +196,7 @@ func TestReadConfigErrorInvalidTemplate(t *testing.T) {
 		"error at 0: unexpected definition", err.Error())
 }
 
-func TestReadConfigErrorInvalidTemplateName(t *testing.T) {
+func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
 	f := validFS()
 	f[filepath.Join(
 		config.ServicesDisabledDir,
@@ -210,7 +210,22 @@ func TestReadConfigErrorInvalidTemplateName(t *testing.T) {
 	require.Equal(t, "service \"service_a\": "+
 		"validating \"services_disabled/service_a/"+
 		"templates_enabled/template-invalid#.gqt\": "+
-		"illegal template name", err.Error())
+		"illegal identifier", err.Error())
+}
+
+func TestReadConfigErrorInvalidServiceID(t *testing.T) {
+	f := validFS()
+	f[filepath.Join(
+		config.ServicesDisabledDir,
+		"service_#1",
+		config.ServiceConfigFile1,
+	)] = &fstest.MapFile{
+		Data: []byte(`forward_url: localhost:8080/`),
+	}
+	err := testError(t, f)
+	require.Equal(t, "service \"service_#1\": "+
+		"validating \"services_disabled/service_#1\": "+
+		"illegal identifier", err.Error())
 }
 
 func lines(lines ...string) []byte {
