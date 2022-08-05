@@ -71,18 +71,14 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 		} else if n == ServerConfigFile1 ||
 			n == ServerConfigFile2 {
 			if serverConf {
-				return nil, fmt.Errorf(
-					"conflicting files: %q - %q",
+				return nil, &ErrorConflict{Items: []string{
 					ServerConfigFile1,
 					ServerConfigFile2,
-				)
+				}}
 			}
+			serverConf = true
 
-			p := filepath.Join(dirPath, ServerConfigFile1)
-			if n == ServerConfigFile2 {
-				p = filepath.Join(dirPath, ServerConfigFile2)
-			}
-
+			p := filepath.Join(dirPath, n)
 			f, err := filesystem.Open(p)
 			if err != nil {
 				return nil, fmt.Errorf("reading server config: %w", err)
@@ -92,19 +88,25 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 			d := yaml.NewDecoder(f)
 			d.KnownFields(true)
 			if err := d.Decode(&c); err != nil {
-				return nil, fmt.Errorf("reading %s: %w", n, err)
+				return nil, &ErrorIllegal{
+					FilePath: p,
+					Message:  err.Error(),
+				}
 			}
 			if c.Host == "" {
-				return nil, ErrMissingHost
+				return nil, &ErrorMissing{
+					FilePath: p,
+					Feature:  "host",
+				}
 			}
 			conf.Host = c.Host
-
-			serverConf = true
 		}
 	}
 
 	if !serverConf {
-		return nil, ErrMissingServerConfigFile
+		return nil, &ErrorMissing{
+			FilePath: filepath.Join(dirPath, ServerConfigFile1),
+		}
 	}
 
 	if servicesEnabledDir {
@@ -128,11 +130,10 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 		conf.ServicesDisabled,
 		func(a, b *Service) bool { return a.ID == b.ID },
 	); d != nil {
-		return nil, fmt.Errorf(
-			"conflicting directories: %q - %q",
+		return nil, &ErrorConflict{Items: []string{
 			filepath.Join(ServicesEnabledDir, d.ID),
 			filepath.Join(ServicesDisabledDir, d.ID),
-		)
+		}}
 	}
 
 	return conf, nil
@@ -153,9 +154,7 @@ func readServicesDir(filesystem fs.FS, path string) ([]*Service, error) {
 			filesystem, filepath.Join(path, o.Name()),
 		)
 		if err != nil {
-			return nil, fmt.Errorf(
-				"service %q: %w", o.Name(), err,
-			)
+			return nil, err
 		}
 		services = append(services, s)
 	}
@@ -169,8 +168,12 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 	}
 
 	id := filepath.Base(path)
-	if err := ValidateID(id); err != nil {
-		return nil, fmt.Errorf("validating %q: %w", path, err)
+	if err := ValidateID(id); err != "" {
+		return nil, &ErrorIllegal{
+			FilePath: path,
+			Feature:  "id",
+			Message:  err,
+		}
 	}
 	id = strings.ToLower(id)
 
@@ -205,18 +208,17 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 		if n == ServiceConfigFile1 ||
 			n == ServiceConfigFile2 {
 			if configFile {
-				return nil, fmt.Errorf(
-					"conflicting files: %q - %q",
+				return nil, &ErrorConflict{Items: []string{
 					filepath.Join(path, ServiceConfigFile1),
 					filepath.Join(path, ServiceConfigFile2),
-				)
+				}}
 			}
 			c, err := readServiceConfigFile(
 				filesystem,
 				filepath.Join(path, n),
 			)
 			if err != nil {
-				return nil, fmt.Errorf("reading %q: %w", n, err)
+				return nil, err
 			}
 			s.Name = c.Name
 			s.ForwardURL = c.ForwardURL
@@ -226,7 +228,9 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 	}
 
 	if !configFile {
-		return nil, ErrMissingConfigFile
+		return nil, &ErrorMissing{
+			FilePath: filepath.Join(path, ServiceConfigFile1),
+		}
 	}
 
 	if d := duplicate(
@@ -234,9 +238,12 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 		s.TemplatesDisabled,
 		func(a, b *Template) bool { return a.ID == b.ID },
 	); d != nil {
-		return nil, fmt.Errorf(
-			"template %q is both enabled and disabled", d.ID,
-		)
+		return nil, &ErrorConflict{
+			Items: []string{
+				filepath.Join(TemplatesEnabledDir, d.ID),
+				filepath.Join(TemplatesDisabledDir, d.ID),
+			},
+		}
 	}
 
 	return s, nil
@@ -264,13 +271,23 @@ func readServiceConfigFile(
 	d := yaml.NewDecoder(f)
 	d.KnownFields(true)
 	if err := d.Decode(&c); err != nil {
-		return nil, fmt.Errorf("decoding yaml: %w", err)
+		return nil, &ErrorIllegal{
+			FilePath: path,
+			Message:  err.Error(),
+		}
 	}
 	if c.ForwardURL == "" {
-		return nil, ErrMissingForwardURL
+		return nil, &ErrorMissing{
+			FilePath: path,
+			Feature:  "forward_url",
+		}
 	}
 	if _, err := url.ParseRequestURI(c.ForwardURL); err != nil {
-		return nil, err
+		return nil, &ErrorIllegal{
+			FilePath: path,
+			Feature:  "forward_url",
+			Message:  err.Error(),
+		}
 	}
 	return &c, nil
 }
@@ -295,8 +312,12 @@ func readTemplatesDir(
 		}
 		p := filepath.Join(path, n)
 		id := n[:len(n)-len(filepath.Ext(n))]
-		if err := ValidateID(id); err != nil {
-			return nil, fmt.Errorf("validating %q: %w", p, err)
+		if err := ValidateID(id); err != "" {
+			return nil, &ErrorIllegal{
+				FilePath: p,
+				Feature:  "id",
+				Message:  err,
+			}
 		}
 
 		id = strings.ToLower(id)
@@ -312,12 +333,20 @@ func readTemplatesDir(
 
 		meta, template, err := metadata.Parse(b)
 		if err != nil {
-			return nil, fmt.Errorf("parsing %q metadata: %w", p, err)
+			return nil, &ErrorIllegal{
+				FilePath: p,
+				Feature:  "metadata",
+				Message:  err.Error(),
+			}
 		}
 
-		doc, errp := gqt.Parse(template)
-		if errp.IsErr() {
-			return nil, fmt.Errorf("parsing %q: %w", p, errp)
+		doc, errParser := gqt.Parse(template)
+		if errParser.IsErr() {
+			return nil, &ErrorIllegal{
+				FilePath: p,
+				Feature:  "template",
+				Message:  errParser.Error(),
+			}
 		}
 		t = append(t, &Template{
 			ID:       id,
@@ -331,28 +360,22 @@ func readTemplatesDir(
 	return t, nil
 }
 
-func ValidateID(n string) error {
+func ValidateID(n string) (err string) {
 	if n == "" {
-		return fmt.Errorf("empty")
+		return "empty"
 	}
 	for i := range n {
 		if strings.IndexByte(IDValidCharDict, n[i]) < 0 {
-			return ErrIllegalID
+			return fmt.Sprintf("contains illegal character at index %d", i)
 		}
 	}
-	return nil
+	return ""
 }
 
 const IDValidCharDict = "abcdefghijklmnopqrstuvwxyz" +
 	"ABCDEFGHIJKLMNOPQRSTUVWXYZ" +
 	"0123456789" +
 	"_-"
-
-var ErrMissingServerConfigFile = fmt.Errorf("missing %s", ServerConfigFile1)
-var ErrMissingConfigFile = fmt.Errorf("missing %s", ServiceConfigFile1)
-var ErrMissingForwardURL = fmt.Errorf("missing forward_url")
-var ErrIllegalID = fmt.Errorf("illegal identifier")
-var ErrMissingHost = fmt.Errorf("missing host")
 
 func duplicate[T any](a, b []T, isEqual func(a, b T) bool) (d T) {
 	for i := range a {
@@ -363,4 +386,58 @@ func duplicate[T any](a, b []T, isEqual func(a, b T) bool) (d T) {
 		}
 	}
 	return
+}
+
+type ErrorConflict struct {
+	Items []string
+}
+
+func (e ErrorConflict) Error() string {
+	var b strings.Builder
+	b.WriteString("conflict between: ")
+	for i := range e.Items {
+		b.WriteString(e.Items[i])
+		if i+1 < len(e.Items) {
+			b.WriteString(", ")
+		}
+	}
+	return b.String()
+}
+
+type ErrorMissing struct {
+	FilePath string
+	Feature  string
+}
+
+func (e ErrorMissing) Error() string {
+	var b strings.Builder
+	b.Grow(len("missing ") + len(e.Feature) + len(" in ") + len(e.FilePath))
+	b.WriteString("missing ")
+	b.WriteString(e.Feature)
+	b.WriteString(" in ")
+	b.WriteString(e.FilePath)
+	return b.String()
+}
+
+type ErrorIllegal struct {
+	FilePath string
+	Feature  string
+	Message  string
+}
+
+func (e ErrorIllegal) Error() string {
+	var b strings.Builder
+	b.Grow(len("illegal ") +
+		len(e.Feature) +
+		len(" in ") +
+		len(e.FilePath) +
+		len(": ") +
+		len(e.Message))
+	b.WriteString("illegal ")
+	b.WriteString(e.Feature)
+	b.WriteString(" in ")
+	b.WriteString(e.FilePath)
+	b.WriteString(": ")
+	b.WriteString(e.Message)
+	return b.String()
 }

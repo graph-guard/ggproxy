@@ -1,8 +1,6 @@
 package config_test
 
 import (
-	"errors"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -96,16 +94,12 @@ func TestReadConfig(t *testing.T) {
 }
 
 func TestReadConfigErrorMissingServerConfig(t *testing.T) {
-	for _, m := range [2]string{
-		config.ServicesDisabledDir, config.ServicesEnabledDir,
-	} {
-		t.Run(m, func(t *testing.T) {
-			fs := validFS()
-			delete(fs, config.ServiceConfigFile1)
-			err := testError(t, fs)
-			require.Equal(t, "missing config.yaml", err.Error())
-		})
-	}
+	fs := validFS()
+	delete(fs, config.ServerConfigFile1)
+	err := testError(t, fs)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: config.ServerConfigFile1,
+	}, err)
 }
 
 func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
@@ -118,10 +112,14 @@ func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
 				"not a valid config.yaml",
 			)
 			err := testError(t, fs)
-			require.Equal(t, "reading config.yaml: yaml: "+
-				"unmarshal errors:\n"+
-				"  line 1: cannot unmarshal !!str `not a v...` "+
-				"into config.serverConfig", err.Error())
+			require.IsType(t, &config.ErrorIllegal{}, err)
+			e, _ := err.(*config.ErrorIllegal)
+			require.Equal(t, &config.ErrorIllegal{
+				FilePath: config.ServiceConfigFile1,
+				Message: "yaml: unmarshal errors:\n  " +
+					"line 1: cannot unmarshal !!str `not a v...` " +
+					"into config.serverConfig",
+			}, e)
 		})
 	}
 }
@@ -132,12 +130,14 @@ func TestReadConfigErrorMissingHostConfig(t *testing.T) {
 	} {
 		t.Run(m, func(t *testing.T) {
 			fs := validFS()
-			fs[config.ServiceConfigFile1].Data = lines(
+			fs[config.ServerConfigFile1].Data = lines(
 				"host: ",
 			)
 			err := testError(t, fs)
-			require.Equal(t, "missing host", err.Error())
-			require.True(t, errors.Is(err, config.ErrMissingHost))
+			require.Equal(t, &config.ErrorMissing{
+				FilePath: config.ServerConfigFile1,
+				Feature:  "host",
+			}, err)
 		})
 	}
 }
@@ -156,11 +156,53 @@ func TestReadConfigErrorMissingConfig(t *testing.T) {
 				Data: []byte(`this file only keeps the directory`),
 			}
 			err := testError(t, fs)
-			require.Equal(t, "service \"service_a\": "+
-				"missing config.yaml", err.Error())
-			require.True(t, errors.Is(err, config.ErrMissingConfigFile))
+			require.Equal(t, &config.ErrorMissing{
+				FilePath: filepath.Join(m, "service_a", config.ServiceConfigFile1),
+			}, err)
 		})
 	}
+}
+
+func TestReadConfigErrorMalformedMetadata(t *testing.T) {
+	f := validFS()
+	p := filepath.Join(
+		config.ServicesEnabledDir,
+		"service_a",
+		config.TemplatesEnabledDir,
+		"template_a.gqt",
+	)
+	f[p] = &fstest.MapFile{
+		Data: lines(
+			"---",
+			"malformed metadata",
+			"---",
+			`query { foo }`,
+		),
+	}
+	err := testError(t, f)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: p,
+		Feature:  "metadata",
+		Message: "decoding yaml: yaml: " +
+			"unmarshal errors:\n  " +
+			"line 1: cannot unmarshal !!str `malform...` " +
+			"into metadata.Metadata",
+	}, err)
+}
+
+func TestReadConfigErrorDuplicateServerConfig(t *testing.T) {
+	fs := minValidFS()
+	fs[config.ServerConfigFile1] = &fstest.MapFile{
+		Data: []byte(`host: localhost:8080/`),
+	}
+	fs[config.ServerConfigFile2] = &fstest.MapFile{
+		Data: []byte(`host: localhost:9090/`),
+	}
+	err := testError(t, fs)
+	require.Equal(t, &config.ErrorConflict{Items: []string{
+		config.ServerConfigFile1,
+		config.ServerConfigFile2,
+	}}, err)
 }
 
 func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
@@ -182,9 +224,12 @@ func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
 		Data: []byte(`query { duplicate }`),
 	}
 	err := testError(t, f)
-	require.Equal(t, `service "service_a": `+
-		`template "dup" is `+
-		"both enabled and disabled", err.Error())
+	require.Equal(t, &config.ErrorConflict{
+		Items: []string{
+			"templates_enabled/dup",
+			"templates_disabled/dup",
+		},
+	}, err)
 }
 
 func TestReadConfigErrorDuplicateService(t *testing.T) {
@@ -192,28 +237,22 @@ func TestReadConfigErrorDuplicateService(t *testing.T) {
 	fs[filepath.Join(
 		config.ServicesEnabledDir,
 		"service_a",
-		"config.yml",
+		config.ServiceConfigFile1,
 	)] = &fstest.MapFile{
 		Data: []byte(`forward_url: localhost:8080/`),
 	}
 	fs[filepath.Join(
 		config.ServicesDisabledDir,
 		"service_a",
-		"config.yml",
+		config.ServiceConfigFile1,
 	)] = &fstest.MapFile{
 		Data: []byte(`forward_url: localhost:8080/`),
 	}
 	err := testError(t, fs)
-	require.Equal(t, "conflicting directories: "+
-		fmt.Sprintf("%q", filepath.Join(
-			config.ServicesEnabledDir,
-			"service_a",
-		))+
-		" - "+
-		fmt.Sprintf("%q", filepath.Join(
-			config.ServicesDisabledDir,
-			"service_a",
-		)), err.Error())
+	require.Equal(t, &config.ErrorConflict{Items: []string{
+		filepath.Join(config.ServicesEnabledDir, "service_a"),
+		filepath.Join(config.ServicesDisabledDir, "service_a"),
+	}}, err)
 }
 
 func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
@@ -225,26 +264,22 @@ func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
 			fs[filepath.Join(
 				m,
 				"service_a",
-				"config.yml",
+				config.ServiceConfigFile1,
 			)] = &fstest.MapFile{
 				Data: []byte(`forward_url: localhost:8080`),
 			}
 			fs[filepath.Join(
 				m,
 				"service_a",
-				"config.yaml",
+				config.ServiceConfigFile2,
 			)] = &fstest.MapFile{
 				Data: []byte(`forward_url: localhost:9090`),
 			}
 			err := testError(t, fs)
-			require.Equal(t, "service \"service_a\": conflicting files: "+
-				fmt.Sprintf("%q", filepath.Join(
-					m, "service_a", config.ServiceConfigFile1,
-				))+
-				" - "+
-				fmt.Sprintf("%q", filepath.Join(
-					m, "service_a", config.ServiceConfigFile2,
-				)), err.Error())
+			require.Equal(t, &config.ErrorConflict{Items: []string{
+				filepath.Join(m, "service_a", config.ServiceConfigFile1),
+				filepath.Join(m, "service_a", config.ServiceConfigFile2),
+			}}, err)
 		})
 	}
 }
@@ -258,14 +293,17 @@ func TestReadConfigErrorMissingForwardURL(t *testing.T) {
 			fs[filepath.Join(
 				m,
 				"service_a",
-				"config.yml",
+				config.ServiceConfigFile1,
 			)] = &fstest.MapFile{
 				Data: []byte(`forward_reduced: true`),
 			}
 			err := testError(t, fs)
-			require.Equal(t, "service \"service_a\":"+
-				" reading \"config.yml\": "+
-				"missing forward_url", err.Error())
+			require.Equal(t, &config.ErrorMissing{
+				FilePath: filepath.Join(
+					m, "service_a", config.ServiceConfigFile1,
+				),
+				Feature: "forward_url",
+			}, err)
 		})
 	}
 }
@@ -279,14 +317,18 @@ func TestReadConfigErrorInvalidForwardURL(t *testing.T) {
 			fs[filepath.Join(
 				m,
 				"service_a",
-				"config.yml",
+				config.ServiceConfigFile1,
 			)] = &fstest.MapFile{
 				Data: []byte(`forward_url: not_a_url.`),
 			}
 			err := testError(t, fs)
-			require.Equal(t, "service \"service_a\":"+
-				" reading \"config.yml\": "+
-				"parse \"not_a_url.\": invalid URI for request", err.Error())
+			require.Equal(t, &config.ErrorIllegal{
+				FilePath: filepath.Join(
+					m, "service_a", config.ServiceConfigFile1,
+				),
+				Feature: "forward_url",
+				Message: `parse "not_a_url.": invalid URI for request`,
+			}, err)
 		})
 	}
 }
@@ -302,10 +344,16 @@ func TestReadConfigErrorInvalidTemplate(t *testing.T) {
 		Data: []byte(`invalid { template }`),
 	}
 	err := testError(t, fs)
-	require.Equal(t, "service \"service_a\": "+
-		"parsing \"services_disabled/service_a/"+
-		"templates_enabled/template_invalid.gqt\": "+
-		"error at 0: unexpected definition", err.Error())
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(
+			config.ServicesDisabledDir,
+			"service_a",
+			config.TemplatesEnabledDir,
+			"template_invalid.gqt",
+		),
+		Feature: "template",
+		Message: `error at 0: unexpected definition`,
+	}, err)
 }
 
 func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
@@ -319,10 +367,16 @@ func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
 		Data: []byte(`invalid { template }`),
 	}
 	err := testError(t, fs)
-	require.Equal(t, "service \"service_a\": "+
-		"validating \"services_disabled/service_a/"+
-		"templates_enabled/template-invalid#.gqt\": "+
-		"illegal identifier", err.Error())
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(
+			config.ServicesDisabledDir,
+			"service_a",
+			config.TemplatesEnabledDir,
+			"template-invalid#.gqt",
+		),
+		Feature: "id",
+		Message: `contains illegal character at index 16`,
+	}, err)
 }
 
 func TestReadConfigErrorInvalidServiceID(t *testing.T) {
@@ -335,9 +389,35 @@ func TestReadConfigErrorInvalidServiceID(t *testing.T) {
 		Data: []byte(`forward_url: localhost:8080/`),
 	}
 	err := testError(t, fs)
-	require.Equal(t, "service \"service_#1\": "+
-		"validating \"services_disabled/service_#1\": "+
-		"illegal identifier", err.Error())
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(
+			config.ServicesDisabledDir,
+			"service_#1",
+		),
+		Feature: "id",
+		Message: `contains illegal character at index 8`,
+	}, err)
+}
+
+func TestReadConfigErrorMalformedConfig(t *testing.T) {
+	fs := validFS()
+	p := filepath.Join(
+		config.ServicesEnabledDir,
+		"service_a",
+		config.ServiceConfigFile1,
+	)
+	fs[p] = &fstest.MapFile{
+		Data: lines(
+			`malformed yaml`,
+		),
+	}
+	err := testError(t, fs)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: p,
+		Message: "yaml: unmarshal errors:\n  " +
+			"line 1: cannot unmarshal !!str `malform...` " +
+			"into config.serviceConfig",
+	}, err)
 }
 
 func lines(lines ...string) []byte {
@@ -462,5 +542,41 @@ func validFS() fstest.MapFS {
 		): &fstest.MapFile{
 			Data: []byte(`this file should be ignored`),
 		},
+	}
+}
+
+func TestErrorString(t *testing.T) {
+	for _, td := range []struct {
+		input  error
+		expect string
+	}{
+		{
+			input: config.ErrorMissing{
+				FilePath: "path/to/file.txt",
+				Feature:  "some_feature",
+			},
+			expect: "missing some_feature in path/to/file.txt",
+		},
+		{
+			input: config.ErrorIllegal{
+				FilePath: "path/to/file.txt",
+				Feature:  "some_feature",
+				Message:  "some message",
+			},
+			expect: "illegal some_feature in path/to/file.txt: some message",
+		},
+		{
+			input: config.ErrorConflict{
+				Items: []string{
+					"path/to/file_a.txt",
+					"path/to/file_b.txt",
+				},
+			},
+			expect: "conflict between: path/to/file_a.txt, path/to/file_b.txt",
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			require.Equal(t, td.expect, td.input.Error())
+		})
 	}
 }
