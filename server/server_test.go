@@ -3,7 +3,7 @@ package server_test
 import (
 	"bufio"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"testing"
 	"time"
 
@@ -78,8 +78,7 @@ func TestServer(t *testing.T) {
 		Level:      plog.DebugLevel,
 		TimeField:  "time",
 		TimeFormat: "23:59:59",
-		Writer:     &plog.IOWriter{ioutil.Discard},
-		// Writer: &plog.IOWriter{os.Stdout},
+		Writer:     &plog.IOWriter{Writer: io.Discard},
 	}
 	s := server.New(
 		services,
