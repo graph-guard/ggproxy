@@ -55,7 +55,7 @@ func TestServer(t *testing.T) {
 			destination: "localhost:8080/service_b",
 		},
 	} {
-		rules := make([]gqt.Doc, 1)
+		rules := make([]gqt.Doc, len(s.rules))
 		for i, r := range s.rules {
 			rd, err := gqt.Parse([]byte(r))
 			if err.IsErr() {
