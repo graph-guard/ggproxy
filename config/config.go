@@ -161,6 +161,13 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 		}
 		if n == ServiceConfigFile1 ||
 			n == ServiceConfigFile2 {
+			if configFile {
+				return nil, fmt.Errorf(
+					"conflicting files: %q - %q",
+					filepath.Join(path, ServiceConfigFile1),
+					filepath.Join(path, ServiceConfigFile2),
+				)
+			}
 			c, err := readServiceConfigFile(
 				filesystem,
 				filepath.Join(path, n),

@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -143,6 +144,31 @@ func TestReadConfigErrorDuplicateService(t *testing.T) {
 	})
 	require.Equal(t, "service \"service_a\" is "+
 		"both enabled and disabled", err.Error())
+}
+
+func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
+	for _, m := range [2]string{
+		config.ServicesDisabledDir, config.ServicesEnabledDir,
+	} {
+		t.Run(m, func(t *testing.T) {
+			err := testError(t, fstest.MapFS{
+				filepath.Join(m, "service_a", "config.yml"): {
+					Data: []byte(`forward_url: localhost:8080`),
+				},
+				filepath.Join(m, "service_a", "config.yaml"): {
+					Data: []byte(`forward_url: localhost:9090`),
+				},
+			})
+			require.Equal(t, "service \"service_a\": conflicting files: "+
+				fmt.Sprintf("%q", filepath.Join(
+					m, "service_a", config.ServiceConfigFile1,
+				))+
+				" - "+
+				fmt.Sprintf("%q", filepath.Join(
+					m, "service_a", config.ServiceConfigFile2,
+				)), err.Error())
+		})
+	}
 }
 
 func TestReadConfigErrorMissingForwardURL(t *testing.T) {
