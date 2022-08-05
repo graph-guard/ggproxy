@@ -13,15 +13,18 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
+const ServerConfigFile1 = "config.yaml"
+const ServerConfigFile2 = "config.yml"
 const ServicesEnabledDir = "services_enabled"
 const ServicesDisabledDir = "services_disabled"
 const TemplatesEnabledDir = "templates_enabled"
 const TemplatesDisabledDir = "templates_disabled"
-const ServiceConfigFile1 = "config.yml"
-const ServiceConfigFile2 = "config.yaml"
+const ServiceConfigFile1 = "config.yaml"
+const ServiceConfigFile2 = "config.yml"
 const FileExtGQT = ".gqt"
 
 type Config struct {
+	Host             string
 	ServicesEnabled  []*Service
 	ServicesDisabled []*Service
 }
@@ -51,20 +54,58 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 
 	var servicesEnabledDir bool
 	var servicesDisabledDir bool
+	var serverConf bool
+
+	conf := &Config{}
 
 	for _, o := range d {
+		n := o.Name()
 		if o.IsDir() {
-			switch o.Name() {
+			switch n {
 			case ServicesEnabledDir:
 				servicesEnabledDir = true
 			case ServicesDisabledDir:
 				servicesDisabledDir = true
 			}
 			continue
+		} else if n == ServerConfigFile1 ||
+			n == ServerConfigFile2 {
+			if serverConf {
+				return nil, fmt.Errorf(
+					"conflicting files: %q - %q",
+					ServerConfigFile1,
+					ServerConfigFile2,
+				)
+			}
+
+			p := filepath.Join(dirPath, ServerConfigFile1)
+			if n == ServerConfigFile2 {
+				p = filepath.Join(dirPath, ServerConfigFile2)
+			}
+
+			f, err := filesystem.Open(p)
+			if err != nil {
+				return nil, fmt.Errorf("reading server config: %w", err)
+			}
+
+			var c serverConfig
+			d := yaml.NewDecoder(f)
+			d.KnownFields(true)
+			if err := d.Decode(&c); err != nil {
+				return nil, fmt.Errorf("reading %s: %w", n, err)
+			}
+			if c.Host == "" {
+				return nil, ErrMissingHost
+			}
+			conf.Host = c.Host
+
+			serverConf = true
 		}
 	}
 
-	conf := &Config{}
+	if !serverConf {
+		return nil, ErrMissingServerConfigFile
+	}
 
 	if servicesEnabledDir {
 		s, err := readServicesDir(filesystem, ServicesEnabledDir)
@@ -88,7 +129,9 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 		func(a, b *Service) bool { return a.ID == b.ID },
 	); d != nil {
 		return nil, fmt.Errorf(
-			"service %q is both enabled and disabled", d.ID,
+			"conflicting directories: %q - %q",
+			filepath.Join(ServicesEnabledDir, d.ID),
+			filepath.Join(ServicesDisabledDir, d.ID),
 		)
 	}
 
@@ -199,6 +242,10 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 	return s, nil
 }
 
+type serverConfig struct {
+	Host string `yaml:"host"`
+}
+
 type serviceConfig struct {
 	Name           string `yaml:"name"`
 	ForwardURL     string `yaml:"forward_url"`
@@ -301,9 +348,11 @@ const IDValidCharDict = "abcdefghijklmnopqrstuvwxyz" +
 	"0123456789" +
 	"_-"
 
+var ErrMissingServerConfigFile = fmt.Errorf("missing %s", ServerConfigFile1)
 var ErrMissingConfigFile = fmt.Errorf("missing %s", ServiceConfigFile1)
 var ErrMissingForwardURL = fmt.Errorf("missing forward_url")
 var ErrIllegalID = fmt.Errorf("illegal identifier")
+var ErrMissingHost = fmt.Errorf("missing host")
 
 func duplicate[T any](a, b []T, isEqual func(a, b T) bool) (d T) {
 	for i := range a {

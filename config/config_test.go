@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -27,6 +28,7 @@ func TestReadConfig(t *testing.T) {
 		{
 			Filesystem: validFS(),
 			Expect: &config.Config{
+				Host: "localhost:443",
 				ServicesEnabled: []*config.Service{
 					{
 						ID:             "service_a",
@@ -93,18 +95,70 @@ func TestReadConfig(t *testing.T) {
 	}
 }
 
+func TestReadConfigErrorMissingServerConfig(t *testing.T) {
+	for _, m := range [2]string{
+		config.ServicesDisabledDir, config.ServicesEnabledDir,
+	} {
+		t.Run(m, func(t *testing.T) {
+			fs := validFS()
+			delete(fs, config.ServiceConfigFile1)
+			err := testError(t, fs)
+			require.Equal(t, "missing config.yaml", err.Error())
+		})
+	}
+}
+
+func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
+	for _, m := range [2]string{
+		config.ServicesDisabledDir, config.ServicesEnabledDir,
+	} {
+		t.Run(m, func(t *testing.T) {
+			fs := validFS()
+			fs[config.ServiceConfigFile1].Data = lines(
+				"not a valid config.yaml",
+			)
+			err := testError(t, fs)
+			require.Equal(t, "reading config.yaml: yaml: "+
+				"unmarshal errors:\n"+
+				"  line 1: cannot unmarshal !!str `not a v...` "+
+				"into config.serverConfig", err.Error())
+		})
+	}
+}
+
+func TestReadConfigErrorMissingHostConfig(t *testing.T) {
+	for _, m := range [2]string{
+		config.ServicesDisabledDir, config.ServicesEnabledDir,
+	} {
+		t.Run(m, func(t *testing.T) {
+			fs := validFS()
+			fs[config.ServiceConfigFile1].Data = lines(
+				"host: ",
+			)
+			err := testError(t, fs)
+			require.Equal(t, "missing host", err.Error())
+			require.True(t, errors.Is(err, config.ErrMissingHost))
+		})
+	}
+}
+
 func TestReadConfigErrorMissingConfig(t *testing.T) {
 	for _, m := range [2]string{
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			err := testError(t, fstest.MapFS{
-				filepath.Join(m, "service_a", "irrelevant_file.txt"): {
-					Data: []byte(`this file only keeps the directory`),
-				},
-			})
+			fs := minValidFS()
+			fs[filepath.Join(
+				m,
+				"service_a",
+				"irrelevant_file.txt",
+			)] = &fstest.MapFile{
+				Data: []byte(`this file only keeps the directory`),
+			}
+			err := testError(t, fs)
 			require.Equal(t, "service \"service_a\": "+
-				"missing config.yml", err.Error())
+				"missing config.yaml", err.Error())
+			require.True(t, errors.Is(err, config.ErrMissingConfigFile))
 		})
 	}
 }
@@ -134,16 +188,32 @@ func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
 }
 
 func TestReadConfigErrorDuplicateService(t *testing.T) {
-	err := testError(t, fstest.MapFS{
-		filepath.Join(config.ServicesEnabledDir, "service_a", "config.yml"): {
-			Data: []byte(`forward_url: localhost:8080/`),
-		},
-		filepath.Join(config.ServicesDisabledDir, "service_a", "config.yml"): {
-			Data: []byte(`forward_url: localhost:8080/`),
-		},
-	})
-	require.Equal(t, "service \"service_a\" is "+
-		"both enabled and disabled", err.Error())
+	fs := minValidFS()
+	fs[filepath.Join(
+		config.ServicesEnabledDir,
+		"service_a",
+		"config.yml",
+	)] = &fstest.MapFile{
+		Data: []byte(`forward_url: localhost:8080/`),
+	}
+	fs[filepath.Join(
+		config.ServicesDisabledDir,
+		"service_a",
+		"config.yml",
+	)] = &fstest.MapFile{
+		Data: []byte(`forward_url: localhost:8080/`),
+	}
+	err := testError(t, fs)
+	require.Equal(t, "conflicting directories: "+
+		fmt.Sprintf("%q", filepath.Join(
+			config.ServicesEnabledDir,
+			"service_a",
+		))+
+		" - "+
+		fmt.Sprintf("%q", filepath.Join(
+			config.ServicesDisabledDir,
+			"service_a",
+		)), err.Error())
 }
 
 func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
@@ -151,14 +221,22 @@ func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			err := testError(t, fstest.MapFS{
-				filepath.Join(m, "service_a", "config.yml"): {
-					Data: []byte(`forward_url: localhost:8080`),
-				},
-				filepath.Join(m, "service_a", "config.yaml"): {
-					Data: []byte(`forward_url: localhost:9090`),
-				},
-			})
+			fs := minValidFS()
+			fs[filepath.Join(
+				m,
+				"service_a",
+				"config.yml",
+			)] = &fstest.MapFile{
+				Data: []byte(`forward_url: localhost:8080`),
+			}
+			fs[filepath.Join(
+				m,
+				"service_a",
+				"config.yaml",
+			)] = &fstest.MapFile{
+				Data: []byte(`forward_url: localhost:9090`),
+			}
+			err := testError(t, fs)
 			require.Equal(t, "service \"service_a\": conflicting files: "+
 				fmt.Sprintf("%q", filepath.Join(
 					m, "service_a", config.ServiceConfigFile1,
@@ -176,11 +254,15 @@ func TestReadConfigErrorMissingForwardURL(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			err := testError(t, fstest.MapFS{
-				filepath.Join(m, "service_a", "config.yml"): {
-					Data: []byte(`forward_reduced: true`),
-				},
-			})
+			fs := minValidFS()
+			fs[filepath.Join(
+				m,
+				"service_a",
+				"config.yml",
+			)] = &fstest.MapFile{
+				Data: []byte(`forward_reduced: true`),
+			}
+			err := testError(t, fs)
 			require.Equal(t, "service \"service_a\":"+
 				" reading \"config.yml\": "+
 				"missing forward_url", err.Error())
@@ -193,11 +275,15 @@ func TestReadConfigErrorInvalidForwardURL(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			err := testError(t, fstest.MapFS{
-				filepath.Join(m, "service_a", "config.yml"): {
-					Data: []byte(`forward_url: not_a_url.`),
-				},
-			})
+			fs := minValidFS()
+			fs[filepath.Join(
+				m,
+				"service_a",
+				"config.yml",
+			)] = &fstest.MapFile{
+				Data: []byte(`forward_url: not_a_url.`),
+			}
+			err := testError(t, fs)
 			require.Equal(t, "service \"service_a\":"+
 				" reading \"config.yml\": "+
 				"parse \"not_a_url.\": invalid URI for request", err.Error())
@@ -206,8 +292,8 @@ func TestReadConfigErrorInvalidForwardURL(t *testing.T) {
 }
 
 func TestReadConfigErrorInvalidTemplate(t *testing.T) {
-	f := validFS()
-	f[filepath.Join(
+	fs := validFS()
+	fs[filepath.Join(
 		config.ServicesDisabledDir,
 		"service_a",
 		config.TemplatesEnabledDir,
@@ -215,7 +301,7 @@ func TestReadConfigErrorInvalidTemplate(t *testing.T) {
 	)] = &fstest.MapFile{
 		Data: []byte(`invalid { template }`),
 	}
-	err := testError(t, f)
+	err := testError(t, fs)
 	require.Equal(t, "service \"service_a\": "+
 		"parsing \"services_disabled/service_a/"+
 		"templates_enabled/template_invalid.gqt\": "+
@@ -223,8 +309,8 @@ func TestReadConfigErrorInvalidTemplate(t *testing.T) {
 }
 
 func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
-	f := validFS()
-	f[filepath.Join(
+	fs := validFS()
+	fs[filepath.Join(
 		config.ServicesDisabledDir,
 		"service_a",
 		config.TemplatesEnabledDir,
@@ -232,7 +318,7 @@ func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
 	)] = &fstest.MapFile{
 		Data: []byte(`invalid { template }`),
 	}
-	err := testError(t, f)
+	err := testError(t, fs)
 	require.Equal(t, "service \"service_a\": "+
 		"validating \"services_disabled/service_a/"+
 		"templates_enabled/template-invalid#.gqt\": "+
@@ -240,15 +326,15 @@ func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
 }
 
 func TestReadConfigErrorInvalidServiceID(t *testing.T) {
-	f := validFS()
-	f[filepath.Join(
+	fs := validFS()
+	fs[filepath.Join(
 		config.ServicesDisabledDir,
 		"service_#1",
 		config.ServiceConfigFile1,
 	)] = &fstest.MapFile{
 		Data: []byte(`forward_url: localhost:8080/`),
 	}
-	err := testError(t, f)
+	err := testError(t, fs)
 	require.Equal(t, "service \"service_#1\": "+
 		"validating \"services_disabled/service_#1\": "+
 		"illegal identifier", err.Error())
@@ -274,8 +360,24 @@ func testError(
 	return err
 }
 
+func minValidFS() fstest.MapFS {
+	return fstest.MapFS{
+		config.ServerConfigFile1: &fstest.MapFile{
+			Data: lines(
+				`host: localhost:443`,
+			),
+		},
+	}
+}
+
 func validFS() fstest.MapFS {
 	return fstest.MapFS{
+		config.ServerConfigFile1: &fstest.MapFile{
+			Data: lines(
+				`host: localhost:443`,
+			),
+		},
+
 		filepath.Join(
 			config.ServicesEnabledDir,
 			"service_a",
