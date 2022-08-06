@@ -558,6 +558,12 @@ func TestErrorString(t *testing.T) {
 			expect: "missing some_feature in path/to/file.txt",
 		},
 		{
+			input: config.ErrorMissing{
+				FilePath: "path/to/file.txt",
+			},
+			expect: "missing path/to/file.txt",
+		},
+		{
 			input: config.ErrorIllegal{
 				FilePath: "path/to/file.txt",
 				Feature:  "some_feature",

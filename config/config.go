@@ -411,6 +411,12 @@ type ErrorMissing struct {
 
 func (e ErrorMissing) Error() string {
 	var b strings.Builder
+	if e.Feature == "" {
+		b.Grow(len("missing ") + len(e.FilePath))
+		b.WriteString("missing ")
+		b.WriteString(e.FilePath)
+		return b.String()
+	}
 	b.Grow(len("missing ") + len(e.Feature) + len(" in ") + len(e.FilePath))
 	b.WriteString("missing ")
 	b.WriteString(e.Feature)
