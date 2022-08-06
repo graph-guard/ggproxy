@@ -90,6 +90,7 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 			if err := d.Decode(&c); err != nil {
 				return nil, &ErrorIllegal{
 					FilePath: p,
+					Feature:  "syntax",
 					Message:  err.Error(),
 				}
 			}
@@ -273,6 +274,7 @@ func readServiceConfigFile(
 	if err := d.Decode(&c); err != nil {
 		return nil, &ErrorIllegal{
 			FilePath: path,
+			Feature:  "syntax",
 			Message:  err.Error(),
 		}
 	}

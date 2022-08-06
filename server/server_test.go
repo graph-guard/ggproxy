@@ -65,8 +65,6 @@ func TestServer(t *testing.T) {
 	}
 	s := server.New(
 		conf,
-		":8000",
-		true,
 		time.Second*10,
 		time.Second*10,
 		1024*64,
