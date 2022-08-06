@@ -3,7 +3,6 @@ module github.com/graph-guard/gguard-proxy
 go 1.18
 
 require (
-	github.com/armon/go-radix v1.0.0
 	github.com/graph-guard/gguard v0.0.0-20220802204501-85b94c303f17
 	github.com/graph-guard/gqt v0.0.0-20220714090301-a9dea11904c1
 	github.com/phuslu/log v1.0.81

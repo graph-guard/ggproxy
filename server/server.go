@@ -1,113 +1,196 @@
 package server
 
 import (
-	"context"
-	"errors"
+	"encoding/json"
+	"fmt"
+	"net"
 	"strconv"
-	"strings"
+	"sync"
 	"time"
 
-	radix "github.com/armon/go-radix"
+	"github.com/graph-guard/gguard-proxy/config"
 	"github.com/graph-guard/gguard/engines/rmap"
 	"github.com/graph-guard/gguard/matcher"
-	plog "github.com/phuslu/log"
+	"github.com/graph-guard/gqt"
+	"github.com/phuslu/log"
 	"github.com/tidwall/gjson"
 	"github.com/valyala/fasthttp"
 )
 
-var ErrUnknownCtxType = errors.New("unknown context type")
-
 type Server struct {
-	Server  *fasthttp.Server
-	log     plog.Logger
-	workers *radix.Tree
-	listen  string
-	debug   bool
+	config   *config.Config
+	server   *fasthttp.Server
+	client   *fasthttp.Client
+	services map[string]*service
+	log      log.Logger
+	host     string
+	debug    bool
 }
 
-type ServiceConfig struct {
-	Name        string
-	Source      string
-	Destination string
-	Engine      matcher.Matcher
+type ServerDebug struct {
+	config   *config.Config
+	server   *fasthttp.Server
+	services map[string]*service
+	log      log.Logger
+	host     string
+	debug    bool
 }
 
-type worker struct {
+type service struct {
 	source      string
 	destination string
-	engine      matcher.Matcher
-	log         plog.Logger
-	debug       bool
+	log         log.Logger
+	matcherpool sync.Pool
 }
 
 func New(
-	services []ServiceConfig, name string, listenAddress string, debug bool,
-	readTimeOut time.Duration, log plog.Logger,
+	config *config.Config,
+	host string,
+	debug bool,
+	readTimeout, writeTimeout time.Duration,
+	readBufferSize, writeBufferSize int,
+	log log.Logger,
+	client *fasthttp.Client,
 ) *Server {
-	w := radix.New()
+	services := make(map[string]*service)
+
+	if client == nil {
+		client = &fasthttp.Client{}
+	}
 
 	srv := &Server{
-		Server: &fasthttp.Server{
-			Name:        name,
-			ReadTimeout: readTimeOut,
+		config: config,
+		server: &fasthttp.Server{
+			ReadTimeout:                  readTimeout,
+			WriteTimeout:                 writeTimeout,
+			ReadBufferSize:               readBufferSize,
+			WriteBufferSize:              writeBufferSize,
+			DisablePreParseMultipartForm: false,
 		},
-		log:     log,
-		listen:  listenAddress,
-		debug:   debug,
-		workers: w,
+		client:   client,
+		log:      log,
+		host:     host,
+		debug:    debug,
+		services: services,
 	}
-	srv.Server.Handler = srv.handle
+	srv.server.Handler = srv.handle
 
-	for _, svc := range services {
-		_, updated := w.Insert(svc.Source, worker{
-			svc.Source,
-			svc.Destination,
-			svc.Engine,
-			log,
-			debug,
-		})
-		if updated {
-			log.Info().Str("prefix", svc.Source).Msg("updated")
+	for _, s := range config.ServicesEnabled {
+		services[s.ID] = &service{
+			source:      s.ID,
+			destination: s.ForwardURL,
+			log:         log,
+			matcherpool: sync.Pool{
+				New: func() any {
+					d := make([]gqt.Doc, len(s.TemplatesEnabled)+
+						len(s.TemplatesDisabled))
+					for i := range s.TemplatesEnabled {
+						d[i] = s.TemplatesEnabled[i].Document
+					}
+					for i := range s.TemplatesDisabled {
+						d = append(d, s.TemplatesDisabled[i].Document)
+					}
+					engine, err := rmap.New(d, 0)
+					if err != nil {
+						panic(fmt.Errorf(
+							"initializing engine for service %q: %w", s.ID, err,
+						))
+					}
+					return engine
+				},
+			},
 		}
+
+		// Warm up matcher pool
+		func() {
+			// n := runtime.NumCPU()
+			n := 1
+			m := make([]*rmap.RulesMap, n)
+			for i := 0; i < n; i++ {
+				m[i] = services[s.ID].matcherpool.Get().(*rmap.RulesMap)
+			}
+			for i := 0; i < n; i++ {
+				services[s.ID].matcherpool.Put(m[i])
+			}
+		}()
 	}
 
 	return srv
 }
 
-func (w worker) process(ctx context.Context) error {
-	c, ok := ctx.(*fasthttp.RequestCtx)
+func NewDebug(
+	config *config.Config,
+	host string,
+	debug bool,
+	readTimeout, writeTimeout time.Duration,
+	readBufferSize, writeBufferSize int,
+	log log.Logger,
+) *ServerDebug {
+	services := make(map[string]*service)
 
-	if ok {
-		body := gjson.GetManyBytes(c.Request.Body(), "query", "operationName", "variables")
-		if !w.debug {
-			if err := w.engine.Match(
-				ctx, []byte(body[0].String()), []byte(body[1].String()), []byte(body[2].String())); err != nil {
-				return err
-			}
-		} else {
-			match := []string{}
-			if err := w.engine.MatchAll(
-				ctx, []byte(body[0].String()), []byte(body[1].String()), []byte(body[2].String()),
-				func(templateIndex int) {
-					match = append(match, strconv.Itoa(templateIndex))
-				}); err != nil {
-				return err
-			}
-			if len(match) > 0 {
-				w.log.Debug().Str("source", w.source).Str("match", strings.Join(match, " ")).Msg("")
-			} else {
-				return errors.New("no match")
-			}
+	srv := &ServerDebug{
+		config: config,
+		server: &fasthttp.Server{
+			ReadTimeout:                  readTimeout,
+			WriteTimeout:                 writeTimeout,
+			ReadBufferSize:               readBufferSize,
+			WriteBufferSize:              writeBufferSize,
+			DisablePreParseMultipartForm: false,
+		},
+		log:      log,
+		host:     host,
+		debug:    debug,
+		services: services,
+	}
+	srv.server.Handler = srv.handle
+
+	for _, s := range config.ServicesEnabled {
+		d := make([]gqt.Doc, len(s.TemplatesEnabled))
+		for i := range s.TemplatesEnabled {
+			d[i] = s.TemplatesEnabled[i].Document
 		}
-	} else {
-		return ErrUnknownCtxType
+		services[s.ID] = &service{
+			source:      s.ID,
+			destination: s.ForwardURL,
+			log:         log,
+			matcherpool: sync.Pool{
+				New: func() any {
+					d := make([]gqt.Doc, len(s.TemplatesEnabled))
+					for i := range s.TemplatesEnabled {
+						d[i] = s.TemplatesEnabled[i].Document
+					}
+					engine, err := rmap.New(d, 0)
+					if err != nil {
+						panic(fmt.Errorf(
+							"initializing engine for service %q: %w", s.ID, err,
+						))
+					}
+					return engine
+				},
+			},
+		}
+
+		// Warm up matcher pool
+		func() {
+			// n := runtime.NumCPU()
+			n := 1
+			m := make([]*rmap.RulesMap, n)
+			for i := 0; i < n; i++ {
+				m[i] = services[s.ID].matcherpool.Get().(*rmap.RulesMap)
+			}
+			for i := 0; i < n; i++ {
+				services[s.ID].matcherpool.Put(m[i])
+			}
+		}()
 	}
 
-	return nil
+	return srv
 }
 
 func (s *Server) handle(ctx *fasthttp.RequestCtx) {
-	s.log.Info().Bytes("path", ctx.Path()).Msg("handling request")
+	s.log.Info().
+		Bytes("path", ctx.Path()).
+		Msg("handling request")
 
 	if string(ctx.Method()) != fasthttp.MethodPost {
 		ctx.Error(fasthttp.StatusMessage(
@@ -116,48 +199,203 @@ func (s *Server) handle(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	p, v, m := s.workers.LongestPrefix(string(ctx.Path()))
+	id := getIDFromPath(ctx)
 
-	switch m {
-	case true:
-		w := v.(worker)
-		s.log.Debug().Bytes("path", ctx.Path()).Bytes("query", ctx.Request.Body()).Str("prefix", p).Msg("")
-
-		err := w.process(ctx)
-		if err == nil {
-			s.log.Debug().Bytes("path", ctx.Path()).Msg("pass")
-			ctx.Request.SetHost(w.destination)
-			err := fasthttp.Do(&ctx.Request, &ctx.Response)
-			if err != nil {
-				s.log.Error().Err(err).Msg("")
-				return
-			}
-		} else {
-			switch err.(type) {
-			case *rmap.ErrReducer:
-				s.log.Debug().Bytes("path", ctx.Path()).Msg("malformed")
-				ctx.Error(fasthttp.StatusMessage(
-					fasthttp.StatusBadRequest,
-				), fasthttp.StatusBadRequest)
-			default:
-				s.log.Debug().Bytes("path", ctx.Path()).Msg("filtered")
-				ctx.Error(fasthttp.StatusMessage(
-					fasthttp.StatusForbidden,
-				), fasthttp.StatusForbidden)
-			}
-		}
-	default:
-		s.log.Debug().Bytes("path", ctx.Path()).Msg("not existing endpoint")
+	service, ok := s.services[string(id)]
+	if !ok {
+		s.log.Debug().
+			Bytes("path", ctx.Path()).
+			Msg("endpoint not found")
 		ctx.Error(fasthttp.StatusMessage(
 			fasthttp.StatusNotFound,
 		), fasthttp.StatusNotFound)
+		return
+	}
+	s.log.Debug().
+		Bytes("path", ctx.Path()).
+		Bytes("query", ctx.Request.Body()).
+		Msg("")
+
+	query, operationName, variablesJSON, err := extractData(ctx)
+	if err {
+		return
+	}
+
+	m := service.matcherpool.Get().(*rmap.RulesMap)
+	defer service.matcherpool.Put(m)
+
+	switch err := m.Match(
+		ctx, query, operationName, variablesJSON,
+	); err {
+	default:
+		switch err.(type) {
+		case *rmap.ErrReducer:
+			ctx.Error(fasthttp.StatusMessage(
+				fasthttp.StatusBadRequest,
+			), fasthttp.StatusBadRequest)
+			return
+		default:
+			ctx.Error(fasthttp.StatusMessage(
+				fasthttp.StatusInternalServerError,
+			), fasthttp.StatusInternalServerError)
+			return
+		}
+	case matcher.ErrSyntax:
+		ctx.Error(fasthttp.StatusMessage(
+			fasthttp.StatusInternalServerError,
+		), fasthttp.StatusInternalServerError)
+		return
+	case matcher.ErrNoMatch:
+		ctx.Error(fasthttp.StatusMessage(
+			fasthttp.StatusForbidden,
+		), fasthttp.StatusForbidden)
+		return
+	case nil:
+	}
+
+	// Forward request
+	freq := fasthttp.AcquireRequest()
+	fresp := fasthttp.AcquireResponse()
+	defer func() {
+		fasthttp.ReleaseRequest(freq)
+		fasthttp.ReleaseResponse(fresp)
+	}()
+
+	ctx.Request.CopyTo(freq)
+	freq.SetBody(ctx.Request.Body())
+	freq.SetHost(service.destination)
+	if err := s.client.Do(freq, fresp); err != nil {
+		s.log.Error().Err(err).Msg("forwarding")
+		ctx.Error(fasthttp.StatusMessage(
+			fasthttp.StatusInternalServerError,
+		), fasthttp.StatusInternalServerError)
+		return
 	}
 }
 
-func (s *Server) Serve() {
-	s.log.Info().Str("name", s.Server.Name).Str("listenAddress", s.listen).Msg("startig")
+func (s *ServerDebug) handle(ctx *fasthttp.RequestCtx) {
+	s.log.Info().
+		Bytes("path", ctx.Path()).
+		Msg("handling debug request")
 
-	if err := s.Server.ListenAndServe(s.listen); err != nil {
-		s.log.Fatal().Err(err).Msg("")
+	if string(ctx.Method()) != fasthttp.MethodPost {
+		ctx.Error(fasthttp.StatusMessage(
+			fasthttp.StatusMethodNotAllowed,
+		), fasthttp.StatusMethodNotAllowed)
+		return
 	}
+
+	id := getIDFromPath(ctx)
+
+	service, ok := s.services[string(id)]
+	if !ok {
+		s.log.Debug().
+			Bytes("path", ctx.Path()).
+			Msg("endpoint not found")
+		ctx.Error(fasthttp.StatusMessage(
+			fasthttp.StatusNotFound,
+		), fasthttp.StatusNotFound)
+		return
+	}
+	s.log.Debug().
+		Bytes("path", ctx.Path()).
+		Bytes("query", ctx.Request.Body()).
+		Msg("")
+
+	query, operationName, variablesJSON, err := extractData(ctx)
+	if err {
+		return
+	}
+
+	var match []string
+	m := service.matcherpool.Get().(*rmap.RulesMap)
+	defer service.matcherpool.Put(m)
+
+	if err := m.MatchAll(
+		ctx, query, operationName, variablesJSON,
+		func(templateIndex int) {
+			//TODO: return template ID because the client can't
+			// find the template by a engine-internal index.
+			match = append(match, strconv.Itoa(templateIndex))
+		},
+	); err != nil {
+		ctx.Error(fasthttp.StatusMessage(
+			fasthttp.StatusInternalServerError,
+		), fasthttp.StatusInternalServerError)
+		return
+	}
+
+	{
+		resp, err := json.Marshal(match)
+		if err != nil {
+			s.log.Error().Err(err).Msg("marshalling debug response")
+		}
+		ctx.Response.SetBody(resp)
+	}
+}
+
+func (s *Server) Serve(listener net.Listener) {
+	s.log.Info().Str("host", s.host).Msg("listening")
+	var err error
+	if listener != nil {
+		err = s.server.Serve(listener)
+	} else {
+		err = s.server.ListenAndServe(s.host)
+	}
+	if err != nil {
+		s.log.Fatal().Err(err).Msg("listening")
+	}
+}
+
+func (s *Server) Shutdown() error {
+	return s.server.Shutdown()
+}
+
+func (s *ServerDebug) Serve(listener net.Listener) {
+	s.log.Info().Str("host", s.host).Msg("listening")
+	var err error
+	if listener != nil {
+		err = s.server.Serve(listener)
+	} else {
+		err = s.server.ListenAndServe(s.host)
+	}
+	if err != nil {
+		s.log.Fatal().Err(err).Msg("listening")
+	}
+}
+
+func (s *ServerDebug) Shutdown() error {
+	return s.server.Shutdown()
+}
+
+func extractData(ctx *fasthttp.RequestCtx) (
+	query []byte,
+	operationName []byte,
+	variablesJSON []byte,
+	err bool,
+) {
+	b := ctx.Request.Body()
+	if v := gjson.GetBytes(b, "query"); v.Raw != "" {
+		query = []byte(v.String())
+	} else {
+		ctx.Error(fasthttp.StatusMessage(
+			fasthttp.StatusBadRequest,
+		), fasthttp.StatusBadRequest)
+		err = true
+		return
+	}
+	if v := gjson.GetBytes(b, "operationName"); v.Raw != "" {
+		operationName = b[v.Index+1 : v.Index+len(v.Raw)-1]
+	}
+	if v := gjson.GetBytes(b, "variables"); v.Raw != "" {
+		variablesJSON = b[v.Index : v.Index+len(v.Raw)]
+	}
+	return
+}
+
+func getIDFromPath(ctx *fasthttp.RequestCtx) []byte {
+	if p := ctx.Path(); len(p) > 0 && p[0] == '/' {
+		return p[1:]
+	}
+	return nil
 }
