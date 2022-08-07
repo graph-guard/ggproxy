@@ -7,8 +7,6 @@ import (
 	"github.com/graph-guard/gguard-proxy/cli"
 )
 
-const DefaultPort = 64000
-
 func main() {
 	switch c := cli.Parse(os.Stdout, os.Args).(type) {
 	case cli.CommandServe:

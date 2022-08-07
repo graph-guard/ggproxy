@@ -2,10 +2,7 @@ package main
 
 import (
 	"io"
-	"os"
-	"os/signal"
-	"strconv"
-	"syscall"
+	"sync"
 	"time"
 
 	"github.com/graph-guard/gguard-proxy/cli"
@@ -13,70 +10,98 @@ import (
 	"github.com/phuslu/log"
 )
 
+// serve turns the CLI process into a ggproxy server process
+// on *nix systems.
 func serve(w io.Writer, c cli.CommandServe) {
 	conf := ReadConfig(w, c.ConfigDirPath)
 	if conf == nil {
 		return
 	}
 
+	l := log.Logger{
+		Level:  log.InfoLevel,
+		Writer: &log.IOWriter{Writer: w},
+	}
+
+	var s *server.Server
 	{
-		if pid := getPID(); pid != "" {
-			_, _ = w.Write([]byte("another instance is already running "))
-			_, _ = w.Write([]byte("(process id: "))
-			_, _ = w.Write([]byte(pid))
-			_, _ = w.Write([]byte(")\n"))
-			return
-		}
+		lServer := l
+		lServer.Context = log.NewContext(nil).
+			Str("server", "ingress").Value()
+		s = server.New(
+			conf,
+			10*time.Second,
+			10*time.Second,
+			1024*1024*4,
+			1024*1024*4,
+			lServer,
+			nil,
+		)
+	}
 
-		// Create PID file
-		pidFile, err := os.Create(PIDFilePath)
-		if err != nil {
-			_, _ = w.Write([]byte("creating PID file: "))
-			_, _ = w.Write([]byte(err.Error()))
-			_, _ = w.Write([]byte("\n"))
-			return
-		}
-		defer func() {
-			if err := os.Remove(PIDFilePath); err != nil {
-				_, _ = w.Write([]byte("deleting PID file: "))
-				_, _ = w.Write([]byte(err.Error()))
-				_, _ = w.Write([]byte("\n"))
-			}
-		}()
+	wg := new(sync.WaitGroup)
+	wg.Add(2)
 
-		pid := os.Getpid()
-		if _, err := pidFile.WriteString(strconv.Itoa(pid)); err != nil {
-			_, _ = w.Write([]byte("writing process ID to "))
-			_, _ = w.Write([]byte(PIDFilePath))
-			_, _ = w.Write([]byte(": "))
-			_, _ = w.Write([]byte(err.Error()))
-			_, _ = w.Write([]byte("\n"))
-			return
+	stop := RegisterStop()
+
+	var sDebug *server.ServerDebug
+	{
+		lServerDebug := l
+		lServerDebug.Context = log.NewContext(nil).
+			Str("server", "debug").Value()
+
+		if conf.DebugAPIHost != "" {
+			wg.Add(1)
+			sDebug = server.NewDebug(
+				conf,
+				10*time.Second,
+				10*time.Second,
+				1024*1024*4,
+				1024*1024*4,
+				lServerDebug,
+			)
 		}
 	}
 
-	// Turn the CLI process into a server process
-	s := server.New(
-		conf,
-		10*time.Second,
-		10*time.Second,
-		1024*1024*4,
-		1024*1024*4,
-		log.Logger{
-			Level:  log.InfoLevel,
-			Writer: &log.IOWriter{Writer: w},
-		},
-		nil,
-	)
+	cmdServerStarted := make(chan bool)
 
-	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
-	signal.Notify(interrupt, syscall.SIGTERM)
-
+	// Start command server
+	close := createVarDir(w, l)
+	if close == nil {
+		return
+	}
+	defer close(l)
 	go func() {
-		<-interrupt
-		_ = s.Shutdown()
+		runCmdSockServer(l, stop, s, cmdServerStarted)
+		wg.Done()
 	}()
 
-	s.Serve(nil)
+	if !<-cmdServerStarted {
+		l.Info().Msg("aborting launch, the command server failed to start")
+		return
+	}
+
+	if sDebug != nil {
+		// Start debug server
+		go func() {
+			<-stop
+			_ = sDebug.Shutdown()
+		}()
+		go func() {
+			defer wg.Done()
+			sDebug.Serve(nil)
+		}()
+	}
+
+	// Start main ingress server
+	go func() {
+		<-stop
+		_ = s.Shutdown()
+	}()
+	func() {
+		defer wg.Done()
+		s.Serve(nil)
+	}()
+
+	wg.Wait()
 }

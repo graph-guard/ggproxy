@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"os"
 
@@ -13,22 +14,21 @@ func ReadConfig(
 ) *config.Config {
 	conf, err := config.ReadConfig(os.DirFS(configDirPath), ".")
 	if err != nil {
-		_, _ = w.Write([]byte("reading config: "))
-		_, _ = w.Write([]byte(err.Error()))
-		_, _ = w.Write([]byte("\n"))
+		fmt.Fprintf(w, "reading conf: %s\n", err)
 		return nil
 	}
 
 	if len(conf.ServicesEnabled) < 1 {
-		_, _ = w.Write([]byte("no services enabled\n"))
+		fmt.Fprintf(w, "no services enabled: %s\n", err)
 		return nil
 	}
 
 	for i := range conf.ServicesEnabled {
 		if len(conf.ServicesEnabled[i].TemplatesEnabled) < 1 {
-			_, _ = w.Write([]byte("service "))
-			_, _ = w.Write([]byte(conf.ServicesEnabled[i].ID))
-			_, _ = w.Write([]byte(" has no templates enabled\n"))
+			fmt.Fprintf(
+				w, "service %s has no templates enabled\n",
+				conf.ServicesEnabled[i].ID,
+			)
 			return nil
 		}
 	}

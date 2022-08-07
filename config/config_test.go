@@ -26,7 +26,8 @@ func TestReadConfig(t *testing.T) {
 		{
 			Filesystem: validFS(),
 			Expect: &config.Config{
-				Host: "localhost:443",
+				Host:         "localhost:443",
+				DebugAPIHost: "localhost:3000",
 				ServicesEnabled: []*config.Service{
 					{
 						ID:             "service_a",
@@ -116,6 +117,7 @@ func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
 			e, _ := err.(*config.ErrorIllegal)
 			require.Equal(t, &config.ErrorIllegal{
 				FilePath: config.ServiceConfigFile1,
+				Feature:  "syntax",
 				Message: "yaml: unmarshal errors:\n  " +
 					"line 1: cannot unmarshal !!str `not a v...` " +
 					"into config.serverConfig",
@@ -414,6 +416,7 @@ func TestReadConfigErrorMalformedConfig(t *testing.T) {
 	err := testError(t, fs)
 	require.Equal(t, &config.ErrorIllegal{
 		FilePath: p,
+		Feature:  "syntax",
 		Message: "yaml: unmarshal errors:\n  " +
 			"line 1: cannot unmarshal !!str `malform...` " +
 			"into config.serviceConfig",
@@ -455,6 +458,7 @@ func validFS() fstest.MapFS {
 		config.ServerConfigFile1: &fstest.MapFile{
 			Data: lines(
 				`host: localhost:443`,
+				`debug-api-host: localhost:3000`,
 			),
 		},
 

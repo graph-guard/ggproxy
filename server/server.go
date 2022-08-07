@@ -23,7 +23,6 @@ type Server struct {
 	client   *fasthttp.Client
 	services map[string]*service
 	log      log.Logger
-	host     string
 }
 
 type ServerDebug struct {
@@ -31,7 +30,6 @@ type ServerDebug struct {
 	server   *fasthttp.Server
 	services map[string]*service
 	log      log.Logger
-	host     string
 }
 
 type service struct {
@@ -65,7 +63,6 @@ func New(
 		},
 		client:   client,
 		log:      log,
-		host:     config.Host,
 		services: services,
 	}
 	srv.server.Handler = srv.handle
@@ -115,7 +112,6 @@ func New(
 
 func NewDebug(
 	config *config.Config,
-	host string,
 	readTimeout, writeTimeout time.Duration,
 	readBufferSize, writeBufferSize int,
 	log log.Logger,
@@ -132,7 +128,6 @@ func NewDebug(
 			DisablePreParseMultipartForm: false,
 		},
 		log:      log,
-		host:     host,
 		services: services,
 	}
 	srv.server.Handler = srv.handle
@@ -330,11 +325,10 @@ func (s *ServerDebug) handle(ctx *fasthttp.RequestCtx) {
 func (s *Server) Serve(listener net.Listener) {
 	serviceIDs := make([]string, len(s.config.ServicesEnabled))
 	for i := range s.config.ServicesEnabled {
-		serviceIDs = append(serviceIDs, s.config.ServicesEnabled[i].ID)
+		serviceIDs[i] = s.config.ServicesEnabled[i].ID
 	}
 	s.log.Info().
-		Str("mode", "production").
-		Str("host", s.host).
+		Str("host", s.config.Host).
 		Strs("services", serviceIDs).
 		Msg("listening")
 
@@ -342,31 +336,32 @@ func (s *Server) Serve(listener net.Listener) {
 	if listener != nil {
 		err = s.server.Serve(listener)
 	} else {
-		err = s.server.ListenAndServe(s.host)
+		err = s.server.ListenAndServe(s.config.Host)
 	}
 	if err != nil {
 		s.log.Fatal().Err(err).Msg("listening")
 	}
 }
 
+// Shutdown returns once the server was shutdown.
+// Logs shutdown and errors.
 func (s *Server) Shutdown() error {
 	err := s.server.Shutdown()
 	if err != nil {
 		s.log.Error().Err(err).Msg("shutting down")
 		return err
 	}
-	s.log.Info().Msg("shut down")
+	s.log.Info().Msg("shutdown")
 	return nil
 }
 
 func (s *ServerDebug) Serve(listener net.Listener) {
 	serviceIDs := make([]string, len(s.config.ServicesEnabled))
 	for i := range s.config.ServicesEnabled {
-		serviceIDs = append(serviceIDs, s.config.ServicesEnabled[i].ID)
+		serviceIDs[i] = s.config.ServicesEnabled[i].ID
 	}
 	s.log.Info().
-		Str("mode", "debug").
-		Str("host", s.host).
+		Str("host", s.config.DebugAPIHost).
 		Strs("services", serviceIDs).
 		Msg("listening")
 
@@ -374,20 +369,22 @@ func (s *ServerDebug) Serve(listener net.Listener) {
 	if listener != nil {
 		err = s.server.Serve(listener)
 	} else {
-		err = s.server.ListenAndServe(s.host)
+		err = s.server.ListenAndServe(s.config.DebugAPIHost)
 	}
 	if err != nil {
 		s.log.Fatal().Err(err).Msg("listening")
 	}
 }
 
+// Shutdown returns once the server was shutdown.
+// Logs shutdown and errors.
 func (s *ServerDebug) Shutdown() error {
 	err := s.server.Shutdown()
 	if err != nil {
 		s.log.Error().Err(err).Msg("shutting down")
 		return err
 	}
-	s.log.Info().Msg("shut down")
+	s.log.Info().Msg("shutdown")
 	return nil
 }
 

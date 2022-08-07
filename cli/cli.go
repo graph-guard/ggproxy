@@ -9,10 +9,10 @@ import (
 
 // Command can be any of:
 //
-//		CommandServe
-//		CommandReload
-//		CommandStop
-//	 CommandHelp
+//	CommandServe
+//	CommandReload
+//	CommandStop
+//	CommandHelp
 type Command any
 
 type CommandServe struct {

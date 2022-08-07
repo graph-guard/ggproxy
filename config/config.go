@@ -25,6 +25,7 @@ const FileExtGQT = ".gqt"
 
 type Config struct {
 	Host             string
+	DebugAPIHost     string
 	ServicesEnabled  []*Service
 	ServicesDisabled []*Service
 }
@@ -101,6 +102,7 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 				}
 			}
 			conf.Host = c.Host
+			conf.DebugAPIHost = c.DebugAPIHost
 		}
 	}
 
@@ -251,7 +253,8 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 }
 
 type serverConfig struct {
-	Host string `yaml:"host"`
+	Host         string `yaml:"host"`
+	DebugAPIHost string `yaml:"debug-api-host"`
 }
 
 type serviceConfig struct {
