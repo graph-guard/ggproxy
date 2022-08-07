@@ -9,7 +9,7 @@ import (
 // a termination signal is received.
 func RegisterStop() (stop <-chan struct{}) {
 	s := make(chan struct{})
-	interrupt := make(chan os.Signal)
+	interrupt := make(chan os.Signal, 1)
 	signal.Notify(interrupt, os.Interrupt)
 	go func() {
 		<-interrupt
