@@ -81,6 +81,9 @@ func handleCmdSockConn(
 	for {
 		nr, err := c.Read(bufRead)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return // Close connection
+			}
 			l.Error().
 				Err(err).
 				Str("cmdSockFilePath", FilePathCmdSock).
@@ -126,23 +129,25 @@ func handleCmdSockMsg(
 	stopped <-chan struct{},
 ) (written []byte) {
 	if string(msg) == "reload" {
-		l.Error().
+		l.Info().
 			Str("command", "reload").
 			Msg("command received")
 		buf = append(buf, "err:reload is not yet supported"...)
 
 	} else if string(msg) == "stats" {
-		l.Error().
+		l.Info().
 			Str("command", "stats").
 			Msg("command received")
 		buf = append(buf, "err:stats is not yet supported"...)
 
 	} else if string(msg) == "stop" {
-		l.Error().
+		l.Info().
 			Str("command", "stop").
 			Msg("command received")
 		close(explicitStop)
 		<-stopped
+		buf = append(buf, "ok"...)
+
 	} else {
 		l.Error().
 			Bytes("message", msg).
@@ -192,6 +197,9 @@ func createVarDir(w io.Writer, l log.Logger) (cleanup func(log.Logger)) {
 func request(msg, buf []byte) ([]byte, error) {
 	c, err := net.Dial("unix", FilePathCmdSock)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, ErrNoInstanceRunning
+		}
 		return nil, fmt.Errorf("dialing %q: %w", FilePathCmdSock, err)
 	}
 	defer c.Close()
@@ -213,3 +221,5 @@ func request(msg, buf []byte) ([]byte, error) {
 
 	return buf[:n], nil
 }
+
+var ErrNoInstanceRunning = errors.New("no instance running")
