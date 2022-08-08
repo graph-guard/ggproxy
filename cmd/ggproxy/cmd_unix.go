@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/graph-guard/gguard-proxy/server"
 	"github.com/phuslu/log"
 )
 
@@ -28,10 +27,12 @@ func getPID() string {
 }
 
 // runCmdSockServer starts listening on /var/run/ggproxy/ggproxy_cmd.sock
+// and sends started<-true, otherwise sends started<-false if it failed.
 func runCmdSockServer(
 	l log.Logger,
-	stop <-chan struct{},
-	s *server.Server,
+	stopTriggered <-chan struct{},
+	stopped <-chan struct{},
+	explicitStop chan<- struct{},
 	started chan<- bool,
 ) {
 	lt, err := net.Listen("unix", FilePathCmdSock)
@@ -43,7 +44,7 @@ func runCmdSockServer(
 		started <- false
 	}
 	go func() {
-		<-stop
+		<-stopTriggered
 		if err := lt.Close(); err != nil {
 			l.Error().
 				Err(err).
@@ -64,12 +65,17 @@ func runCmdSockServer(
 				Msg("accepting on file command socket")
 			break
 		}
-		go handleCmdSockConn(c, l, s)
+		go handleCmdSockConn(c, l, explicitStop, stopped)
 	}
 }
 
 // handleCmdSockConn starts listening for commands on the given connection.
-func handleCmdSockConn(c net.Conn, l log.Logger, s *server.Server) {
+func handleCmdSockConn(
+	c net.Conn,
+	l log.Logger,
+	explicitStop chan<- struct{},
+	stopped <-chan struct{},
+) {
 	bufRead := make([]byte, BufLenCmdSockRead)
 	bufWrite := make([]byte, BufLenCmdSockWrite)
 	for {
@@ -82,7 +88,13 @@ func handleCmdSockConn(c net.Conn, l log.Logger, s *server.Server) {
 			return // Close connection
 		}
 
-		written := handleCmdSockMsg(bufRead[:nr], bufWrite[:0], l, s)
+		written := handleCmdSockMsg(
+			bufRead[:nr],
+			bufWrite[:0],
+			l,
+			explicitStop,
+			stopped,
+		)
 		if written == nil {
 			return // Close connection
 		}
@@ -110,7 +122,8 @@ func handleCmdSockConn(c net.Conn, l log.Logger, s *server.Server) {
 func handleCmdSockMsg(
 	msg, buf []byte,
 	l log.Logger,
-	s *server.Server,
+	explicitStop chan<- struct{},
+	stopped <-chan struct{},
 ) (written []byte) {
 	if string(msg) == "reload" {
 		l.Error().
@@ -128,8 +141,8 @@ func handleCmdSockMsg(
 		l.Error().
 			Str("command", "stop").
 			Msg("command received")
-		_ = s.Shutdown()
-
+		close(explicitStop)
+		<-stopped
 	} else {
 		l.Error().
 			Bytes("message", msg).
@@ -144,7 +157,7 @@ func handleCmdSockMsg(
 //
 //	/var/run/ggproxy/ggproxy_cmd.sock
 //	/var/run/ggproxy/ggproxy.pid
-func createVarDir(w io.Writer, l log.Logger) (close func(log.Logger)) {
+func createVarDir(w io.Writer, l log.Logger) (cleanup func(log.Logger)) {
 	if pid := getPID(); pid != "" {
 		fmt.Fprintf(w, "another instance is already running "+
 			"(process id: %s)\n", pid)
@@ -156,7 +169,7 @@ func createVarDir(w io.Writer, l log.Logger) (close func(log.Logger)) {
 		fmt.Fprintf(w, "creating %q: %s\n", FilePathPID, err)
 		return nil
 	}
-	close = func(l log.Logger) {
+	cleanup = func(l log.Logger) {
 		if err := os.Remove(FilePathPID); err != nil {
 			l.Error().
 				Err(err).
@@ -167,9 +180,36 @@ func createVarDir(w io.Writer, l log.Logger) (close func(log.Logger)) {
 
 	pid := os.Getpid()
 	if _, err := pidFile.WriteString(strconv.Itoa(pid)); err != nil {
-		close(l)
+		cleanup(l)
 		fmt.Fprintf(w, "writing process ID to %q: %s\n", FilePathPID, err)
 		return nil
 	}
-	return close
+	return cleanup
+}
+
+// request connects to /var/run/ggproxy/ggproxy_cmd.sock and sends
+// a command request to the running server instance.
+func request(msg, buf []byte) ([]byte, error) {
+	c, err := net.Dial("unix", FilePathCmdSock)
+	if err != nil {
+		return nil, fmt.Errorf("dialing %q: %w", FilePathCmdSock, err)
+	}
+	defer c.Close()
+
+	if len(msg) > BufLenCmdSockRead {
+		panic(fmt.Errorf(
+			"message length (%d) exceeds limit (%d)",
+			len(msg), BufLenCmdSockRead,
+		))
+	}
+
+	if _, err := c.Write(msg); err != nil {
+		return nil, fmt.Errorf("writing to %q: %w", FilePathCmdSock, err)
+	}
+	n, err := c.Read(buf)
+	if err != nil {
+		return nil, fmt.Errorf("reading from %q: %w", FilePathCmdSock, err)
+	}
+
+	return buf[:n], nil
 }

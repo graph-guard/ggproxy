@@ -42,7 +42,11 @@ func serve(w io.Writer, c cli.CommandServe) {
 	wg := new(sync.WaitGroup)
 	wg.Add(2)
 
-	stop := RegisterStop()
+	// explicitStop must be closed to trigger an explicit stop.
+	explicitStop := make(chan struct{})
+	// stopped will be closed once all components have terminated gracefuly.
+	stopped := make(chan struct{})
+	stopTriggered := RegisterStop(explicitStop)
 
 	var sDebug *server.ServerDebug
 	{
@@ -66,13 +70,19 @@ func serve(w io.Writer, c cli.CommandServe) {
 	cmdServerStarted := make(chan bool)
 
 	// Start command server
-	close := createVarDir(w, l)
-	if close == nil {
+	cleanup := createVarDir(w, l)
+	if cleanup == nil {
 		return
 	}
-	defer close(l)
+	defer cleanup(l)
 	go func() {
-		runCmdSockServer(l, stop, s, cmdServerStarted)
+		runCmdSockServer(
+			l,
+			stopTriggered,
+			stopped,
+			explicitStop,
+			cmdServerStarted,
+		)
 		wg.Done()
 	}()
 
@@ -84,7 +94,7 @@ func serve(w io.Writer, c cli.CommandServe) {
 	if sDebug != nil {
 		// Start debug server
 		go func() {
-			<-stop
+			<-stopTriggered
 			_ = sDebug.Shutdown()
 		}()
 		go func() {
@@ -95,7 +105,7 @@ func serve(w io.Writer, c cli.CommandServe) {
 
 	// Start main ingress server
 	go func() {
-		<-stop
+		<-stopTriggered
 		_ = s.Shutdown()
 	}()
 	func() {
@@ -104,4 +114,5 @@ func serve(w io.Writer, c cli.CommandServe) {
 	}()
 
 	wg.Wait()
+	close(stopped)
 }
