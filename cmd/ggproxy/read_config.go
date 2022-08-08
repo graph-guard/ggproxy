@@ -14,12 +14,12 @@ func ReadConfig(
 ) *config.Config {
 	conf, err := config.ReadConfig(os.DirFS(configDirPath), ".")
 	if err != nil {
-		fmt.Fprintf(w, "reading conf: %s\n", err)
+		fmt.Fprintf(w, "Reading conf: %s\n", err)
 		return nil
 	}
 
 	if len(conf.ServicesEnabled) < 1 {
-		fmt.Fprintf(w, "no services enabled: %s\n", err)
+		fmt.Fprintf(w, "No services enabled: %s\n", err)
 		return nil
 	}
 

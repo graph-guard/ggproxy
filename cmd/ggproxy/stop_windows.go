@@ -7,5 +7,5 @@ import (
 )
 
 func stop(w io.Writer, c cli.CommandStop) {
-	fmt.Fprintf(w, "command 'stop' is not yet supported on Windows\n")
+	fmt.Fprintf(w, "Command 'stop' is not yet supported on Windows\n")
 }

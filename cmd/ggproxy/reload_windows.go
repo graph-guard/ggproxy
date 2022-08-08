@@ -7,5 +7,5 @@ import (
 )
 
 func reload(w io.Writer, c cli.CommandReload) {
-	fmt.Fprintf(w, "command 'reload' is not yet supported on Windows\n")
+	fmt.Fprintf(w, "Command 'reload' is not yet supported on Windows\n")
 }

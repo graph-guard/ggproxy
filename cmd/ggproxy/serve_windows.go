@@ -7,5 +7,5 @@ import (
 )
 
 func serve(w io.Writer, c cli.CommandServe) {
-	fmt.Fprintf(w, "command 'serve' is not yet supported on Windows\n")
+	fmt.Fprintf(w, "Command 'serve' is not yet supported on Windows\n")
 }
