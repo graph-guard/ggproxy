@@ -12,8 +12,7 @@ type bucket[K KeyInterface, V any] struct {
 }
 
 type Linear[K KeyInterface, V any] struct {
-	len int
-	d   []bucket[K, V]
+	d []bucket[K, V]
 }
 
 func New[K KeyInterface, V any](capacity int) *Linear[K, V] {

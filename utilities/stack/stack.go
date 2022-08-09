@@ -46,7 +46,6 @@ func (s *Stack[T]) TopOffsetFn(offset int, fn func(*T)) {
 	if l := len(s.s) - 1; l >= 0 {
 		fn(&s.s[l-offset])
 	}
-	return
 }
 
 // Get returns the element at index from bottom.

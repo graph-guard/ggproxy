@@ -715,9 +715,9 @@ func matchValue(tokens []token, c Constraint) (after []token, result bool) {
 	case bool:
 		switch tokens[0].Type {
 		case gqlscan.TokenFalse:
-			return tokens[1:], v == false
+			return tokens[1:], !v
 		case gqlscan.TokenTrue:
-			return tokens[1:], v == true
+			return tokens[1:], v
 		default:
 			// Unexpected value type
 			return nil, false

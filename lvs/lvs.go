@@ -28,8 +28,7 @@ func VerifyLicenceKey(key []byte) (bool, error) {
 }
 
 func CalculateExecutableHash() ([]byte, error) {
-	var h hash.Hash
-	h = sha512.New()
+	var h hash.Hash = sha512.New()
 
 	executable, err := os.Executable()
 	if err != nil {

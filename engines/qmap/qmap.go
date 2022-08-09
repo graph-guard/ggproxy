@@ -190,8 +190,7 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 			gqlscan.TokenSetEnd,
 			gqlscan.TokenArgListEnd,
 			gqlscan.TokenObjEnd:
-			switch token.Type {
-			case gqlscan.TokenArrEnd:
+			if token.Type == gqlscan.TokenArrEnd {
 				insideArray--
 			}
 			for {
@@ -209,13 +208,11 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 				case argumentsTerminal:
 					m.mstack.Pop()
 					m.pstack.Pop()
-					break
 				case selectTerminal, objectTerminal:
 					m.mstack.Pop()
 					m.pstack.Pop()
 					m.mstack.Pop()
 					m.pstack.Pop()
-					break
 				case *[]any, *hamap.Map[string, any]:
 					el := m.mstack.Pop()
 					path := m.pstack.Top()
@@ -230,7 +227,6 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 						m.mstack.Pop()
 						m.pstack.Pop()
 					}
-					break
 				}
 				break
 			}
