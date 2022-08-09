@@ -15,3 +15,12 @@
 # vendor/
 
 .vscode/
+
+# clog configuration
+cmd/ggproxy/clog.toml
+
+# ggproxy config for debugging purposes
+cmd/ggproxy/config
+
+# result of `go build` in cmd/ggproxy
+cmd/ggproxy/ggproxy
