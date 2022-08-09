@@ -1,0 +1,10 @@
+query X {
+	a(
+		a_0: "well"
+		a_1: null
+		a_2: 0
+	) {
+		a0
+		a1
+	}
+}

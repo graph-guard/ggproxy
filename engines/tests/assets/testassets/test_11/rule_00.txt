@@ -1,0 +1,10 @@
+query {
+	a(
+		a_0: bytelen > 0
+		a_1: any
+		a_2: val < 0
+	) {
+		a0
+		a1
+	}
+}

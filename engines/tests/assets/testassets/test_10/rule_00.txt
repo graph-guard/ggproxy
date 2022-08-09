@@ -1,0 +1,24 @@
+query {
+	a {
+		a0(
+			a0_0: any
+			a0_1: val = {
+				a0_10: val = null
+			}
+		) {
+			a00(
+				a00_0: val = [any, val = 0, any]
+				a00_1: val = [
+					...
+					val = {
+						a00_1x0: any
+					}
+				]
+				a00_2: val = [ ... any ]
+			) {
+				a000
+			}
+		}
+		a1
+	}
+}

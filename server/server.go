@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/graph-guard/gguard-proxy/config"
-	"github.com/graph-guard/gguard/engines/rmap"
-	"github.com/graph-guard/gguard/matcher"
+	"github.com/graph-guard/gguard-proxy/engines/rmap"
+	"github.com/graph-guard/gguard-proxy/matcher"
 	"github.com/graph-guard/gqt"
 	"github.com/phuslu/log"
 	"github.com/tidwall/gjson"
