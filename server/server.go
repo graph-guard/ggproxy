@@ -68,24 +68,22 @@ func New(
 	srv.server.Handler = srv.handle
 
 	for _, s := range config.ServicesEnabled {
+		sc := s
 		services[s.ID] = &service{
 			source:      s.ID,
 			destination: s.ForwardURL,
 			log:         log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make([]gqt.Doc, len(s.TemplatesEnabled)+
-						len(s.TemplatesDisabled))
-					for i := range s.TemplatesEnabled {
-						d[i] = s.TemplatesEnabled[i].Document
-					}
-					for i := range s.TemplatesDisabled {
-						d = append(d, s.TemplatesDisabled[i].Document)
+					d := make([]gqt.Doc, len(sc.TemplatesEnabled))
+					for i := range sc.TemplatesEnabled {
+						d[i] = sc.TemplatesEnabled[i].Document
 					}
 					engine, err := rmap.New(d, 0)
 					if err != nil {
 						panic(fmt.Errorf(
-							"initializing engine for service %q: %w", s.ID, err,
+							"initializing engine for service %q: %w",
+							sc.ID, err,
 						))
 					}
 					return engine
@@ -133,24 +131,31 @@ func NewDebug(
 	srv.server.Handler = srv.handle
 
 	for _, s := range config.ServicesEnabled {
-		d := make([]gqt.Doc, len(s.TemplatesEnabled))
-		for i := range s.TemplatesEnabled {
-			d[i] = s.TemplatesEnabled[i].Document
+		sc := s
+		d := make([]gqt.Doc, len(sc.TemplatesEnabled))
+		for i := range sc.TemplatesEnabled {
+			d[i] = sc.TemplatesEnabled[i].Document
 		}
-		services[s.ID] = &service{
-			source:      s.ID,
-			destination: s.ForwardURL,
+		services[sc.ID] = &service{
+			source:      sc.ID,
+			destination: sc.ForwardURL,
 			log:         log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make([]gqt.Doc, len(s.TemplatesEnabled))
-					for i := range s.TemplatesEnabled {
-						d[i] = s.TemplatesEnabled[i].Document
+					d := make([]gqt.Doc, 0, len(sc.TemplatesEnabled)+
+						len(sc.TemplatesDisabled))
+					for i := range sc.TemplatesEnabled {
+						d = append(d, sc.TemplatesEnabled[i].Document)
 					}
+					for i := range sc.TemplatesDisabled {
+						d = append(d, sc.TemplatesDisabled[i].Document)
+					}
+
 					engine, err := rmap.New(d, 0)
 					if err != nil {
 						panic(fmt.Errorf(
-							"initializing engine for service %q: %w", s.ID, err,
+							"initializing engine for service %q: %w",
+							sc.ID, err,
 						))
 					}
 					return engine
