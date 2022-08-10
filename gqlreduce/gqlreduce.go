@@ -61,8 +61,9 @@ func NewReducer() *Reducer {
 			graph.MaxFragments, nil,
 		),
 		fragsConstructed:   segmented.New[[]byte, Token](),
-		freeFrags:          hamap.New[[]byte, struct{}](0, nil),
+		entryFrags:         hamap.New[[]byte, struct{}](0, nil),
 		vars:               hamap.New[[]byte, varDecl](0, nil),
+		varsConstructed:    segmented.New[[]byte, Token](),
 		typeStack:          stack.New[typeUnion](0),
 		operations:         make([]indexRange, 0),
 		fragmentGraphEdges: make([]graph.Edge, 0),
@@ -92,16 +93,17 @@ type Reducer struct {
 	// fragDefs indexes all fragment definitions
 	fragDefs *hamap.Map[[]byte, fragDef]
 
-	// freeFrags indexes all independent fragments.
-	// independens fragments are those that don't contain
-	// spreads of other fragments.
-	freeFrags *hamap.Map[[]byte, struct{}]
+	// entryFrags indexes all entry level fragments.
+	entryFrags *hamap.Map[[]byte, struct{}]
 
 	// fragsConstructed stores all constructed structs
 	fragsConstructed *segmented.Array[[]byte, Token]
 
 	// vars indexes all variable declarations
 	vars *hamap.Map[[]byte, varDecl]
+
+	// varsConstructed stores all constructed variable values
+	varsConstructed *segmented.Array[[]byte, Token]
 
 	// typeStack is used during variable default value parsing
 	typeStack *stack.Stack[typeUnion]
@@ -134,8 +136,9 @@ func (r *Reducer) reset() {
 	r.bufferOpr = r.bufferOpr[:0]
 	r.ordered = r.ordered[:0]
 	r.fragDefs.Reset()
-	r.freeFrags.Reset()
+	r.entryFrags.Reset()
 	r.vars.Reset()
+	r.varsConstructed.Reset()
 	r.fragsConstructed.Reset()
 	r.operations = r.operations[:0]
 	r.fragmentGraphEdges = r.fragmentGraphEdges[:0]
@@ -220,7 +223,7 @@ func (r *Reducer) Reduce(
 			}
 		case gqlscan.TokenNamedSpread:
 			if recentFragDef == nil {
-				r.freeFrags.Set(
+				r.entryFrags.Set(
 					r.buffer[len(r.buffer)-1].Value, struct{}{},
 				)
 			} else {
@@ -259,71 +262,6 @@ func (r *Reducer) Reduce(
 		r.errSyntax.ScanErr = serr
 		onError(&r.errSyntax)
 		return
-	}
-
-	// Make sure there are no recursive fragments
-
-	r.errFragRecurse.Path = r.errFragRecurse.Path[:0]
-	r.gi.Make(
-		r.fragmentGraphEdges,
-		func(nodeName []byte) {
-			r.errFragRecurse.Path = append(r.errFragRecurse.Path, nodeName)
-		},
-		func(fragName []byte) {
-			r.ordered = append(r.ordered, fragName)
-		},
-	)
-	if len(r.errFragRecurse.Path) > 0 {
-		onError(&r.errFragRecurse)
-		return
-	}
-
-	// Mark all used free fragments
-	r.freeFrags.VisitAll(func(fragName []byte, value struct{}) {
-		ok := r.fragDefs.GetFn(fragName, func(v *fragDef) {
-			v.Used = true
-		})
-		if !ok {
-			isErr = true
-			r.errFragUndefined.FragmentName = fragName
-			onError(&r.errFragUndefined)
-			return
-		}
-	})
-	if isErr {
-		return
-	}
-
-	// Construct nested fragments in the order of dependency
-	for _, fragName := range r.ordered {
-		if !r.fragDefs.GetFn(fragName, func(fd *fragDef) {
-			// Flag fragment definition as used
-			fd.Used = true
-
-			fragSelections := r.buffer[fd.IndexStart+3 : fd.IndexEnd-1]
-			for _, t := range fragSelections {
-				if t.Type != gqlscan.TokenNamedSpread {
-					r.fragsConstructed.Append(t)
-					continue
-				}
-
-				// Inline fragment spread
-				fragContents := r.fragsConstructed.Get(t.Value)
-				if fragContents == nil {
-					// Look up free fragment
-					_ = r.fragDefs.GetFn(t.Value, func(v *fragDef) {
-						fragContents =
-							r.buffer[v.IndexStart+3 : v.IndexEnd-1]
-					})
-				}
-				r.fragsConstructed.Append(fragContents...)
-			}
-			r.fragsConstructed.Cut(fragName)
-		}) {
-			r.errFragUndefined.FragmentName = fragName
-			onError(&r.errFragUndefined)
-			return
-		}
 	}
 
 	// Check for operation redeclaration and find selected operation
@@ -371,21 +309,6 @@ func (r *Reducer) Reduce(
 		return
 	}
 
-	// Validate variable JSON
-	if len(varsJSON) > 0 {
-		if !gjson.ValidBytes(varsJSON) {
-			onError(&r.errVarJSONSyntax)
-			return
-		}
-
-		v := gjson.Parse(unsafe.B2S(varsJSON))
-		if !v.IsObject() {
-			r.errVarJSONNotObj.Received = v
-			onError(&r.errVarJSONNotObj)
-			return
-		}
-	}
-
 	// Initialize operation buffer
 	i := 1
 	opr := r.operations[oprIndex]
@@ -407,6 +330,116 @@ func (r *Reducer) Reduce(
 			// Include operation name
 			r.bufferOpr = append(r.bufferOpr, o[1])
 		}
+	}
+
+	// Validate variable JSON
+	if len(varsJSON) > 0 {
+		if !gjson.ValidBytes(varsJSON) {
+			onError(&r.errVarJSONSyntax)
+			return
+		}
+
+		v := gjson.Parse(unsafe.B2S(varsJSON))
+		if !v.IsObject() {
+			r.errVarJSONNotObj.Received = v
+			onError(&r.errVarJSONNotObj)
+			return
+		}
+	}
+
+	// Construct variable values
+	r.vars.VisitAll(func(varName []byte, vr varDecl) {
+		if res := gjson.Get(
+			unsafe.B2S(varsJSON), unsafe.B2S(vr.Name),
+		); res.Exists() {
+			r.writeTypeToStack(r.buffer, vr.Type.IndexStart)
+			r.buffer2 = r.buffer2[:0]
+			if r.writeValueToBuffer(0, false, res) {
+				r.errUnexpValType.Buffer = r.buffer
+				r.errUnexpValType.BufferJSON = varsJSON
+				r.errUnexpValType.TypeExpected = vr.Type
+				r.errUnexpValType.DefaultValueReceived = vr.DefaultValue
+				r.errUnexpValType.JSONValueReceived = indexRange{
+					IndexStart: res.Index,
+					IndexEnd:   res.Index + len(res.Raw),
+				}
+				isErr = true
+				onError(&r.errUnexpValType)
+				return
+			}
+
+			r.varsConstructed.Append(r.buffer2...)
+
+		} else if vr.DefaultValue.IndexStart > -1 {
+			// Use default value when no value is present in JSON
+			v := r.buffer[vr.DefaultValue.IndexStart:vr.DefaultValue.IndexEnd]
+			r.varsConstructed.Append(v...)
+
+		} else {
+			isErr = true
+			r.errVarUndefined.VariableName = vr.Name
+			onError(&r.errVarUndefined)
+			return
+		}
+		r.varsConstructed.Cut(varName)
+	})
+	if isErr {
+		return
+	}
+
+	// Make sure there are no recursive fragments
+	r.errFragRecurse.Path = r.errFragRecurse.Path[:0]
+	r.gi.Make(
+		r.fragmentGraphEdges,
+		func(nodeName []byte) {
+			r.errFragRecurse.Path = append(r.errFragRecurse.Path, nodeName)
+		},
+		func(fragName []byte) {
+			r.ordered = append(r.ordered, fragName)
+		},
+	)
+	if len(r.errFragRecurse.Path) > 0 {
+		onError(&r.errFragRecurse)
+		return
+	}
+
+	// Construct nested fragments in the order of dependency
+	for _, fragName := range r.ordered {
+		if !r.fragDefs.GetFn(fragName, func(fd *fragDef) {
+			// Flag fragment definition as used
+			fd.Used = true
+
+			if r.constructFrag(fragName, fd.indexRange, onError) {
+				return
+			}
+		}) {
+			r.errFragUndefined.FragmentName = fragName
+			onError(&r.errFragUndefined)
+			return
+		}
+	}
+
+	// Construct and mark all used entry fragments
+	r.entryFrags.VisitAll(func(fragName []byte, value struct{}) {
+		ok := r.fragDefs.GetFn(fragName, func(v *fragDef) {
+			v.Used = true
+			if c := r.fragsConstructed.Get(fragName); c != nil {
+				return
+			}
+			if r.constructFrag(fragName, v.indexRange, onError) {
+				isErr = true
+				return
+			}
+		})
+		if !ok {
+			isErr = true
+			r.errFragUndefined.FragmentName = fragName
+			onError(&r.errFragUndefined)
+			return
+		}
+	})
+	if isErr {
+		return
 	}
 
 	// Reduce tokens
@@ -431,44 +464,13 @@ func (r *Reducer) Reduce(
 
 		case gqlscan.TokenVarRef:
 			// Inline variable reference, replace them with the actual value
-			vr, ok := r.vars.Get(o[i].Value)
-			if !ok {
+			value := r.varsConstructed.Get(o[i].Value)
+			if value == nil {
 				r.errVarUndeclared.VariableName = o[i].Value
 				onError(&r.errVarUndeclared)
 				return
 			}
-
-			if res := gjson.Get(
-				unsafe.B2S(varsJSON), unsafe.B2S(vr.Name),
-			); res.Exists() {
-				r.writeTypeToStack(r.buffer, vr.Type.IndexStart)
-				r.buffer2 = r.buffer2[:0]
-				if r.writeValueToBuffer(0, false, res) {
-					r.errUnexpValType.Buffer = r.buffer
-					r.errUnexpValType.BufferJSON = varsJSON
-					r.errUnexpValType.TypeExpected = vr.Type
-					r.errUnexpValType.DefaultValueReceived = vr.DefaultValue
-					r.errUnexpValType.JSONValueReceived = indexRange{
-						IndexStart: res.Index,
-						IndexEnd:   res.Index + len(res.Raw),
-					}
-					onError(&r.errUnexpValType)
-					return
-				}
-
-				r.bufferOpr = append(r.bufferOpr, r.buffer2...)
-
-			} else if vr.DefaultValue.IndexStart > -1 {
-				// Use default value when no value is present in JSON
-				rn := vr.DefaultValue
-				v := r.buffer[rn.IndexStart:rn.IndexEnd]
-				r.bufferOpr = append(r.bufferOpr, v...)
-
-			} else {
-				r.errVarUndefined.VariableName = vr.Name
-				onError(&r.errVarUndefined)
-				return
-			}
+			r.bufferOpr = append(r.bufferOpr, value...)
 		}
 	}
 
@@ -968,4 +970,32 @@ func (r *Reducer) writeValueToBuffer(
 		r.buffer2 = append(r.buffer2, Token{Type: gqlscan.TokenObjEnd})
 	}
 	return isErr
+}
+
+func (r *Reducer) constructFrag(
+	fragName []byte,
+	rn indexRange,
+	onError func(err error),
+) (err bool) {
+	fragSelections := r.buffer[rn.IndexStart+3 : rn.IndexEnd-1]
+	for _, t := range fragSelections {
+		switch t.Type {
+		case gqlscan.TokenNamedSpread:
+			// Inline fragment spread
+			fragContents := r.fragsConstructed.Get(t.Value)
+			r.fragsConstructed.Append(fragContents...)
+		case gqlscan.TokenVarRef:
+			value := r.varsConstructed.Get(t.Value)
+			if value == nil {
+				r.errVarUndefined.VariableName = t.Value
+				onError(&r.errVarUndefined)
+				return true
+			}
+			r.fragsConstructed.Append(value...)
+		default:
+			r.fragsConstructed.Append(t)
+		}
+	}
+	r.fragsConstructed.Cut(fragName)
+	return false
 }

@@ -79,6 +79,63 @@ var testdata = []decl.Declaration[TestSuccess]{
 			Token(gqlscan.TokenSetEnd),
 		},
 	}),
+	// Inline variables inside fragments
+	decl.New(TestSuccess{
+		Src: `query X ($v: String! = "text") { ...f1 }
+		fragment f1 on Query { foo(bar: $v) }`,
+		OprName: "X",
+		Expect: []gqlreduce.Token{
+			Token(gqlscan.TokenDefQry),
+			Token(gqlscan.TokenOprName, "X"),
+			Token(gqlscan.TokenSet),
+
+			Token(gqlscan.TokenField, "foo"),
+			Token(gqlscan.TokenArgList),
+			Token(gqlscan.TokenArgName, "bar"),
+			Token(gqlscan.TokenStr, "text"),
+			Token(gqlscan.TokenArgListEnd),
+
+			Token(gqlscan.TokenSetEnd),
+		},
+	}),
+	decl.New(TestSuccess{
+		Src: `query X ($v: String! = "text") {...f1,...f2,...f3}
+		fragment f1 on Query { foo(bar: $v), ...f2 }
+		fragment f2 on Query { bar(baz: $v) }
+		fragment f3 on Query { baz(fuz: $v) }`,
+		OprName: "X",
+		Expect: []gqlreduce.Token{
+			Token(gqlscan.TokenDefQry),
+			Token(gqlscan.TokenOprName, "X"),
+			Token(gqlscan.TokenSet),
+
+			Token(gqlscan.TokenField, "foo"),
+			Token(gqlscan.TokenArgList),
+			Token(gqlscan.TokenArgName, "bar"),
+			Token(gqlscan.TokenStr, "text"),
+			Token(gqlscan.TokenArgListEnd),
+
+			Token(gqlscan.TokenField, "bar"),
+			Token(gqlscan.TokenArgList),
+			Token(gqlscan.TokenArgName, "baz"),
+			Token(gqlscan.TokenStr, "text"),
+			Token(gqlscan.TokenArgListEnd),
+
+			Token(gqlscan.TokenField, "bar"),
+			Token(gqlscan.TokenArgList),
+			Token(gqlscan.TokenArgName, "baz"),
+			Token(gqlscan.TokenStr, "text"),
+			Token(gqlscan.TokenArgListEnd),
+
+			Token(gqlscan.TokenField, "baz"),
+			Token(gqlscan.TokenArgList),
+			Token(gqlscan.TokenArgName, "fuz"),
+			Token(gqlscan.TokenStr, "text"),
+			Token(gqlscan.TokenArgListEnd),
+
+			Token(gqlscan.TokenSetEnd),
+		},
+	}),
 	// Inline variables from JSON
 	decl.New(TestSuccess{
 		OprName: "Q",
