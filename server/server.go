@@ -4,13 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/graph-guard/gguard-proxy/config"
 	"github.com/graph-guard/gguard-proxy/engines/rmap"
-	"github.com/graph-guard/gguard-proxy/matcher"
+	"github.com/graph-guard/gguard-proxy/gqlreduce"
 	"github.com/graph-guard/gqt"
 	"github.com/phuslu/log"
 	"github.com/tidwall/gjson"
@@ -37,6 +36,11 @@ type service struct {
 	destination string
 	log         log.Logger
 	matcherpool sync.Pool
+}
+
+type matcher struct {
+	Reducer *gqlreduce.Reducer
+	Engine  *rmap.RulesMap
 }
 
 func New(
@@ -75,9 +79,9 @@ func New(
 			log:         log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make([]gqt.Doc, len(sc.TemplatesEnabled))
-					for i := range sc.TemplatesEnabled {
-						d[i] = sc.TemplatesEnabled[i].Document
+					d := make(map[string]gqt.Doc, len(sc.TemplatesEnabled))
+					for _, t := range sc.TemplatesEnabled {
+						d[t.ID] = t.Document
 					}
 					engine, err := rmap.New(d, 0)
 					if err != nil {
@@ -86,7 +90,11 @@ func New(
 							sc.ID, err,
 						))
 					}
-					return engine
+					reducer := gqlreduce.NewReducer()
+					return &matcher{
+						Reducer: reducer,
+						Engine:  engine,
+					}
 				},
 			},
 		}
@@ -95,9 +103,9 @@ func New(
 		func() {
 			// n := runtime.NumCPU()
 			n := 1
-			m := make([]*rmap.RulesMap, n)
+			m := make([]*matcher, n)
 			for i := 0; i < n; i++ {
-				m[i] = services[s.ID].matcherpool.Get().(*rmap.RulesMap)
+				m[i] = services[s.ID].matcherpool.Get().(*matcher)
 			}
 			for i := 0; i < n; i++ {
 				services[s.ID].matcherpool.Put(m[i])
@@ -142,13 +150,13 @@ func NewDebug(
 			log:         log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make([]gqt.Doc, 0, len(sc.TemplatesEnabled)+
+					d := make(map[string]gqt.Doc, len(sc.TemplatesEnabled)+
 						len(sc.TemplatesDisabled))
-					for i := range sc.TemplatesEnabled {
-						d = append(d, sc.TemplatesEnabled[i].Document)
+					for _, t := range sc.TemplatesEnabled {
+						d[t.ID] = t.Document
 					}
-					for i := range sc.TemplatesDisabled {
-						d = append(d, sc.TemplatesDisabled[i].Document)
+					for _, t := range sc.TemplatesDisabled {
+						d[t.ID] = t.Document
 					}
 
 					engine, err := rmap.New(d, 0)
@@ -158,7 +166,11 @@ func NewDebug(
 							sc.ID, err,
 						))
 					}
-					return engine
+					reducer := gqlreduce.NewReducer()
+					return &matcher{
+						Reducer: reducer,
+						Engine:  engine,
+					}
 				},
 			},
 		}
@@ -167,9 +179,9 @@ func NewDebug(
 		func() {
 			// n := runtime.NumCPU()
 			n := 1
-			m := make([]*rmap.RulesMap, n)
+			m := make([]*matcher, n)
 			for i := 0; i < n; i++ {
-				m[i] = services[s.ID].matcherpool.Get().(*rmap.RulesMap)
+				m[i] = services[s.ID].matcherpool.Get().(*matcher)
 			}
 			for i := 0; i < n; i++ {
 				services[s.ID].matcherpool.Put(m[i])
@@ -214,56 +226,46 @@ func (s *Server) handle(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	m := service.matcherpool.Get().(*rmap.RulesMap)
+	m := service.matcherpool.Get().(*matcher)
 	defer service.matcherpool.Put(m)
 
-	switch err := m.Match(
-		ctx, query, operationName, variablesJSON,
-	); err {
-	default:
-		switch err.(type) {
-		case *rmap.ErrReducer:
-			ctx.Error(fasthttp.StatusMessage(
+	m.Reducer.Reduce(
+		query, operationName, variablesJSON,
+		func(operation []gqlreduce.Token) {
+			if !m.Engine.Match(operation) {
+				ctx.Error(fasthttp.StatusMessage(
+					fasthttp.StatusForbidden,
+				), fasthttp.StatusForbidden)
+				return
+			}
+
+			// Forward request
+			freq := fasthttp.AcquireRequest()
+			fresp := fasthttp.AcquireResponse()
+			defer func() {
+				fasthttp.ReleaseRequest(freq)
+				fasthttp.ReleaseResponse(fresp)
+			}()
+
+			ctx.Request.CopyTo(freq)
+			freq.SetBody(ctx.Request.Body())
+			freq.SetHost(service.destination)
+			if err := s.client.Do(freq, fresp); err != nil {
+				s.log.Error().Err(err).Msg("forwarding")
+				ctx.Error(fasthttp.StatusMessage(
+					fasthttp.StatusInternalServerError,
+				), fasthttp.StatusInternalServerError)
+				return
+			}
+		},
+		func(err error) {
+			s.log.Error().Err(err).Msg("reducer error")
+			ctx.Error(
+				fasthttp.StatusMessage(fasthttp.StatusBadRequest),
 				fasthttp.StatusBadRequest,
-			), fasthttp.StatusBadRequest)
-			return
-		default:
-			ctx.Error(fasthttp.StatusMessage(
-				fasthttp.StatusInternalServerError,
-			), fasthttp.StatusInternalServerError)
-			return
-		}
-	case matcher.ErrSyntax:
-		ctx.Error(fasthttp.StatusMessage(
-			fasthttp.StatusInternalServerError,
-		), fasthttp.StatusInternalServerError)
-		return
-	case matcher.ErrNoMatch:
-		ctx.Error(fasthttp.StatusMessage(
-			fasthttp.StatusForbidden,
-		), fasthttp.StatusForbidden)
-		return
-	case nil:
-	}
-
-	// Forward request
-	freq := fasthttp.AcquireRequest()
-	fresp := fasthttp.AcquireResponse()
-	defer func() {
-		fasthttp.ReleaseRequest(freq)
-		fasthttp.ReleaseResponse(fresp)
-	}()
-
-	ctx.Request.CopyTo(freq)
-	freq.SetBody(ctx.Request.Body())
-	freq.SetHost(service.destination)
-	if err := s.client.Do(freq, fresp); err != nil {
-		s.log.Error().Err(err).Msg("forwarding")
-		ctx.Error(fasthttp.StatusMessage(
-			fasthttp.StatusInternalServerError,
-		), fasthttp.StatusInternalServerError)
-		return
-	}
+			)
+		},
+	)
 }
 
 func (s *ServerDebug) handle(ctx *fasthttp.RequestCtx) {
@@ -300,31 +302,31 @@ func (s *ServerDebug) handle(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	var match []string
-	m := service.matcherpool.Get().(*rmap.RulesMap)
+	m := service.matcherpool.Get().(*matcher)
 	defer service.matcherpool.Put(m)
 
-	if err := m.MatchAll(
-		ctx, query, operationName, variablesJSON,
-		func(templateIndex int) {
-			//TODO: return template ID because the client can't
-			// find the template by a engine-internal index.
-			match = append(match, strconv.Itoa(templateIndex))
+	m.Reducer.Reduce(
+		query, operationName, variablesJSON,
+		func(operation []gqlreduce.Token) {
+			var match []string
+			m.Engine.MatchAll(
+				operation,
+				func(id string) {
+					match = append(match, id)
+				},
+			)
+			{
+				resp, err := json.Marshal(match)
+				if err != nil {
+					s.log.Error().Err(err).Msg("marshalling debug response")
+				}
+				ctx.Response.SetBody(resp)
+			}
 		},
-	); err != nil {
-		ctx.Error(fasthttp.StatusMessage(
-			fasthttp.StatusInternalServerError,
-		), fasthttp.StatusInternalServerError)
-		return
-	}
+		func(err error) {
 
-	{
-		resp, err := json.Marshal(match)
-		if err != nil {
-			s.log.Error().Err(err).Msg("marshalling debug response")
-		}
-		ctx.Response.SetBody(resp)
-	}
+		},
+	)
 }
 
 func (s *Server) Serve(listener net.Listener) {

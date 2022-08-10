@@ -2,7 +2,6 @@ package rmap
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/graph-guard/gguard-proxy/engines/qmap"
 	"github.com/graph-guard/gguard-proxy/gqlreduce"
-	"github.com/graph-guard/gguard-proxy/matcher"
 	"github.com/graph-guard/gguard-proxy/utilities/bitmask"
 	"github.com/graph-guard/gguard-proxy/utilities/container/amap"
 	"github.com/graph-guard/gguard-proxy/utilities/container/hamap"
@@ -38,8 +36,7 @@ type RulesMap struct {
 	seed         uint64
 	mask         *bitmask.Set
 	qmake        qmap.Maker
-	templates    [][]byte
-	reducer      *gqlreduce.Reducer
+	templateIDs  []string
 	matchCounter *amap.Map[uint16, uint16]
 	rules        map[uint64]*RulesNode
 	ruleCounter  map[uint16]uint16
@@ -55,14 +52,14 @@ type RulesNode struct {
 // Variant is an auxiliary RulesNode structure.
 type Variant struct {
 	Condition  bool
-	Constraint matcher.Constraint
+	Constraint Constraint
 	Mask       *bitmask.Set
 	Value      any
 }
 
 // Elem is an auxiliary Variant structure.
 type Elem struct {
-	Constraint matcher.Constraint
+	Constraint Constraint
 	Value      any
 }
 
@@ -142,12 +139,11 @@ func (obj Object) Equal(x Object) bool {
 
 // New creates a new instance of RulesMap.
 // Accepts a rules list and a hash seed.
-func New(rules []gqt.Doc, seed uint64) (*RulesMap, error) {
+func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 	rm := &RulesMap{
 		seed:         seed,
 		mask:         bitmask.New(),
 		qmake:        *qmap.NewMaker(seed),
-		reducer:      gqlreduce.NewReducer(),
 		matchCounter: amap.New[uint16, uint16](0),
 		rules:        map[uint64]*RulesNode{},
 		ruleCounter:  map[uint16]uint16{},
@@ -156,14 +152,24 @@ func New(rules []gqt.Doc, seed uint64) (*RulesMap, error) {
 	var attempt int
 	var err error
 
+	rm.templateIDs = make([]string, 0, len(rules))
+	for id := range rules {
+		rm.templateIDs = append(rm.templateIDs, id)
+	}
+
 	for attempt < maxAttempts {
-		for idx, rule := range rules {
-			m := bitmask.New(idx)
+		for index, id := range rm.templateIDs {
+			rule := rules[id]
+			m := bitmask.New(index)
 			switch r := rule.(type) {
 			case gqt.DocQuery:
-				err = buildRulesMapSelections(rm, r.Selections, m, "query", uint16(idx))
+				err = buildRulesMapSelections(
+					rm, r.Selections, m, "query", uint16(index),
+				)
 			case gqt.DocMutation:
-				err = buildRulesMapSelections(rm, r.Selections, m, "mutation", uint16(idx))
+				err = buildRulesMapSelections(
+					rm, r.Selections, m, "mutation", uint16(index),
+				)
 			}
 			if err == ErrHashCollision {
 				rm.seed = uint64(rand.Int31n(maxRand))
@@ -255,11 +261,11 @@ func buildRulesMapConstraints[T ConstraintInterface](
 ) error {
 	for _, constraint := range constraints {
 		var cv any
-		var cid matcher.Constraint
+		var cid Constraint
 		cond := condition
 
 		cid, cv = ConstraintIdAndValue(constraint.Content())
-		if cid == matcher.ConstraintValNotEqual {
+		if cid == ConstraintValNotEqual {
 			cond = !cond
 		}
 
@@ -289,14 +295,14 @@ func buildRulesMapConstraints[T ConstraintInterface](
 			}
 			(*rm).ruleCounter[ruleIdx]++
 			switch cid {
-			case matcher.ConstraintMap:
+			case ConstraintMap:
 				(*rm).rules[pathHash].Variants = mergeVariants((*rm).rules[pathHash].Variants, Variant{
 					Condition:  cond,
 					Constraint: cid,
 					Mask:       mask,
 					Value:      buildRulesMapConstraintsElem(cv),
 				})
-			case matcher.ConstraintOr, matcher.ConstraintAnd:
+			case ConstraintOr, ConstraintAnd:
 				(*rm).rules[pathHash].Variants = mergeVariants((*rm).rules[pathHash].Variants, Variant{
 					Condition:  cond,
 					Constraint: cid,
@@ -329,17 +335,17 @@ func buildRulesMapConstraints[T ConstraintInterface](
 
 func buildRulesMapConstraintsElem(constraint gqt.Constraint) (el Elem) {
 	var cv any
-	var cid matcher.Constraint
+	var cid Constraint
 
 	cid, cv = ConstraintIdAndValue(constraint)
 
 	switch cid {
-	case matcher.ConstraintMap:
+	case ConstraintMap:
 		el = Elem{
 			Constraint: cid,
 			Value:      buildRulesMapConstraintsElem(cv),
 		}
-	case matcher.ConstraintOr, matcher.ConstraintAnd:
+	case ConstraintOr, ConstraintAnd:
 		el = Elem{
 			Constraint: cid,
 			Value:      buildRulesMapConstraintsArray(cv.([]gqt.Constraint)),
@@ -435,142 +441,91 @@ func mergeVariants(variants []Variant, x Variant) []Variant {
 }
 
 // ConstraintIdAndValue returns constraint Id and Value.
-func ConstraintIdAndValue(c gqt.Constraint) (matcher.Constraint, any) {
+func ConstraintIdAndValue(c gqt.Constraint) (Constraint, any) {
 	switch c := c.(type) {
 	case gqt.ConstraintOr:
-		return matcher.ConstraintOr, c.Constraints
+		return ConstraintOr, c.Constraints
 	case gqt.ConstraintAnd:
-		return matcher.ConstraintAnd, c.Constraints
+		return ConstraintAnd, c.Constraints
 	case gqt.ConstraintMap:
-		return matcher.ConstraintMap, c.Constraint
+		return ConstraintMap, c.Constraint
 	case gqt.ConstraintAny:
-		return matcher.ConstraintAny, nil
+		return ConstraintAny, nil
 	case gqt.ConstraintValEqual:
 		if s, ok := c.Value.(string); ok {
-			return matcher.ConstraintValEqual, []byte(s)
+			return ConstraintValEqual, []byte(s)
 		}
-		return matcher.ConstraintValEqual, c.Value
+		return ConstraintValEqual, c.Value
 	case gqt.ConstraintValNotEqual:
 		if s, ok := c.Value.(string); ok {
-			return matcher.ConstraintValNotEqual, []byte(s)
+			return ConstraintValNotEqual, []byte(s)
 		}
-		return matcher.ConstraintValNotEqual, c.Value
+		return ConstraintValNotEqual, c.Value
 	case gqt.ConstraintValGreater:
-		return matcher.ConstraintValGreater, c.Value
+		return ConstraintValGreater, c.Value
 	case gqt.ConstraintValLess:
-		return matcher.ConstraintValLess, c.Value
+		return ConstraintValLess, c.Value
 	case gqt.ConstraintValGreaterOrEqual:
-		return matcher.ConstraintValGreaterOrEqual, c.Value
+		return ConstraintValGreaterOrEqual, c.Value
 	case gqt.ConstraintValLessOrEqual:
-		return matcher.ConstraintValLessOrEqual, c.Value
+		return ConstraintValLessOrEqual, c.Value
 	case gqt.ConstraintBytelenEqual:
-		return matcher.ConstraintBytelenEqual, c.Value
+		return ConstraintBytelenEqual, c.Value
 	case gqt.ConstraintBytelenNotEqual:
-		return matcher.ConstraintBytelenNotEqual, c.Value
+		return ConstraintBytelenNotEqual, c.Value
 	case gqt.ConstraintBytelenGreater:
-		return matcher.ConstraintBytelenGreater, c.Value
+		return ConstraintBytelenGreater, c.Value
 	case gqt.ConstraintBytelenLess:
-		return matcher.ConstraintBytelenLess, c.Value
+		return ConstraintBytelenLess, c.Value
 	case gqt.ConstraintBytelenGreaterOrEqual:
-		return matcher.ConstraintBytelenGreaterOrEqual, c.Value
+		return ConstraintBytelenGreaterOrEqual, c.Value
 	case gqt.ConstraintBytelenLessOrEqual:
-		return matcher.ConstraintBytelenLessOrEqual, c.Value
+		return ConstraintBytelenLessOrEqual, c.Value
 	case gqt.ConstraintLenEqual:
-		return matcher.ConstraintLenEqual, c.Value
+		return ConstraintLenEqual, c.Value
 	case gqt.ConstraintLenNotEqual:
-		return matcher.ConstraintLenNotEqual, c.Value
+		return ConstraintLenNotEqual, c.Value
 	case gqt.ConstraintLenGreater:
-		return matcher.ConstraintLenGreater, c.Value
+		return ConstraintLenGreater, c.Value
 	case gqt.ConstraintLenLess:
-		return matcher.ConstraintLenLess, c.Value
+		return ConstraintLenLess, c.Value
 	case gqt.ConstraintLenGreaterOrEqual:
-		return matcher.ConstraintLenGreaterOrEqual, c.Value
+		return ConstraintLenGreaterOrEqual, c.Value
 	case gqt.ConstraintLenLessOrEqual:
-		return matcher.ConstraintLenLessOrEqual, c.Value
+		return ConstraintLenLessOrEqual, c.Value
 	default:
-		return matcher.ConstraintUnknown, nil
+		return ConstraintUnknown, nil
 	}
 }
 
 // Match searches for a matching template.
 // Accepts a text query, query variables and operation name.
 // Returns nil if matching template is found, ErrNoMatch if not found.
-func (rm *RulesMap) Match(
-	ctx context.Context,
-	query []byte,
-	operationName []byte,
-	variablesJSON []byte,
-) (err error) {
-	var match bool
-	rm.reducer.Reduce(
-		query, operationName, variablesJSON,
-		func(operation []gqlreduce.Token) {
-			rm.FindMatch(operation, func(mask *bitmask.Set) {
-				if mask.Size() > 0 {
-					match = true
-				}
-			})
-		},
-		func(e error) {
-			err = &ErrReducer{msg: fmt.Sprintf("reducer error: %s", e.Error())}
-		},
-	)
-	if err != nil {
-		return err
-	}
-	if !match {
-		return matcher.ErrNoMatch
-	}
-	return nil
+func (rm *RulesMap) Match(operation []gqlreduce.Token) (match bool) {
+	rm.FindMatch(operation, func(mask *bitmask.Set) {
+		match = mask.Size() > 0
+	})
+	return
 }
 
-// MatchAll searches for a matching templates.
-// Accepts a text query, query variables, operation name and function that gets a matched mask as an input.
+// MatchAll calls fn for every matching template.
 func (rm *RulesMap) MatchAll(
-	ctx context.Context,
-	query []byte,
-	operationName []byte,
-	variablesJSON []byte,
-	fn func(idx int),
-) (err error) {
-	rm.reducer.Reduce(
-		query, operationName, variablesJSON,
-		func(operation []gqlreduce.Token) {
-			rm.FindMatch(operation, func(mask *bitmask.Set) {
-				mask.Visit(func(n int) (skip bool) {
-					fn(n)
-					return false
-				})
-			})
-		},
-		func(e error) {
-			err = &ErrReducer{msg: fmt.Sprintf("reducer error: %s", e.Error())}
-		},
-	)
-	return err
-}
-
-// GetTemplate returns a template at the index or and error if no such index.
-func (rm *RulesMap) GetTemplate(ctx context.Context, index uint16) ([]byte, error) {
-	if index < uint16(len(rm.templates)) {
-		return rm.templates[index], nil
-	}
-
-	return nil, matcher.ErrTemplateNotFound
-}
-
-// VisitTemplates loops through the preserved templates and calls a function on every template.
-func (rm *RulesMap) VisitTemplates(ctx context.Context, fn func(template []byte) (stop bool)) {
-	for _, t := range rm.templates {
-		if fn(t) {
-			break
-		}
-	}
+	operation []gqlreduce.Token,
+	fn func(id string),
+) {
+	rm.FindMatch(operation, func(mask *bitmask.Set) {
+		mask.VisitAll(func(n int) {
+			fn(rm.templateIDs[n])
+		})
+	})
 }
 
 // FindMatch matches query to the rules.
-func (rm *RulesMap) FindMatch(query []gqlreduce.Token, fn func(mask *bitmask.Set)) {
-	rm.qmake.ParseQuery(query, func(qm qmap.QueryMap) {
+func (rm *RulesMap) FindMatch(
+	operation []gqlreduce.Token,
+	fn func(mask *bitmask.Set),
+) {
+	rm.qmake.ParseQuery(operation, func(qm qmap.QueryMap) {
 		rm.matchCounter.Reset()
 		rm.mask.Reset()
 
@@ -613,22 +568,22 @@ func (rm *RulesMap) FindMatch(query []gqlreduce.Token, fn func(mask *bitmask.Set
 }
 
 // CompareValues compares two values according to the provided constraint.
-func CompareValues(constraint matcher.Constraint, a any, b any) bool {
+func CompareValues(constraint Constraint, a any, b any) bool {
 	switch constraint {
-	case matcher.ConstraintAny:
+	case ConstraintAny:
 		return true
-	case matcher.ConstraintValEqual:
+	case ConstraintValEqual:
 		if b, ok := b.([]byte); ok {
 			return bytes.Equal(b, a.([]byte))
 		}
 		return b == a
-	case matcher.ConstraintValNotEqual:
+	case ConstraintValNotEqual:
 		if b, ok := b.([]byte); ok {
 			return !bytes.Equal(b, a.([]byte))
 		}
 		return b != a
-	case matcher.ConstraintValGreater, matcher.ConstraintValLess,
-		matcher.ConstraintValGreaterOrEqual, matcher.ConstraintValLessOrEqual:
+	case ConstraintValGreater, ConstraintValLess,
+		ConstraintValGreaterOrEqual, ConstraintValLessOrEqual:
 		switch vala := a.(type) {
 		case int64:
 			valb, ok := b.(int64)
@@ -636,13 +591,13 @@ func CompareValues(constraint matcher.Constraint, a any, b any) bool {
 				return false
 			}
 			switch constraint {
-			case matcher.ConstraintValGreater:
+			case ConstraintValGreater:
 				return valb > vala
-			case matcher.ConstraintValLess:
+			case ConstraintValLess:
 				return valb < vala
-			case matcher.ConstraintValGreaterOrEqual:
+			case ConstraintValGreaterOrEqual:
 				return valb >= vala
-			case matcher.ConstraintValLessOrEqual:
+			case ConstraintValLessOrEqual:
 				return valb <= vala
 			}
 		case float64:
@@ -651,19 +606,19 @@ func CompareValues(constraint matcher.Constraint, a any, b any) bool {
 				return false
 			}
 			switch constraint {
-			case matcher.ConstraintValGreater:
+			case ConstraintValGreater:
 				return valb > vala
-			case matcher.ConstraintValLess:
+			case ConstraintValLess:
 				return valb < vala
-			case matcher.ConstraintValGreaterOrEqual:
+			case ConstraintValGreaterOrEqual:
 				return valb >= vala
-			case matcher.ConstraintValLessOrEqual:
+			case ConstraintValLessOrEqual:
 				return valb <= vala
 			}
 		}
-	case matcher.ConstraintBytelenEqual, matcher.ConstraintBytelenNotEqual,
-		matcher.ConstraintBytelenGreater, matcher.ConstraintBytelenLess,
-		matcher.ConstraintBytelenGreaterOrEqual, matcher.ConstraintBytelenLessOrEqual:
+	case ConstraintBytelenEqual, ConstraintBytelenNotEqual,
+		ConstraintBytelenGreater, ConstraintBytelenLess,
+		ConstraintBytelenGreaterOrEqual, ConstraintBytelenLessOrEqual:
 		vala, ok := a.(uint)
 		if !ok {
 			return false
@@ -673,22 +628,22 @@ func CompareValues(constraint matcher.Constraint, a any, b any) bool {
 			return false
 		}
 		switch constraint {
-		case matcher.ConstraintBytelenEqual:
+		case ConstraintBytelenEqual:
 			return len(valb) == int(vala)
-		case matcher.ConstraintBytelenNotEqual:
+		case ConstraintBytelenNotEqual:
 			return len(valb) != int(vala)
-		case matcher.ConstraintBytelenGreater:
+		case ConstraintBytelenGreater:
 			return len(valb) > int(vala)
-		case matcher.ConstraintBytelenLess:
+		case ConstraintBytelenLess:
 			return len(valb) < int(vala)
-		case matcher.ConstraintBytelenGreaterOrEqual:
+		case ConstraintBytelenGreaterOrEqual:
 			return len(valb) >= int(vala)
-		case matcher.ConstraintBytelenLessOrEqual:
+		case ConstraintBytelenLessOrEqual:
 			return len(valb) <= int(vala)
 		}
-	case matcher.ConstraintLenEqual, matcher.ConstraintLenNotEqual,
-		matcher.ConstraintLenGreater, matcher.ConstraintLenLess,
-		matcher.ConstraintLenGreaterOrEqual, matcher.ConstraintLenLessOrEqual:
+	case ConstraintLenEqual, ConstraintLenNotEqual,
+		ConstraintLenGreater, ConstraintLenLess,
+		ConstraintLenGreaterOrEqual, ConstraintLenLessOrEqual:
 		ca, ok := a.(uint)
 		if !ok {
 			return false
@@ -698,17 +653,17 @@ func CompareValues(constraint matcher.Constraint, a any, b any) bool {
 			return false
 		}
 		switch constraint {
-		case matcher.ConstraintLenEqual:
+		case ConstraintLenEqual:
 			return len(*bi) == int(ca)
-		case matcher.ConstraintLenNotEqual:
+		case ConstraintLenNotEqual:
 			return len(*bi) != int(ca)
-		case matcher.ConstraintLenGreater:
+		case ConstraintLenGreater:
 			return len(*bi) > int(ca)
-		case matcher.ConstraintLenLess:
+		case ConstraintLenLess:
 			return len(*bi) < int(ca)
-		case matcher.ConstraintLenGreaterOrEqual:
+		case ConstraintLenGreaterOrEqual:
 			return len(*bi) >= int(ca)
-		case matcher.ConstraintLenLessOrEqual:
+		case ConstraintLenLessOrEqual:
 			return len(*bi) <= int(ca)
 		}
 	default:
@@ -721,7 +676,7 @@ func CompareValues(constraint matcher.Constraint, a any, b any) bool {
 // Compare checks two Varians for equality.
 func (v Variant) Compare(x any) bool {
 	switch v.Constraint {
-	case matcher.ConstraintMap:
+	case ConstraintMap:
 		switch xt := x.(type) {
 		case *[]any:
 			for _, el := range *xt {
@@ -752,14 +707,14 @@ func (v Variant) Compare(x any) bool {
 			}
 			return true
 		}
-	case matcher.ConstraintOr:
+	case ConstraintOr:
 		for _, el := range v.Value.(Array) {
 			if el.Compare(x) {
 				return true
 			}
 		}
 		return false
-	case matcher.ConstraintAnd:
+	case ConstraintAnd:
 		for _, el := range v.Value.(Array) {
 			if !el.Compare(x) {
 				return false
@@ -767,7 +722,7 @@ func (v Variant) Compare(x any) bool {
 		}
 		return true
 	default:
-		neq := v.Constraint == matcher.ConstraintValNotEqual
+		neq := v.Constraint == ConstraintValNotEqual
 		switch vt := v.Value.(type) {
 		case Elem:
 			return vt.Compare(x) != neq
@@ -792,7 +747,7 @@ func (v Variant) Compare(x any) bool {
 // Compare checks two Elems for equality.
 func (e Elem) Compare(x any) bool {
 	switch e.Constraint {
-	case matcher.ConstraintMap:
+	case ConstraintMap:
 		switch xt := x.(type) {
 		case *[]any:
 			for _, el := range *xt {
@@ -814,14 +769,14 @@ func (e Elem) Compare(x any) bool {
 				}
 			}
 		}
-	case matcher.ConstraintOr:
+	case ConstraintOr:
 		for _, el := range e.Value.(Array) {
 			if el.Compare(x) {
 				return true
 			}
 		}
 		return false
-	case matcher.ConstraintAnd:
+	case ConstraintAnd:
 		for _, el := range e.Value.(Array) {
 			if !el.Compare(x) {
 				return false
@@ -829,7 +784,7 @@ func (e Elem) Compare(x any) bool {
 		}
 		return true
 	default:
-		neq := e.Constraint == matcher.ConstraintValNotEqual
+		neq := e.Constraint == ConstraintValNotEqual
 		switch et := e.Value.(type) {
 		case Elem:
 			return et.Compare(x) != neq
@@ -917,7 +872,7 @@ func (rm *RulesMap) print(w io.Writer, indent uint) {
 
 func (v *Variant) print(w io.Writer, indent uint) {
 	PrintNSpaces(w, indent)
-	_, _ = w.Write(append([]byte(matcher.ConstraintLookup[v.Constraint]), []byte(": ")...))
+	_, _ = w.Write(append([]byte(ConstraintLookup[v.Constraint]), []byte(": ")...))
 	v.Mask.Visit(func(x int) (skip bool) {
 		fmt.Fprintf(w, "%d", x)
 		return false
@@ -942,7 +897,7 @@ func (v *Variant) print(w io.Writer, indent uint) {
 
 func (e *Elem) print(w io.Writer, indent uint) {
 	PrintNSpaces(w, indent)
-	_, _ = w.Write(append([]byte(matcher.ConstraintLookup[e.Constraint]), []byte(":\n")...))
+	_, _ = w.Write(append([]byte(ConstraintLookup[e.Constraint]), []byte(":\n")...))
 	switch v := e.Value.(type) {
 	case Elem:
 		v.print(w, indent+2)
@@ -965,7 +920,7 @@ func (arr *Array) print(w io.Writer, indent uint) {
 		PrintNSpaces(w, indent)
 		_, _ = w.Write([]byte("-:\n"))
 		PrintNSpaces(w, indent+2)
-		_, _ = w.Write(append([]byte(matcher.ConstraintLookup[el.Constraint]), []byte(":\n")...))
+		_, _ = w.Write(append([]byte(ConstraintLookup[el.Constraint]), []byte(":\n")...))
 		switch v := el.Value.(type) {
 		case Elem:
 			v.print(w, indent+4)
@@ -989,7 +944,7 @@ func (obj *Object) print(w io.Writer, indent uint) {
 		PrintNSpaces(w, indent)
 		_, _ = w.Write(append([]byte(k), []byte(":\n")...))
 		PrintNSpaces(w, indent+2)
-		_, _ = w.Write(append([]byte(matcher.ConstraintLookup[el.Constraint]), []byte(":\n")...))
+		_, _ = w.Write(append([]byte(ConstraintLookup[el.Constraint]), []byte(":\n")...))
 		switch v := el.Value.(type) {
 		case Elem:
 			v.print(w, indent+4)
@@ -1006,4 +961,62 @@ func (obj *Object) print(w io.Writer, indent uint) {
 			}
 		}
 	}
+}
+
+// Constraint is a constraint simplified abstraction.
+type Constraint uint16
+
+const (
+	ConstraintUnknown Constraint = iota
+	ConstraintOr
+	ConstraintAnd
+	ConstraintAny
+	ConstraintMap
+	ConstraintTypeEqual
+	ConstraintTypeNotEqual
+	ConstraintValEqual
+	ConstraintValNotEqual
+	ConstraintValGreater
+	ConstraintValLess
+	ConstraintValGreaterOrEqual
+	ConstraintValLessOrEqual
+	ConstraintBytelenEqual
+	ConstraintBytelenNotEqual
+	ConstraintBytelenGreater
+	ConstraintBytelenLess
+	ConstraintBytelenGreaterOrEqual
+	ConstraintBytelenLessOrEqual
+	ConstraintLenEqual
+	ConstraintLenNotEqual
+	ConstraintLenGreater
+	ConstraintLenLess
+	ConstraintLenGreaterOrEqual
+	ConstraintLenLessOrEqual
+)
+
+var ConstraintLookup = map[Constraint]string{
+	ConstraintOr:                    "ConstraintOr",
+	ConstraintAnd:                   "ConstraintAnd",
+	ConstraintAny:                   "ConstraintAny",
+	ConstraintMap:                   "ConstraintMap",
+	ConstraintTypeEqual:             "ConstraintTypeEqual",
+	ConstraintTypeNotEqual:          "ConstraintTypeNotEqual",
+	ConstraintValEqual:              "ConstraintValEqual",
+	ConstraintValNotEqual:           "ConstraintValNotEqual",
+	ConstraintValGreater:            "ConstraintValGreater",
+	ConstraintValLess:               "ConstraintValLess",
+	ConstraintValGreaterOrEqual:     "ConstraintValGreaterOrEqual",
+	ConstraintValLessOrEqual:        "ConstraintValLessOrEqual",
+	ConstraintBytelenEqual:          "ConstraintBytelenEqual",
+	ConstraintBytelenNotEqual:       "ConstraintBytelenNotEqual",
+	ConstraintBytelenGreater:        "ConstraintBytelenGreater",
+	ConstraintBytelenLess:           "ConstraintBytelenLess",
+	ConstraintBytelenGreaterOrEqual: "ConstraintBytelenGreaterOrEqual",
+	ConstraintBytelenLessOrEqual:    "ConstraintBytelenLessOrEqual",
+	ConstraintLenEqual:              "ConstraintLenEqual",
+	ConstraintLenNotEqual:           "ConstraintLenNotEqual",
+	ConstraintLenGreater:            "ConstraintLenGreater",
+	ConstraintLenLess:               "ConstraintLenLess",
+	ConstraintLenGreaterOrEqual:     "ConstraintLenGreaterOrEqual",
+	ConstraintLenLessOrEqual:        "ConstraintLenLessOrEqual",
 }

@@ -3,14 +3,14 @@
 
 // Package bitmask provides a bit array implementation.
 //
-// Bit set
+// # Bit set
 //
 // A bit set, or bit array, is an efficient set data structure
 // that consists of an array of 64-bit words. Because it uses
 // bit-level parallelism, limits memory access, and efficiently uses
 // the data cache, a bit set often outperforms other data structures.
 //
-// Tutorial
+// # Tutorial
 //
 // The Basics example shows how to create, combine, compare and
 // print bit sets.
@@ -20,7 +20,6 @@
 //
 // Union is a more advanced example demonstrating how to build
 // an efficient variadic Union function using the SetOr method.
-//
 package bitmask
 
 import (
@@ -248,6 +247,32 @@ func (s *Set) Visit(do func(n int) (skip bool)) (aborted bool) {
 		}
 	}
 	return false
+}
+
+// VisitAll calls do function for each element of s in numerical order.
+// It is safe for do to add or delete elements e, e ≤ n.
+// The behavior of VisitAll is undefined if do changes the set in any other way.
+func (s *Set) VisitAll(do func(n int)) {
+	d := s.data
+	for i, len := 0, len(d); i < len; i++ {
+		w := d[i]
+		if w == 0 {
+			continue
+		}
+		n := i << shift // element represented by w&1
+		for w != 0 {
+			b := bits.TrailingZeros64(w)
+			n += b
+			do(n)
+			n++
+			w >>= uint(b + 1)
+			for w&1 != 0 { // common case
+				do(n)
+				n++
+				w >>= 1
+			}
+		}
+	}
 }
 
 // String returns a string representation of the set. The elements

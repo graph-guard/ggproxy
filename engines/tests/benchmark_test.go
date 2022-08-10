@@ -1,11 +1,12 @@
 package engines_test
 
 import (
-	"context"
 	_ "embed"
+	"fmt"
 	"testing"
 
 	"github.com/graph-guard/gguard-proxy/engines/rmap"
+	"github.com/graph-guard/gguard-proxy/gqlreduce"
 	"github.com/graph-guard/gqt"
 )
 
@@ -47,8 +48,20 @@ var benchQueryDeep string
 //go:embed assets/benchassets/query_average.gql
 var benchQueryAverage string
 
+var GS string
+
 func BenchmarkRQmap(b *testing.B) {
-	var rules []gqt.Doc
+	rules := map[string]gqt.Doc{
+		"benchRule00": nil,
+		"benchRule01": nil,
+		"benchRule02": nil,
+		"benchRule03": nil,
+		"benchRule04": nil,
+		"benchRule05": nil,
+		"benchRule06": nil,
+		"benchRule07": nil,
+		"benchRule08": nil,
+	}
 	for _, r := range []string{
 		benchRule00,
 		benchRule01,
@@ -64,7 +77,7 @@ func BenchmarkRQmap(b *testing.B) {
 		if err.IsErr() {
 			panic(err)
 		}
-		rules = append(rules, rd)
+		rules[r] = rd
 	}
 	rm, _ := rmap.New(rules, 0)
 
@@ -94,18 +107,21 @@ func BenchmarkRQmap(b *testing.B) {
 			query := []byte(td.query)
 			operationName := []byte(td.operationName)
 			variablesJSON := []byte(td.variablesJSON)
+			r := gqlreduce.NewReducer()
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				if err := rm.MatchAll(
-					context.Background(),
-					query,
-					operationName,
-					variablesJSON,
-					func(n int) { N = n },
-				); err != nil {
-					b.Fatal(err)
-				}
+				r.Reduce(
+					query, operationName, variablesJSON,
+					func(operation []gqlreduce.Token) {
+						rm.MatchAll(
+							operation,
+							func(id string) { GS = id },
+						)
+					}, func(err error) {
+						panic(fmt.Errorf("unexpected error: %w", err))
+					},
+				)
 			}
 		})
 	}

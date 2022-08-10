@@ -2,13 +2,12 @@ package engines_test
 
 import (
 	"bytes"
-	"context"
 	_ "embed"
 	"fmt"
 	"testing"
 
 	"github.com/graph-guard/gguard-proxy/engines/rmap"
-	"github.com/graph-guard/gguard-proxy/matcher"
+	"github.com/graph-guard/gguard-proxy/gqlreduce"
 	"github.com/graph-guard/gguard-proxy/utilities/xxhash"
 	"github.com/graph-guard/gqt"
 	"github.com/stretchr/testify/require"
@@ -17,7 +16,7 @@ import (
 func TestConstraintIdAndValue(t *testing.T) {
 	for _, td := range []struct {
 		input gqt.Constraint
-		id    matcher.Constraint
+		id    rmap.Constraint
 		value any
 		err   error
 	}{
@@ -25,12 +24,12 @@ func TestConstraintIdAndValue(t *testing.T) {
 			input: gqt.ConstraintMap{
 				Constraint: new(gqt.Constraint),
 			},
-			id:    matcher.ConstraintMap,
+			id:    rmap.ConstraintMap,
 			value: new(gqt.Constraint),
 		},
 		{
 			input: gqt.ConstraintAny{},
-			id:    matcher.ConstraintAny,
+			id:    rmap.ConstraintAny,
 			value: nil,
 		},
 		{
@@ -46,7 +45,7 @@ func TestConstraintIdAndValue(t *testing.T) {
 					},
 				},
 			},
-			id: matcher.ConstraintValEqual,
+			id: rmap.ConstraintValEqual,
 			value: gqt.ValueObject{
 				Fields: []gqt.ObjectField{
 					{
@@ -62,112 +61,112 @@ func TestConstraintIdAndValue(t *testing.T) {
 			input: gqt.ConstraintValGreater{
 				Value: 42.0,
 			},
-			id:    matcher.ConstraintValGreater,
+			id:    rmap.ConstraintValGreater,
 			value: 42.0,
 		},
 		{
 			input: gqt.ConstraintValLess{
 				Value: 42.0,
 			},
-			id:    matcher.ConstraintValLess,
+			id:    rmap.ConstraintValLess,
 			value: 42.0,
 		},
 		{
 			input: gqt.ConstraintValGreaterOrEqual{
 				Value: 69.0,
 			},
-			id:    matcher.ConstraintValGreaterOrEqual,
+			id:    rmap.ConstraintValGreaterOrEqual,
 			value: 69.0,
 		},
 		{
 			input: gqt.ConstraintValLessOrEqual{
 				Value: 69.0,
 			},
-			id:    matcher.ConstraintValLessOrEqual,
+			id:    rmap.ConstraintValLessOrEqual,
 			value: 69.0,
 		},
 		{
 			input: gqt.ConstraintBytelenEqual{
 				Value: 1984,
 			},
-			id:    matcher.ConstraintBytelenEqual,
+			id:    rmap.ConstraintBytelenEqual,
 			value: uint(1984),
 		},
 		{
 			input: gqt.ConstraintBytelenNotEqual{
 				Value: 1984,
 			},
-			id:    matcher.ConstraintBytelenNotEqual,
+			id:    rmap.ConstraintBytelenNotEqual,
 			value: uint(1984),
 		},
 		{
 			input: gqt.ConstraintBytelenGreater{
 				Value: 282,
 			},
-			id:    matcher.ConstraintBytelenGreater,
+			id:    rmap.ConstraintBytelenGreater,
 			value: uint(282),
 		},
 		{
 			input: gqt.ConstraintBytelenLess{
 				Value: 282,
 			},
-			id:    matcher.ConstraintBytelenLess,
+			id:    rmap.ConstraintBytelenLess,
 			value: uint(282),
 		},
 		{
 			input: gqt.ConstraintBytelenGreaterOrEqual{
 				Value: 27015,
 			},
-			id:    matcher.ConstraintBytelenGreaterOrEqual,
+			id:    rmap.ConstraintBytelenGreaterOrEqual,
 			value: uint(27015),
 		},
 		{
 			input: gqt.ConstraintBytelenLessOrEqual{
 				Value: 27015,
 			},
-			id:    matcher.ConstraintBytelenLessOrEqual,
+			id:    rmap.ConstraintBytelenLessOrEqual,
 			value: uint(27015),
 		},
 		{
 			input: gqt.ConstraintLenEqual{
 				Value: 997,
 			},
-			id:    matcher.ConstraintLenEqual,
+			id:    rmap.ConstraintLenEqual,
 			value: uint(997),
 		},
 		{
 			input: gqt.ConstraintLenNotEqual{
 				Value: 997,
 			},
-			id:    matcher.ConstraintLenNotEqual,
+			id:    rmap.ConstraintLenNotEqual,
 			value: uint(997),
 		},
 		{
 			input: gqt.ConstraintLenGreater{
 				Value: 47,
 			},
-			id:    matcher.ConstraintLenGreater,
+			id:    rmap.ConstraintLenGreater,
 			value: uint(47),
 		},
 		{
 			input: gqt.ConstraintLenLess{
 				Value: 47,
 			},
-			id:    matcher.ConstraintLenLess,
+			id:    rmap.ConstraintLenLess,
 			value: uint(47),
 		},
 		{
 			input: gqt.ConstraintLenGreaterOrEqual{
 				Value: 404,
 			},
-			id:    matcher.ConstraintLenGreaterOrEqual,
+			id:    rmap.ConstraintLenGreaterOrEqual,
 			value: uint(404),
 		},
 		{
 			input: gqt.ConstraintLenLessOrEqual{
 				Value: 404,
 			},
-			id:    matcher.ConstraintLenLessOrEqual,
+			id:    rmap.ConstraintLenLessOrEqual,
 			value: uint(404),
 		},
 	} {
@@ -331,183 +330,193 @@ func TestMatchAllRQmap(t *testing.T) {
 		query         string
 		operationName string
 		variables     string
-		rules         []string
-		expect        []int
+		rules         map[string]string
+		expect        []string
 	}{
 		{
 			query:         query_00,
 			operationName: "X",
-			rules: []string{
-				rule_00_00,
-				rule_00_01,
-				rule_00_02,
-				rule_00_03,
-				rule_00_04,
-				rule_00_05,
+			rules: map[string]string{
+				"rule_00_00": rule_00_00,
+				"rule_00_01": rule_00_01,
+				"rule_00_02": rule_00_02,
+				"rule_00_03": rule_00_03,
+				"rule_00_04": rule_00_04,
+				"rule_00_05": rule_00_05,
 			},
-			expect: []int{0, 4},
+			expect: []string{"rule_00_00", "rule_00_04"},
 		},
 		{
 			query:         query_00b,
 			operationName: "X",
 			variables:     variables_00b,
-			rules: []string{
-				rule_00b_00,
-				rule_00b_01,
-				rule_00b_02,
-				rule_00b_03,
-				rule_00b_04,
-				rule_00b_05,
+			rules: map[string]string{
+				"rule_00b_00": rule_00b_00,
+				"rule_00b_01": rule_00b_01,
+				"rule_00b_02": rule_00b_02,
+				"rule_00b_03": rule_00b_03,
+				"rule_00b_04": rule_00b_04,
+				"rule_00b_05": rule_00b_05,
 			},
-			expect: []int{0, 4},
+			expect: []string{"rule_00b_00", "rule_00b_04"},
 		},
 		{
 			query:         query_01,
 			operationName: "X",
-			rules: []string{
-				rule_01_00,
+			rules: map[string]string{
+				"rule_01_00": rule_01_00,
 			},
-			expect: []int{},
+			expect: []string{},
 		},
 		{
 			query:         query_02,
 			operationName: "X",
-			rules: []string{
-				rule_02_00,
+			rules: map[string]string{
+				"rule_02_00": rule_02_00,
 			},
-			expect: []int{},
+			expect: []string{},
 		},
 		{
 			query:         query_03,
 			operationName: "X",
-			rules: []string{
-				rule_03_00,
+			rules: map[string]string{
+				"rule_03_00": rule_03_00,
 			},
-			expect: []int{},
+			expect: []string{},
 		},
 		{
 			query:         query_04,
 			operationName: "X",
-			rules: []string{
-				rule_04_00,
+			rules: map[string]string{
+				"rule_04_00": rule_04_00,
 			},
-			expect: []int{},
+			expect: []string{},
 		},
 		{
 			query:         query_05,
 			operationName: "X",
-			rules: []string{
-				rule_05_00,
-				rule_05_01,
+			rules: map[string]string{
+				"rule_05_00": rule_05_00,
+				"rule_05_01": rule_05_01,
 			},
-			expect: []int{1},
+			expect: []string{"rule_05_01"},
 		},
 		{
 			query:         query_06,
 			operationName: "X",
-			rules: []string{
-				rule_06_00,
-				rule_06_01,
+			rules: map[string]string{
+				"rule_06_00": rule_06_00,
+				"rule_06_01": rule_06_01,
 			},
-			expect: []int{1},
+			expect: []string{"rule_06_01"},
 		},
 		{
 			query:         query_07,
 			operationName: "X",
-			rules: []string{
-				rule_07_00,
+			rules: map[string]string{
+				"rule_07_00": rule_07_00,
 			},
-			expect: []int{0},
+			expect: []string{"rule_07_00"},
 		},
 		{
 			query:         query_08,
 			operationName: "X",
-			rules: []string{
-				rule_08_00,
+			rules: map[string]string{
+				"rule_08_00": rule_08_00,
 			},
-			expect: []int{0},
+			expect: []string{"rule_08_00"},
 		},
 		{
 			query:         query_09,
 			operationName: "X",
-			rules: []string{
-				rule_09_00,
+			rules: map[string]string{
+				"rule_09_00": rule_09_00,
 			},
-			expect: []int{0},
+			expect: []string{"rule_09_00"},
 		},
 		{
 			query:         query_10,
 			operationName: "X",
-			rules: []string{
-				rule_10_00,
+			rules: map[string]string{
+				"rule_10_00": rule_10_00,
 			},
-			expect: []int{0},
+			expect: []string{"rule_10_00"},
 		},
 		{
 			query:         query_11,
 			operationName: "X",
-			rules: []string{
-				rule_11_00,
-				rule_11_01,
-				rule_11_02,
+			rules: map[string]string{
+				"rule_11_00": rule_11_00,
+				"rule_11_01": rule_11_01,
+				"rule_11_02": rule_11_02,
 			},
-			expect: []int{2},
+			expect: []string{"rule_11_02"},
 		},
 		{
 			query:         query_12,
 			operationName: "X",
-			rules: []string{
-				rule_12_00,
+			rules: map[string]string{
+				"rule_12_00": rule_12_00,
 			},
-			expect: []int{},
+			expect: []string{},
 		},
 		{
 			query:         query_13,
 			operationName: "X",
-			rules: []string{
-				rule_13_00,
+			rules: map[string]string{
+				"rule_13_00": rule_13_00,
 			},
-			expect: []int{0},
+			expect: []string{"rule_13_00"},
 		},
 		{
 			query:         query_14,
 			operationName: "X",
-			rules: []string{
-				rule_14_00,
+			rules: map[string]string{
+				"rule_14_00": rule_14_00,
 			},
-			expect: []int{},
+			expect: []string{},
 		},
 		{
 			query:         query_15,
 			operationName: "X",
-			rules: []string{
-				rule_15_00,
+			rules: map[string]string{
+				"rule_15_00": rule_15_00,
 			},
-			expect: []int{0},
+			expect: []string{"rule_15_00"},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			rules := make([]gqt.Doc, len(td.rules))
+			rules := make(map[string]gqt.Doc, len(td.rules))
 			for i, r := range td.rules {
 				rd, err := gqt.Parse([]byte(r))
 				require.False(t, err.IsErr())
 				rules[i] = rd
 			}
 
+			r := gqlreduce.NewReducer()
 			rm, _ := rmap.New(rules, 0)
 
-			actual := []int{}
-			err := rm.MatchAll(
-				context.Background(),
+			r.Reduce(
 				[]byte(td.query),
 				[]byte(td.operationName),
 				[]byte(td.variables),
-				func(n int) {
-					actual = append(actual, n)
+				func(operation []gqlreduce.Token) {
+					actual := []string{}
+					rm.MatchAll(
+						operation,
+						func(id string) {
+							actual = append(actual, id)
+						},
+					)
+					require.Len(t, actual, len(td.expect))
+					for _, e := range td.expect {
+						require.Contains(t, actual, e)
+					}
+				},
+				func(err error) {
+					t.Fatalf("unexpected error: %v", err)
 				},
 			)
-			require.NoError(t, err)
-			require.Equal(t, td.expect, actual)
 		})
 	}
 }
@@ -595,7 +604,9 @@ func TestPrintRQmap(t *testing.T) {
 
 			rd, err := gqt.Parse([]byte(td.rule))
 			require.False(t, err.IsErr())
-			rm, _ := rmap.New([]gqt.Doc{rd}, 0)
+			rm, _ := rmap.New(map[string]gqt.Doc{
+				"rd": rd,
+			}, 0)
 			rm.Print(b)
 
 			require.Equal(t, td.expect, b.String())
