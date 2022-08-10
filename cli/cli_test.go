@@ -47,7 +47,7 @@ func TestCommandServe(t *testing.T) {
 	t.Run("default_config_path", func(t *testing.T) {
 		out := new(bytes.Buffer)
 		c := cli.Parse(out, []string{"ggproxy", "serve"})
-		require.Equal(t, &cli.CommandServe{
+		require.Equal(t, cli.CommandServe{
 			ConfigDirPath: "./config",
 		}, c)
 		require.Equal(t, "", out.String())
@@ -59,7 +59,7 @@ func TestCommandServe(t *testing.T) {
 			"ggproxy", "serve",
 			"-config", "./custom_config",
 		})
-		require.Equal(t, &cli.CommandServe{
+		require.Equal(t, cli.CommandServe{
 			ConfigDirPath: "./custom_config",
 		}, c)
 		require.Equal(t, "", out.String())
@@ -91,14 +91,14 @@ func TestCommandServe(t *testing.T) {
 func TestCommandReload(t *testing.T) {
 	out := new(bytes.Buffer)
 	c := cli.Parse(out, []string{"execname", "reload"})
-	require.Equal(t, &cli.CommandReload{}, c)
+	require.Equal(t, cli.CommandReload{}, c)
 	require.Equal(t, "", out.String())
 }
 
 func TestCommandStop(t *testing.T) {
 	out := new(bytes.Buffer)
 	c := cli.Parse(out, []string{"execname", "stop"})
-	require.Equal(t, &cli.CommandStop{}, c)
+	require.Equal(t, cli.CommandStop{}, c)
 	require.Equal(t, "", out.String())
 }
 
