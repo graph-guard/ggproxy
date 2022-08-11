@@ -10,6 +10,7 @@ import (
 	"github.com/graph-guard/gguard-proxy/config"
 	"github.com/graph-guard/gguard-proxy/engines/rmap"
 	"github.com/graph-guard/gguard-proxy/gqlreduce"
+	"github.com/graph-guard/gguard-proxy/server/internal/tokenwriter"
 	"github.com/graph-guard/gqt"
 	"github.com/phuslu/log"
 	"github.com/tidwall/gjson"
@@ -32,10 +33,11 @@ type ServerDebug struct {
 }
 
 type service struct {
-	source      string
-	destination string
-	log         log.Logger
-	matcherpool sync.Pool
+	source         string
+	destination    string
+	forwardReduced bool
+	log            log.Logger
+	matcherpool    sync.Pool
 }
 
 type matcher struct {
@@ -71,23 +73,24 @@ func New(
 	}
 	srv.server.Handler = srv.handle
 
-	for _, s := range config.ServicesEnabled {
-		sc := s
+	for _, serviceEnabled := range config.ServicesEnabled {
+		s := serviceEnabled
 		services[s.ID] = &service{
-			source:      s.ID,
-			destination: s.ForwardURL,
-			log:         log,
+			source:         s.ID,
+			destination:    s.ForwardURL,
+			forwardReduced: s.ForwardReduced,
+			log:            log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make(map[string]gqt.Doc, len(sc.TemplatesEnabled))
-					for _, t := range sc.TemplatesEnabled {
+					d := make(map[string]gqt.Doc, len(s.TemplatesEnabled))
+					for _, t := range s.TemplatesEnabled {
 						d[t.ID] = t.Document
 					}
 					engine, err := rmap.New(d, 0)
 					if err != nil {
 						panic(fmt.Errorf(
 							"initializing engine for service %q: %w",
-							sc.ID, err,
+							s.ID, err,
 						))
 					}
 					reducer := gqlreduce.NewReducer()
@@ -138,24 +141,25 @@ func NewDebug(
 	}
 	srv.server.Handler = srv.handle
 
-	for _, s := range config.ServicesEnabled {
-		sc := s
-		d := make([]gqt.Doc, len(sc.TemplatesEnabled))
-		for i := range sc.TemplatesEnabled {
-			d[i] = sc.TemplatesEnabled[i].Document
+	for _, serviceEnabled := range config.ServicesEnabled {
+		s := serviceEnabled
+		d := make([]gqt.Doc, len(s.TemplatesEnabled))
+		for i := range s.TemplatesEnabled {
+			d[i] = s.TemplatesEnabled[i].Document
 		}
-		services[sc.ID] = &service{
-			source:      sc.ID,
-			destination: sc.ForwardURL,
-			log:         log,
+		services[s.ID] = &service{
+			source:         s.ID,
+			destination:    s.ForwardURL,
+			forwardReduced: s.ForwardReduced,
+			log:            log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make(map[string]gqt.Doc, len(sc.TemplatesEnabled)+
-						len(sc.TemplatesDisabled))
-					for _, t := range sc.TemplatesEnabled {
+					d := make(map[string]gqt.Doc, len(s.TemplatesEnabled)+
+						len(s.TemplatesDisabled))
+					for _, t := range s.TemplatesEnabled {
 						d[t.ID] = t.Document
 					}
-					for _, t := range sc.TemplatesDisabled {
+					for _, t := range s.TemplatesDisabled {
 						d[t.ID] = t.Document
 					}
 
@@ -163,7 +167,7 @@ func NewDebug(
 					if err != nil {
 						panic(fmt.Errorf(
 							"initializing engine for service %q: %w",
-							sc.ID, err,
+							s.ID, err,
 						))
 					}
 					reducer := gqlreduce.NewReducer()
@@ -248,7 +252,25 @@ func (s *Server) handle(ctx *fasthttp.RequestCtx) {
 			}()
 
 			ctx.Request.CopyTo(freq)
-			freq.SetBody(ctx.Request.Body())
+
+			if service.forwardReduced {
+				if err := tokenwriter.Write(
+					ctx.Request.BodyWriter(),
+					operation,
+				); err != nil {
+					s.log.Error().
+						Err(err).
+						Msg("writing reduced to forward request body")
+					ctx.Error(fasthttp.StatusMessage(
+						fasthttp.StatusInternalServerError,
+					), fasthttp.StatusInternalServerError)
+					return
+				}
+			} else {
+				// Forward original
+				freq.SetBody(ctx.Request.Body())
+			}
+
 			freq.SetHost(service.destination)
 			if err := s.client.Do(freq, fresp); err != nil {
 				s.log.Error().Err(err).Msg("forwarding")
