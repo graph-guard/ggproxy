@@ -113,7 +113,9 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 	}
 
 	if servicesEnabledDir {
-		s, err := readServicesDir(filesystem, ServicesEnabledDir)
+		s, err := readServicesDir(
+			filesystem, filepath.Join(dirPath, ServicesEnabledDir),
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -121,7 +123,9 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 	}
 
 	if servicesDisabledDir {
-		s, err := readServicesDir(filesystem, ServicesDisabledDir)
+		s, err := readServicesDir(
+			filesystem, filepath.Join(dirPath, ServicesDisabledDir),
+		)
 		if err != nil {
 			return nil, err
 		}

@@ -13,6 +13,7 @@ import (
 
 type TestOK struct {
 	Filesystem fstest.MapFS
+	DirPath    string
 	Expect     *config.Config
 }
 
@@ -22,9 +23,11 @@ type TestError struct {
 }
 
 func TestReadConfig(t *testing.T) {
+	validFS, validFSDirPath := validFS()
 	for _, td := range []TestOK{
 		{
-			Filesystem: validFS(),
+			Filesystem: validFS,
+			DirPath:    validFSDirPath,
 			Expect: &config.Config{
 				Host:         "localhost:443",
 				DebugAPIHost: "localhost:3000",
@@ -87,7 +90,7 @@ func TestReadConfig(t *testing.T) {
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			c, err := config.ReadConfig(td.Filesystem, ".")
+			c, err := config.ReadConfig(td.Filesystem, td.DirPath)
 			require.NoError(t, err)
 			require.Equal(t, td.Expect, c)
 		})
@@ -95,11 +98,15 @@ func TestReadConfig(t *testing.T) {
 }
 
 func TestReadConfigErrorMissingServerConfig(t *testing.T) {
-	fs := validFS()
-	delete(fs, config.ServerConfigFile1)
-	err := testError(t, fs)
+	fs, path := validFS()
+	p := filepath.Join(
+		path,
+		config.ServerConfigFile1,
+	)
+	delete(fs, p)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorMissing{
-		FilePath: config.ServerConfigFile1,
+		FilePath: p,
 	}, err)
 }
 
@@ -108,20 +115,22 @@ func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs := validFS()
-			fs[config.ServiceConfigFile1].Data = lines(
+			fs, path := validFS()
+			p := filepath.Join(
+				path,
+				config.ServiceConfigFile1,
+			)
+			fs[p].Data = lines(
 				"not a valid config.yaml",
 			)
-			err := testError(t, fs)
-			require.IsType(t, &config.ErrorIllegal{}, err)
-			e, _ := err.(*config.ErrorIllegal)
+			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorIllegal{
-				FilePath: config.ServiceConfigFile1,
+				FilePath: p,
 				Feature:  "syntax",
 				Message: "yaml: unmarshal errors:\n  " +
 					"line 1: cannot unmarshal !!str `not a v...` " +
 					"into config.serverConfig",
-			}, e)
+			}, err)
 		})
 	}
 }
@@ -131,13 +140,17 @@ func TestReadConfigErrorMissingHostConfig(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs := validFS()
-			fs[config.ServerConfigFile1].Data = lines(
+			fs, path := validFS()
+			p := filepath.Join(
+				path,
+				config.ServerConfigFile1,
+			)
+			fs[p].Data = lines(
 				"host: ",
 			)
-			err := testError(t, fs)
+			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorMissing{
-				FilePath: config.ServerConfigFile1,
+				FilePath: p,
 				Feature:  "host",
 			}, err)
 		})
@@ -149,31 +162,36 @@ func TestReadConfigErrorMissingConfig(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs := minValidFS()
-			fs[filepath.Join(
+			fs, path := minValidFS()
+			p := filepath.Join(
+				path,
 				m,
 				"service_a",
 				"irrelevant_file.txt",
-			)] = &fstest.MapFile{
+			)
+			fs[p] = &fstest.MapFile{
 				Data: []byte(`this file only keeps the directory`),
 			}
-			err := testError(t, fs)
+			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorMissing{
-				FilePath: filepath.Join(m, "service_a", config.ServiceConfigFile1),
+				FilePath: filepath.Join(
+					path, m, "service_a", config.ServiceConfigFile1,
+				),
 			}, err)
 		})
 	}
 }
 
 func TestReadConfigErrorMalformedMetadata(t *testing.T) {
-	f := validFS()
+	fs, path := validFS()
 	p := filepath.Join(
+		path,
 		config.ServicesEnabledDir,
 		"service_a",
 		config.TemplatesEnabledDir,
 		"template_a.gqt",
 	)
-	f[p] = &fstest.MapFile{
+	fs[p] = &fstest.MapFile{
 		Data: lines(
 			"---",
 			"malformed metadata",
@@ -181,7 +199,7 @@ func TestReadConfigErrorMalformedMetadata(t *testing.T) {
 			`query { foo }`,
 		),
 	}
-	err := testError(t, f)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorIllegal{
 		FilePath: p,
 		Feature:  "metadata",
@@ -193,14 +211,20 @@ func TestReadConfigErrorMalformedMetadata(t *testing.T) {
 }
 
 func TestReadConfigErrorDuplicateServerConfig(t *testing.T) {
-	fs := minValidFS()
-	fs[config.ServerConfigFile1] = &fstest.MapFile{
+	fs, path := minValidFS()
+	fs[filepath.Join(
+		path,
+		config.ServerConfigFile1,
+	)] = &fstest.MapFile{
 		Data: []byte(`host: localhost:8080/`),
 	}
-	fs[config.ServerConfigFile2] = &fstest.MapFile{
+	fs[filepath.Join(
+		path,
+		config.ServerConfigFile2,
+	)] = &fstest.MapFile{
 		Data: []byte(`host: localhost:9090/`),
 	}
-	err := testError(t, fs)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorConflict{Items: []string{
 		config.ServerConfigFile1,
 		config.ServerConfigFile2,
@@ -208,8 +232,9 @@ func TestReadConfigErrorDuplicateServerConfig(t *testing.T) {
 }
 
 func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
-	f := validFS()
-	f[filepath.Join(
+	fs, path := validFS()
+	fs[filepath.Join(
+		path,
 		config.ServicesEnabledDir,
 		"service_a",
 		config.TemplatesEnabledDir,
@@ -217,7 +242,8 @@ func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
 	)] = &fstest.MapFile{
 		Data: []byte(`query { duplicate }`),
 	}
-	f[filepath.Join(
+	fs[filepath.Join(
+		path,
 		config.ServicesEnabledDir,
 		"service_a",
 		config.TemplatesDisabledDir,
@@ -225,7 +251,7 @@ func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
 	)] = &fstest.MapFile{
 		Data: []byte(`query { duplicate }`),
 	}
-	err := testError(t, f)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorConflict{
 		Items: []string{
 			"templates_enabled/dup",
@@ -235,8 +261,9 @@ func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
 }
 
 func TestReadConfigErrorDuplicateService(t *testing.T) {
-	fs := minValidFS()
+	fs, path := minValidFS()
 	fs[filepath.Join(
+		path,
 		config.ServicesEnabledDir,
 		"service_a",
 		config.ServiceConfigFile1,
@@ -244,13 +271,14 @@ func TestReadConfigErrorDuplicateService(t *testing.T) {
 		Data: []byte(`forward_url: localhost:8080/`),
 	}
 	fs[filepath.Join(
+		path,
 		config.ServicesDisabledDir,
 		"service_a",
 		config.ServiceConfigFile1,
 	)] = &fstest.MapFile{
 		Data: []byte(`forward_url: localhost:8080/`),
 	}
-	err := testError(t, fs)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorConflict{Items: []string{
 		filepath.Join(config.ServicesEnabledDir, "service_a"),
 		filepath.Join(config.ServicesDisabledDir, "service_a"),
@@ -262,8 +290,9 @@ func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs := minValidFS()
+			fs, path := minValidFS()
 			fs[filepath.Join(
+				path,
 				m,
 				"service_a",
 				config.ServiceConfigFile1,
@@ -271,16 +300,17 @@ func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
 				Data: []byte(`forward_url: localhost:8080`),
 			}
 			fs[filepath.Join(
+				path,
 				m,
 				"service_a",
 				config.ServiceConfigFile2,
 			)] = &fstest.MapFile{
 				Data: []byte(`forward_url: localhost:9090`),
 			}
-			err := testError(t, fs)
+			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorConflict{Items: []string{
-				filepath.Join(m, "service_a", config.ServiceConfigFile1),
-				filepath.Join(m, "service_a", config.ServiceConfigFile2),
+				filepath.Join(path, m, "service_a", config.ServiceConfigFile1),
+				filepath.Join(path, m, "service_a", config.ServiceConfigFile2),
 			}}, err)
 		})
 	}
@@ -291,18 +321,19 @@ func TestReadConfigErrorMissingForwardURL(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs := minValidFS()
+			fs, path := minValidFS()
 			fs[filepath.Join(
+				path,
 				m,
 				"service_a",
 				config.ServiceConfigFile1,
 			)] = &fstest.MapFile{
 				Data: []byte(`forward_reduced: true`),
 			}
-			err := testError(t, fs)
+			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorMissing{
 				FilePath: filepath.Join(
-					m, "service_a", config.ServiceConfigFile1,
+					path, m, "service_a", config.ServiceConfigFile1,
 				),
 				Feature: "forward_url",
 			}, err)
@@ -315,84 +346,80 @@ func TestReadConfigErrorInvalidForwardURL(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs := minValidFS()
-			fs[filepath.Join(
+			fs, path := minValidFS()
+			p := filepath.Join(
+				path,
 				m,
 				"service_a",
 				config.ServiceConfigFile1,
-			)] = &fstest.MapFile{
+			)
+			fs[p] = &fstest.MapFile{
 				Data: []byte(`forward_url: not_a_url.`),
 			}
-			err := testError(t, fs)
+			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorIllegal{
-				FilePath: filepath.Join(
-					m, "service_a", config.ServiceConfigFile1,
-				),
-				Feature: "forward_url",
-				Message: `parse "not_a_url.": invalid URI for request`,
+				FilePath: p,
+				Feature:  "forward_url",
+				Message:  `parse "not_a_url.": invalid URI for request`,
 			}, err)
 		})
 	}
 }
 
 func TestReadConfigErrorInvalidTemplate(t *testing.T) {
-	fs := validFS()
-	fs[filepath.Join(
+	fs, path := validFS()
+	p := filepath.Join(
+		path,
 		config.ServicesDisabledDir,
 		"service_a",
 		config.TemplatesEnabledDir,
 		"template_invalid.gqt",
-	)] = &fstest.MapFile{
+	)
+	fs[p] = &fstest.MapFile{
 		Data: []byte(`invalid { template }`),
 	}
-	err := testError(t, fs)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorIllegal{
-		FilePath: filepath.Join(
-			config.ServicesDisabledDir,
-			"service_a",
-			config.TemplatesEnabledDir,
-			"template_invalid.gqt",
-		),
-		Feature: "template",
-		Message: `error at 0: unexpected definition`,
+		FilePath: p,
+		Feature:  "template",
+		Message:  `error at 0: unexpected definition`,
 	}, err)
 }
 
 func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
-	fs := validFS()
-	fs[filepath.Join(
+	fs, path := validFS()
+	p := filepath.Join(
+		path,
 		config.ServicesDisabledDir,
 		"service_a",
 		config.TemplatesEnabledDir,
 		"template-invalid#.gqt",
-	)] = &fstest.MapFile{
+	)
+	fs[p] = &fstest.MapFile{
 		Data: []byte(`invalid { template }`),
 	}
-	err := testError(t, fs)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorIllegal{
-		FilePath: filepath.Join(
-			config.ServicesDisabledDir,
-			"service_a",
-			config.TemplatesEnabledDir,
-			"template-invalid#.gqt",
-		),
-		Feature: "id",
-		Message: `contains illegal character at index 16`,
+		FilePath: p,
+		Feature:  "id",
+		Message:  `contains illegal character at index 16`,
 	}, err)
 }
 
 func TestReadConfigErrorInvalidServiceID(t *testing.T) {
-	fs := validFS()
+	fs, path := validFS()
 	fs[filepath.Join(
+		path,
 		config.ServicesDisabledDir,
 		"service_#1",
 		config.ServiceConfigFile1,
 	)] = &fstest.MapFile{
 		Data: []byte(`forward_url: localhost:8080/`),
 	}
-	err := testError(t, fs)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorIllegal{
 		FilePath: filepath.Join(
+			path,
 			config.ServicesDisabledDir,
 			"service_#1",
 		),
@@ -402,8 +429,9 @@ func TestReadConfigErrorInvalidServiceID(t *testing.T) {
 }
 
 func TestReadConfigErrorMalformedConfig(t *testing.T) {
-	fs := validFS()
+	fs, path := validFS()
 	p := filepath.Join(
+		path,
 		config.ServicesEnabledDir,
 		"service_a",
 		config.ServiceConfigFile1,
@@ -413,7 +441,7 @@ func TestReadConfigErrorMalformedConfig(t *testing.T) {
 			`malformed yaml`,
 		),
 	}
-	err := testError(t, fs)
+	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorIllegal{
 		FilePath: p,
 		Feature:  "syntax",
@@ -435,27 +463,57 @@ func lines(lines ...string) []byte {
 func testError(
 	t *testing.T,
 	filesystem fstest.MapFS,
+	path string,
 ) error {
 	t.Helper()
-	c, err := config.ReadConfig(filesystem, ".")
+	c, err := config.ReadConfig(filesystem, path)
 	require.Error(t, err)
 	require.Nil(t, c)
 	return err
 }
 
-func minValidFS() fstest.MapFS {
-	return fstest.MapFS{
-		config.ServerConfigFile1: &fstest.MapFile{
+func minValidFS() (filesystem fstest.MapFS, path string) {
+	path = "testconfig"
+	filesystem = fstest.MapFS{
+		filepath.Join(
+			path,
+			config.ServerConfigFile1,
+		): &fstest.MapFile{
 			Data: lines(
 				`host: localhost:443`,
 			),
 		},
+
+		// Irrelevant files
+		filepath.Join(
+			"irrelevant_dir",
+			"irrelevant_file.txt",
+		): &fstest.MapFile{
+			Data: lines(
+				`this file is irrelevant and exists only for the purposes`,
+				`of testing function ReadConfig.`,
+			),
+		},
+		filepath.Join(
+			"irrelevant_file.txt",
+		): &fstest.MapFile{
+			Data: lines(
+				`this file is irrelevant and exists only for the purposes`,
+				`of testing function ReadConfig.`,
+			),
+		},
 	}
+	return
 }
 
-func validFS() fstest.MapFS {
-	return fstest.MapFS{
-		config.ServerConfigFile1: &fstest.MapFile{
+func validFS() (filesystem fstest.MapFS, path string) {
+	path = "testconfigroot"
+	filesystem = fstest.MapFS{
+		// Relevant files
+		filepath.Join(
+			path,
+			config.ServerConfigFile1,
+		): &fstest.MapFile{
 			Data: lines(
 				`host: localhost:443`,
 				`debug-api-host: localhost:3000`,
@@ -463,6 +521,7 @@ func validFS() fstest.MapFS {
 		},
 
 		filepath.Join(
+			path,
 			config.ServicesEnabledDir,
 			"service_a",
 			config.ServiceConfigFile1,
@@ -474,6 +533,7 @@ func validFS() fstest.MapFS {
 			),
 		},
 		filepath.Join(
+			path,
 			config.ServicesEnabledDir,
 			"service_a",
 			config.TemplatesEnabledDir,
@@ -489,6 +549,7 @@ func validFS() fstest.MapFS {
 			),
 		},
 		filepath.Join(
+			path,
 			config.ServicesEnabledDir,
 			"service_a",
 			config.TemplatesEnabledDir,
@@ -505,6 +566,7 @@ func validFS() fstest.MapFS {
 		},
 
 		filepath.Join(
+			path,
 			config.ServicesDisabledDir,
 			"service_b",
 			config.ServiceConfigFile1,
@@ -514,6 +576,7 @@ func validFS() fstest.MapFS {
 			),
 		},
 		filepath.Join(
+			path,
 			config.ServicesDisabledDir,
 			"service_b",
 			config.TemplatesDisabledDir,
@@ -522,14 +585,35 @@ func validFS() fstest.MapFS {
 			Data: []byte(`query { maz }`),
 		},
 
+		// Irrelevant files
+		filepath.Join(
+			"irrelevant_dir",
+			"irrelevant_file.txt",
+		): &fstest.MapFile{
+			Data: lines(
+				`this file is irrelevant and exists only for the purposes`,
+				`of testing function ReadConfig.`,
+			),
+		},
+		filepath.Join(
+			"irrelevant_file.txt",
+		): &fstest.MapFile{
+			Data: lines(
+				`this file is irrelevant and exists only for the purposes`,
+				`of testing function ReadConfig.`,
+			),
+		},
+
 		// Ignored files
 		filepath.Join(
+			path,
 			config.ServicesDisabledDir,
 			"ignored_file1.txt",
 		): &fstest.MapFile{
 			Data: []byte(`this file should be ignored`),
 		},
 		filepath.Join(
+			path,
 			config.ServicesDisabledDir,
 			"service_b",
 			config.TemplatesDisabledDir,
@@ -538,6 +622,7 @@ func validFS() fstest.MapFS {
 			Data: []byte(`this file should be ignored`),
 		},
 		filepath.Join(
+			path,
 			config.ServicesDisabledDir,
 			"service_b",
 			config.TemplatesDisabledDir,
@@ -547,6 +632,7 @@ func validFS() fstest.MapFS {
 			Data: []byte(`this file should be ignored`),
 		},
 	}
+	return
 }
 
 func TestErrorString(t *testing.T) {
