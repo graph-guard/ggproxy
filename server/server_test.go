@@ -1,10 +1,8 @@
 package server_test
 
 import (
-	"bytes"
 	"embed"
-	"errors"
-	"io"
+	"fmt"
 	"io/fs"
 	"net"
 	"path/filepath"
@@ -15,7 +13,6 @@ import (
 	"time"
 
 	"github.com/graph-guard/gguard-proxy/config"
-	"github.com/graph-guard/gguard-proxy/config/metadata"
 	"github.com/graph-guard/gguard-proxy/server"
 	plog "github.com/phuslu/log"
 	"github.com/stretchr/testify/assert"
@@ -28,6 +25,32 @@ import (
 //go:embed tests
 var testsFS embed.FS
 
+type TestModel struct {
+	Client struct {
+		Input struct {
+			Method   string `yaml:"method"`
+			Endpoint string `yaml:"endpoint"`
+			Body     string `yaml:"body"`
+		} `yaml:"input"`
+		ExpectResponse struct {
+			Status  int               `yaml:"status"`
+			Headers map[string]string `yaml:"headers"` // Key -> Regexp
+			Body    string            `yaml:"body"`
+		} `yaml:"expect-response"`
+	} `yaml:"client"`
+	Destination *struct {
+		ExpectForwarded struct {
+			Headers map[string]string `yaml:"headers"` // Key -> Regexp
+			Body    string            `yaml:"body"`
+		} `yaml:"expect-forwarded"`
+		Response struct {
+			Status  int               `yaml:"status"`
+			Headers map[string]string `yaml:"headers"`
+			Body    string            `yaml:"body"`
+		}
+	} `yaml:"destination"`
+}
+
 type Setup struct {
 	Name   string
 	Config *config.Config
@@ -35,42 +58,9 @@ type Setup struct {
 }
 
 type Test struct {
-	Name               string
-	InputMeta          InputMeta
-	InputBody          string
-	ExpectResponseMeta ExpectResponseMeta
-	ExpectResponseBody string
-	*Destination
+	Name string
+	TestModel
 }
-
-type Destination struct {
-	// What is expected to arrive at the destination server
-	ExpectForwardedMeta ExpectForwardedMeta
-	ExpectForwardedBody string
-
-	// What the destination server will send back
-	ResponseMeta ResponseMeta
-	ResponseBody string
-}
-
-type (
-	InputMeta struct {
-		Method   string            `yaml:"method"`
-		Endpoint string            `yaml:"endpoint"`
-		Headers  map[string]string `yaml:"headers"`
-	}
-	ExpectForwardedMeta struct {
-		Headers map[string]string `yaml:"headers"`
-	}
-	ResponseMeta struct {
-		Status  int               `yaml:"status"`
-		Headers map[string]string `yaml:"headers"`
-	}
-	ExpectResponseMeta struct {
-		Status  int               `yaml:"status"`
-		Headers map[string]string `yaml:"headers"`
-	}
-)
 
 func TestServer(t *testing.T) {
 	setups := GetSetups(t, testsFS, "tests")
@@ -81,51 +71,52 @@ func TestServer(t *testing.T) {
 			for _, test := range setup.Tests {
 				t.Run(test.Name, func(t *testing.T) {
 					if test.Destination != nil {
-						respSetter.Set(&Resp{
-							Body:         test.Destination.ResponseBody,
-							ResponseMeta: test.Destination.ResponseMeta,
+						respSetter.Set(&SendResponse{
+							Status:  test.Destination.Response.Status,
+							Body:    test.Destination.Response.Body,
+							Headers: copyMap(test.Destination.Response.Headers),
 						})
 					} else {
 						respSetter.Set(nil)
 					}
-					respMeta, respBody := doRequest(
+					respStatus, respHeaders, respBody := doRequest(
 						t, clientProxy,
-						test.InputMeta.Method,
+						test.Client.Input.Method,
 						"localhost:8000",
-						test.InputMeta.Endpoint,
+						test.Client.Input.Endpoint,
 						func(r *fasthttp.Request) {
 							r.Header.Set("Content-Type", "application/json")
-							r.SetBody([]byte(test.InputBody))
+							r.SetBodyString(test.Client.Input.Body)
 						},
 					)
 
 					if test.Destination != nil {
 						forwarded := <-forwarded
 						compareHeaders(
-							t,
-							"forwarded",
-							test.ExpectForwardedMeta.Headers,
-							forwarded.ExpectForwardedMeta.Headers,
+							t, "forwarded",
+							test.Destination.ExpectForwarded.Headers,
+							forwarded.Headers,
 						)
 						assert.Equal(
-							t, test.ExpectForwardedBody,
+							t, test.Destination.ExpectForwarded.Body,
 							forwarded.Body,
 							"unexpected body was forwarded to destination",
 						)
 					}
 
 					// Compare results
-					if e := test.ExpectResponseMeta.Status; e != respMeta.Status {
+					if e := test.Client.ExpectResponse.Status; e != respStatus {
 						t.Errorf(
 							"unexpected response status: %d; expected: %d",
-							respMeta.Status, e,
+							respStatus, e,
 						)
 					}
 					compareHeaders(
-						t, "response", test.ExpectResponseMeta.Headers, respMeta.Headers,
+						t, "response",
+						test.Client.ExpectResponse.Headers, respHeaders,
 					)
 					assert.Equal(
-						t, test.ExpectResponseBody,
+						t, test.Client.ExpectResponse.Body,
 						respBody,
 						"unexpected response body",
 					)
@@ -169,141 +160,46 @@ func GetTests(t *testing.T, filesystem fs.FS, root string) []Test {
 	var tests []Test
 	d, err := fs.ReadDir(filesystem, root)
 	require.NoError(t, err)
+	fmt.Println("ROOT: ", root)
 	for _, testDir := range d {
-		if !testDir.IsDir() {
-			continue
-		}
 		n := testDir.Name()
-		if !strings.HasPrefix(n, "test_") {
+		if !strings.HasPrefix(n, "test_") || !strings.HasSuffix(n, ".yaml") {
 			continue
 		}
 
-		var test Test
-		{ // Read Input file
-			fInput, err := filesystem.Open(filepath.Join(root, n, "input.txt"))
-			require.NoError(t, err)
-			bInput, err := io.ReadAll(fInput)
-			require.NoError(t, err)
-			header, body, err := metadata.Split(bInput)
-			require.NoError(t, err)
+		f, err := filesystem.Open(filepath.Join(root, n))
+		require.NoError(t, err)
+		defer f.Close()
+		var m TestModel
+		d := yaml.NewDecoder(f)
+		d.KnownFields(true)
+		err = d.Decode(&m)
+		require.NoError(t, err)
 
-			// Parse metadata
-			var m InputMeta
-			d := yaml.NewDecoder(bytes.NewReader(header))
-			d.KnownFields(true)
-			err = d.Decode(&m)
-			require.NoError(t, err)
-
-			test.InputBody = string(body)
-			test.InputMeta = m
-		}
-
-		{ // Read expect_response.txt file
-			f, err := filesystem.Open(
-				filepath.Join(root, n, "expect_response.txt"),
-			)
-			require.NoError(t, err)
-			b, err := io.ReadAll(f)
-			require.NoError(t, err)
-			header, body, err := metadata.Split(b)
-			require.NoError(t, err)
-
-			// Parse metadata
-			var m ExpectResponseMeta
-			if header != nil {
-				d := yaml.NewDecoder(bytes.NewReader(header))
-				d.KnownFields(true)
-				err = d.Decode(&m)
-				require.NoError(t, err)
-			}
-
-			test.ExpectResponseBody = string(body)
-			test.ExpectResponseMeta = m
-		}
-
-		fExpectForwarded, err := filesystem.Open(
-			filepath.Join(root, n, "expect_forwarded.txt"),
-		)
-		if errors.Is(err, fs.ErrNotExist) {
-			fExpectForwarded = nil
-		}
-		fResponse, err := filesystem.Open(
-			filepath.Join(root, n, "response.txt"),
-		)
-		if errors.Is(err, fs.ErrNotExist) {
-			fResponse = nil
-		}
-
-		if fExpectForwarded == nil && fResponse != nil ||
-			fExpectForwarded != nil && fResponse == nil {
-			t.Fatalf(`expect_forwarded.txt and "response.txt" must ` +
-				`either both exist or not exist`)
-		} else if fExpectForwarded == nil && fResponse == nil {
-			// Don't expect the request to arrive at the destination server
-			tests = append(tests, test)
-			continue
-		}
-
-		test.Destination = new(Destination)
-
-		{ // Read expect_forwarded.txt file
-			b, err := io.ReadAll(fExpectForwarded)
-			require.NoError(t, err)
-			header, body, err := metadata.Split(b)
-			require.NoError(t, err)
-
-			// Parse metadata
-			var m ExpectForwardedMeta
-			if header != nil {
-				d := yaml.NewDecoder(bytes.NewReader(header))
-				d.KnownFields(true)
-				err = d.Decode(&m)
-				require.NoError(t, err)
-			}
-
-			test.Destination.ExpectForwardedBody = string(body)
-			test.Destination.ExpectForwardedMeta = m
-		}
-
-		{ // Read response.txt file
-			b, err := io.ReadAll(fResponse)
-			require.NoError(t, err)
-			header, body, err := metadata.Split(b)
-			require.NoError(t, err)
-
-			// Parse metadata
-			var m ResponseMeta
-			if header != nil {
-				d := yaml.NewDecoder(bytes.NewReader(header))
-				d.KnownFields(true)
-				err = d.Decode(&m)
-				require.NoError(t, err)
-			}
-
-			test.Destination.ResponseBody = string(body)
-			test.Destination.ResponseMeta = m
-		}
-
-		tests = append(tests, test)
+		tests = append(tests, Test{
+			Name:      n,
+			TestModel: m,
+		})
 	}
 	return tests
 }
 
-type Resp struct {
-	ResponseMeta
-	Body string
+type SendResponse struct {
+	Status  int
+	Body    string
+	Headers map[string]string
 }
-type ReceivedReq struct {
-	Body string
-	ExpectForwardedMeta
+type ReceivedRequest struct {
+	Body    string
+	Headers map[string]string
 }
 
 func launchSetup(t *testing.T, s Setup) (
 	clientProxy *fasthttp.Client,
-	forwarded <-chan ReceivedReq,
-	resp *Syncronized[*Resp],
+	forwarded <-chan ReceivedRequest,
+	resp *Syncronized[*SendResponse],
 ) {
-	resp = new(Syncronized[*Resp])
+	resp = new(Syncronized[*SendResponse])
 
 	lnDest := fasthttputil.NewInmemoryListener()
 	t.Cleanup(func() { lnDest.Close() })
@@ -311,37 +207,35 @@ func launchSetup(t *testing.T, s Setup) (
 	lnProxy := fasthttputil.NewInmemoryListener()
 	t.Cleanup(func() { lnProxy.Close() })
 
-	forwardedRW := make(chan ReceivedReq, 1)
+	forwardedRW := make(chan ReceivedRequest, 1)
 	forwarded = forwardedRW
 
 	go func() {
 		s := &fasthttp.Server{
 			Handler: func(ctx *fasthttp.RequestCtx) {
 				// Send the received request context for the check
-				var meta ExpectForwardedMeta
-				meta.Headers = make(map[string]string, ctx.Request.Header.Len())
+				var rr ReceivedRequest
+				rr.Headers = make(map[string]string, ctx.Request.Header.Len())
 				ctx.Request.Header.VisitAll(func(key, value []byte) {
-					meta.Headers[string(key)] = string(value)
+					rr.Headers[string(key)] = string(value)
 				})
-				forwardedRW <- ReceivedReq{
-					ExpectForwardedMeta: meta,
-					Body:                string(ctx.Request.Body()),
-				}
+				rr.Body = string(ctx.Request.Body())
+				forwardedRW <- rr
 
 				// Send response
-				r := resp.Get()
-				if r == nil {
+				sr := resp.Get()
+				if sr == nil {
 					ctx.Error(
 						fasthttp.StatusMessage(fasthttp.StatusInternalServerError),
 						fasthttp.StatusInternalServerError,
 					)
 					return
 				}
-				ctx.Response.SetStatusCode(r.ResponseMeta.Status)
-				for k, v := range r.Headers {
+				ctx.Response.SetStatusCode(sr.Status)
+				for k, v := range sr.Headers {
 					ctx.Response.Header.Set(k, v)
 				}
-				ctx.Response.SetBodyString(r.Body)
+				ctx.Response.SetBodyString(sr.Body)
 			},
 		}
 		if err := s.Serve(lnDest); err != nil {
@@ -388,7 +282,7 @@ func doRequest(
 	client *fasthttp.Client,
 	method, host, path string,
 	prepareReq func(*fasthttp.Request),
-) (meta ResponseMeta, body string) {
+) (status int, headers map[string]string, body string) {
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
 	defer fasthttp.ReleaseRequest(req)
@@ -404,10 +298,10 @@ func doRequest(
 	err := client.Do(req, resp)
 	require.NoError(t, err)
 
-	meta.Status = resp.StatusCode()
-	meta.Headers = make(map[string]string, resp.Header.Len())
+	status = resp.StatusCode()
+	headers = make(map[string]string, resp.Header.Len())
 	resp.Header.VisitAll(func(key, value []byte) {
-		meta.Headers[string(key)] = string(value)
+		headers[string(key)] = string(value)
 	})
 	body = string(resp.Body())
 	return
@@ -472,4 +366,12 @@ type TestPrintWriter struct{ T *testing.T }
 func (w *TestPrintWriter) Write(d []byte) (int, error) {
 	w.T.Log(string(d))
 	return len(d), nil
+}
+
+func copyMap[K comparable, V any](m map[K]V) (copy map[K]V) {
+	copy = make(map[K]V, len(m))
+	for k, v := range m {
+		copy[k] = v
+	}
+	return copy
 }

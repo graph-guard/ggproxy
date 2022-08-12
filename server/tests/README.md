@@ -1,16 +1,22 @@
 # Tests
 
 Directory `tests` must contain all declarative test setups where each setup directory must have the prefix `setup_` followed by the name of the setup.
-The setup directory must contain the full server configuration and test directories which must have the prefix `test_` followed by the name of the test.
+The setup directory must contain the full server configuration and test declarations which must have the prefix `test_` followed by the name of the test and the `.yaml` file extension.
 
-Each test directory must contain the following files:
+A test defines the clients inputs and expectations:
+- `client.input.method`
+- `client.input.endpoint`
+- `client.input.body`
+- `client.expect-response.status`
+- `client.expect-response.headers`
+- `client.expect-response.body`
 
-- `input.txt` describes the request body and headers that are sent to ggproxy.
-- `expect_forwarded.txt` describes the request body and headers that are expected to be received by the destination server.
-- `response.txt` describes the destination server's response status, headers and body.
-- `expect_response.txt` describes the expected final response from ggproxy including status, headers and body.
-
->NOTE: If `response.txt` and `expect_forwarded.txt` are both missing then the request is expected to not be forwarded, otherwise both must be present.
+...and optionally, the destination server's outputs and expectations:
+- `destination.expect-forwarded.headers`
+- `destination.expect-forwarded.body`
+- `destination.response.status`
+- `destination.response.headers`
+- `destination.response.body`
 
 An example test structure:
 
@@ -23,11 +29,7 @@ tests
 │   │       ├─ config.yaml
 │   │       └─ templates_enabled
 │   │           └─ template_1.gqt
-│   └─ test_1
-│       ├─ input.txt
-│       ├─ expect_forwarded.txt
-│       ├─ response.txt
-│       └─ expect_response.txt
+│   └─ test_1.yaml
 └─ setup_B
     ├─ config.yaml
     ├─ services_enabled
@@ -35,7 +37,44 @@ tests
     │       ├─ config.yaml
     │       └─ templates_enabled
     │           └─ template_1.gqt
-    └─ test_1
-        ├─ input.txt
-        └─ expect_response.txt
+    └─ test_1.yaml
+```
+
+An example test file:
+```yaml
+client:
+  input:
+    method: POST
+    endpoint: "/service_a"
+    body: >
+      this will be sent to ggproxy
+  expect-response:
+    status: 200
+    headers:
+      Content-Length: ^74$
+      Content-Type: ^text/plain; charset=utf-8$
+      Server: "fasthttp"
+      Date: .
+      X-Custom-Header: value
+    body: >
+      this is what we expect to get from ggproxy
+
+destination:
+  expect-forwarded:
+    headers:
+      Host: ^http://localhost:8081/service_a$
+      Content-Length: ^103$
+      Content-Type: ^application/json$
+      User-Agent: "fasthttp"
+      Date: .
+    body: >
+      this is what we expect to receive
+      on the destination server
+  response:
+    status: 200
+    headers:
+      X-Custom-Header: value
+    body: >
+      this is what the destination server
+      will respond with
 ```
