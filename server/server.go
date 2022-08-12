@@ -271,6 +271,9 @@ func (s *Server) handle(ctx *fasthttp.RequestCtx) {
 				freq.SetBody(ctx.Request.Body())
 			}
 
+			ctx.Request.Header.VisitAll(func(key, value []byte) {
+				freq.Header.SetBytesKV(key, value)
+			})
 			freq.SetHost(service.destination)
 			if err := s.client.Do(freq, fresp); err != nil {
 				s.log.Error().Err(err).Msg("forwarding")
@@ -279,6 +282,12 @@ func (s *Server) handle(ctx *fasthttp.RequestCtx) {
 				), fasthttp.StatusInternalServerError)
 				return
 			}
+
+			fresp.Header.VisitAll(func(key, value []byte) {
+				ctx.Response.Header.SetBytesKV(key, value)
+			})
+			ctx.Response.SetStatusCode(fresp.StatusCode())
+			ctx.Response.SetBody(fresp.Body())
 		},
 		func(err error) {
 			s.log.Error().Err(err).Msg("reducer error")
