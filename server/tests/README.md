@@ -10,11 +10,25 @@ Each test directory must contain the following files:
 - `response.txt` describes the destination server's response status, headers and body.
 - `expect_response.txt` describes the expected final response from ggproxy including status, headers and body.
 
+>NOTE: If `response.txt` and `expect_forwarded.txt` are both missing then the request is expected to not be forwarded, otherwise both must be present.
+
 An example test structure:
 
 ```
 tests
-└─ setup_1
+├─ setup_A
+│   ├─ config.yaml
+│   ├─ services_enabled
+│   │   └─ service_1
+│   │       ├─ config.yaml
+│   │       └─ templates_enabled
+│   │           └─ template_1.gqt
+│   └─ test_1
+│       ├─ input.txt
+│       ├─ expect_forwarded.txt
+│       ├─ response.txt
+│       └─ expect_response.txt
+└─ setup_B
     ├─ config.yaml
     ├─ services_enabled
     │   └─ service_1
@@ -23,7 +37,5 @@ tests
     │           └─ template_1.gqt
     └─ test_1
         ├─ input.txt
-        ├─ expect_forwarded.txt
-        ├─ response.txt
         └─ expect_response.txt
 ```
