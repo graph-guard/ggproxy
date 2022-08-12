@@ -2,6 +2,7 @@ package server_test
 
 import (
 	"embed"
+	"encoding/json"
 	"fmt"
 	"io/fs"
 	"net"
@@ -49,6 +50,7 @@ type TestModel struct {
 			Body    string            `yaml:"body"`
 		}
 	} `yaml:"destination"`
+	Logs []map[string]any `yaml:"logs"`
 }
 
 type Setup struct {
@@ -66,10 +68,12 @@ func TestServer(t *testing.T) {
 	setups := GetSetups(t, testsFS, "tests")
 	for _, setup := range setups {
 		t.Run(setup.Name, func(t *testing.T) {
-			clientProxy, forwarded, respSetter := launchSetup(t, setup)
+			clientProxy, forwarded, respSetter, logs := launchSetup(t, setup)
 
 			for _, test := range setup.Tests {
 				t.Run(test.Name, func(t *testing.T) {
+					logs.Reset()
+
 					if test.Destination != nil {
 						respSetter.Set(&SendResponse{
 							Status:  test.Destination.Response.Status,
@@ -120,6 +124,11 @@ func TestServer(t *testing.T) {
 						respBody,
 						"unexpected response body",
 					)
+
+					// Check logs
+					logs.ReadLogs(func(m []map[string]any) {
+						assert.Equal(t, test.Logs, m)
+					})
 				})
 			}
 		})
@@ -198,6 +207,7 @@ func launchSetup(t *testing.T, s Setup) (
 	clientProxy *fasthttp.Client,
 	forwarded <-chan ReceivedRequest,
 	resp *Syncronized[*SendResponse],
+	logRecorder *LogRecorder,
 ) {
 	resp = new(Syncronized[*SendResponse])
 
@@ -244,11 +254,12 @@ func launchSetup(t *testing.T, s Setup) (
 	}()
 
 	// Launch proxy server
+	logRecorder = new(LogRecorder)
 	log := plog.Logger{
 		Level:      plog.DebugLevel,
 		TimeField:  "time",
 		TimeFormat: "23:59:59",
-		Writer:     &plog.IOWriter{Writer: &TestPrintWriter{T: t}},
+		Writer:     &plog.IOWriter{Writer: logRecorder},
 	}
 	server := server.New(
 		s.Config,
@@ -361,11 +372,33 @@ func compareHeaders(t *testing.T, title string, expected, actual map[string]stri
 	}
 }
 
-type TestPrintWriter struct{ T *testing.T }
+type LogRecorder struct {
+	Lock     sync.Mutex
+	Recorded []map[string]any
+}
 
-func (w *TestPrintWriter) Write(d []byte) (int, error) {
-	w.T.Log(string(d))
+func (w *LogRecorder) Write(d []byte) (int, error) {
+	var m map[string]any
+	if err := json.Unmarshal(d, &m); err != nil {
+		return 0, fmt.Errorf("unmarshalling JSON: %w", err)
+	}
+	delete(m, "time") // We don't need to check the log time
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
+	w.Recorded = append(w.Recorded, m)
 	return len(d), nil
+}
+
+func (w *LogRecorder) Reset() {
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
+	w.Recorded = nil
+}
+
+func (w *LogRecorder) ReadLogs(fn func([]map[string]any)) {
+	w.Lock.Lock()
+	defer w.Lock.Unlock()
+	fn(w.Recorded)
 }
 
 func copyMap[K comparable, V any](m map[K]V) (copy map[K]V) {
