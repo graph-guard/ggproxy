@@ -1,0 +1,9 @@
+---
+method: POST
+endpoint: "/service_a"
+---
+{
+    "query": "mutation X { a { a0(a0_0: [ 0 ]) } }",
+    "operationName": "X",
+    "variables": {}
+}

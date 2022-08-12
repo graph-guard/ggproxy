@@ -1,0 +1,12 @@
+---
+status: 200
+headers:
+    X-Custom-Header: value
+---
+{
+    "data": {
+        "a": {
+            "a0": "foo"
+        } 
+    }
+}

@@ -1,0 +1,13 @@
+---
+headers:
+    Host: ^http://localhost:8081/service_a$
+    Content-Length: ^102$
+    Content-Type: ^application/json$
+    User-Agent: "fasthttp"
+    Date: .
+---
+{
+    "query": "mutation X { a { a0(a0_0: [ 0 ]) } }",
+    "operationName": "X",
+    "variables": {}
+}
