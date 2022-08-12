@@ -77,4 +77,22 @@ destination:
     body: >
       this is what the destination server
       will respond with
+
+logs:
+  - level: info
+    host: localhost:8080
+    message: "listening"
+    services:
+      - service_a
+  - level: info
+    path: "/service_a"
+    message: "handling request"
+  - level: debug
+    path: "/service_a"
+    query: >
+      {
+        "query": "mutation X { a { a0(a0_0: [ 0 ]) } }",
+        "operationName": "X",
+        "variables": {}
+      }
 ```
