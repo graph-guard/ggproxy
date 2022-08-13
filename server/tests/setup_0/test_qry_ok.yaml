@@ -3,14 +3,13 @@ client:
     method: POST
     endpoint: /testservice
     body(JSON):
-      query: >
-        query {
+      query: 'query {
           queryFirstField {
             queryFirstSubfield
             querySecondSubfield
           }
           querySecondField
-        }
+        }'
 
   expect-response:
     status: 200
@@ -23,27 +22,26 @@ client:
     body(JSON):
       data:
         queryFirstField:
-          queryFirstSubfield: "first subfield value"
-          querySecondSubfield: "second subfield value"
-        querySecondField: "second query field value"
+          queryFirstSubfield: 'first subfield value'
+          querySecondSubfield: 'second subfield value'
+        querySecondField: 'second query field value'
 
 destination:
   expect-forwarded:
     headers:
       Host: ^http://localhost:8081/test$
-      Content-Length: ^119$
+      Content-Length: ^97$
       Content-Type: ^application/json$
       User-Agent: ^fasthttp$
       Date: .
     body(JSON):
-      query: >
-        query {
+      query: 'query {
           queryFirstField {
             queryFirstSubfield
             querySecondSubfield
           }
           querySecondField
-        }
+        }'
 
   response:
     status: 200
@@ -52,21 +50,20 @@ destination:
     body(JSON):
       data:
         queryFirstField:
-          queryFirstSubfield: "first subfield value"
-          querySecondSubfield: "second subfield value"
-        querySecondField: "second query field value"
+          queryFirstSubfield: 'first subfield value'
+          querySecondSubfield: 'second subfield value'
+        querySecondField: 'second query field value'
 
 logs:
   - level: info
     host: localhost:8080
-    message: "listening"
+    message: 'listening'
     services:
       - testservice
   - level: info
-    path: "/testservice"
-    message: "handling request"
+    path: /testservice
+    message: 'handling request'
   - level: debug
-    path: "/testservice"
-    query: |-
-      {"query":"query {\n  queryFirstField {\n    queryFirstSubfield\n    querySecondSubfield\n  }\n  querySecondField\n}\n"}
+    path: /testservice
+    query: '{"query":"query { queryFirstField { queryFirstSubfield querySecondSubfield } querySecondField }"}'
 
