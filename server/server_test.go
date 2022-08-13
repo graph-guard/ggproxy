@@ -168,7 +168,7 @@ func TestServer(t *testing.T) {
 					// Check logs
 					logs.ReadLogs(func(m []map[string]any) {
 						for i, x := range m {
-							if i > len(test.Logs) {
+							if i >= len(test.Logs) {
 								t.Errorf("unexpected log: %v", m[i])
 								continue
 							}
