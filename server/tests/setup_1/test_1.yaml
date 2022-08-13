@@ -2,54 +2,44 @@ client:
   input:
     method: POST
     endpoint: "/service_a"
-    body: >
-      {
-        "query": "mutation X { a { a0(a0_0: [ 0 ]) } }",
-        "operationName": "X",
-        "variables": {}
-      }
+    body(JSON):
+      query: "mutation X { a { a0(a0_0: [ 0 ]) } }"
+      operationName: "X"
+
   expect-response:
     status: 200
     headers:
-      Content-Length: ^64$
+      Content-Length: ^27$
       Content-Type: ^text/plain; charset=utf-8$
       Server: "fasthttp"
       Date: .
       X-Custom-Header: value
-    body: >
-      {
-        "data": {
-            "a": {
-                "a0": "foo"
-            } 
-        }
-      }
+    body(JSON):
+      data:
+        a:
+          a0: "foo"
+
 destination:
   expect-forwarded:
     headers:
       Host: ^http://localhost:8081/service_a$
-      Content-Length: ^97$
+      Content-Length: ^68$
       Content-Type: ^application/json$
       User-Agent: "fasthttp"
       Date: .
-    body: >
-      {
-        "query": "mutation X { a { a0(a0_0: [ 0 ]) } }",
-        "operationName": "X",
-        "variables": {}
-      }
+    body(JSON):
+      query: "mutation X { a { a0(a0_0: [ 0 ]) } }"
+      operationName: "X"
+
   response:
     status: 200
     headers:
       X-Custom-Header: value
-    body: >
-      {
-        "data": {
-            "a": {
-                "a0": "foo"
-            } 
-        }
-      }
+    body(JSON):
+      data:
+        a:
+          a0: "foo"
+
 logs:
   - level: info
     host: localhost:8080
@@ -61,9 +51,5 @@ logs:
     message: "handling request"
   - level: debug
     path: "/service_a"
-    query: >
-      {
-        "query": "mutation X { a { a0(a0_0: [ 0 ]) } }",
-        "operationName": "X",
-        "variables": {}
-      }
+    query: |-
+      {"operationName":"X","query":"mutation X { a { a0(a0_0: [ 0 ]) } }"}

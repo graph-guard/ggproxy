@@ -46,8 +46,9 @@ client:
   input:
     method: POST
     endpoint: "/service_a"
-    body: >
-      this will be sent to ggproxy
+    body(JSON):
+      this: will
+        be: "sent to ggproxy"
   expect-response:
     status: 200
     headers:

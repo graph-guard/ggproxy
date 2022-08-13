@@ -29,25 +29,29 @@ var testsFS embed.FS
 type TestModel struct {
 	Client struct {
 		Input struct {
-			Method   string `yaml:"method"`
-			Endpoint string `yaml:"endpoint"`
-			Body     string `yaml:"body"`
+			Method   string         `yaml:"method"`
+			Endpoint string         `yaml:"endpoint"`
+			Body     string         `yaml:"body"`
+			BodyJSON map[string]any `yaml:"body(JSON)"`
 		} `yaml:"input"`
 		ExpectResponse struct {
-			Status  int               `yaml:"status"`
-			Headers map[string]string `yaml:"headers"` // Key -> Regexp
-			Body    string            `yaml:"body"`
+			Status   int               `yaml:"status"`
+			Headers  map[string]string `yaml:"headers"` // Key -> Regexp
+			Body     string            `yaml:"body"`
+			BodyJSON map[string]any    `yaml:"body(JSON)"`
 		} `yaml:"expect-response"`
 	} `yaml:"client"`
 	Destination *struct {
 		ExpectForwarded struct {
-			Headers map[string]string `yaml:"headers"` // Key -> Regexp
-			Body    string            `yaml:"body"`
+			Headers  map[string]string `yaml:"headers"` // Key -> Regexp
+			Body     string            `yaml:"body"`
+			BodyJSON map[string]any    `yaml:"body(JSON)"`
 		} `yaml:"expect-forwarded"`
 		Response struct {
-			Status  int               `yaml:"status"`
-			Headers map[string]string `yaml:"headers"`
-			Body    string            `yaml:"body"`
+			Status   int               `yaml:"status"`
+			Headers  map[string]string `yaml:"headers"`
+			Body     string            `yaml:"body"`
+			BodyJSON map[string]any    `yaml:"body(JSON)"`
 		}
 	} `yaml:"destination"`
 	Logs []map[string]any `yaml:"logs"`
@@ -75,14 +79,21 @@ func TestServer(t *testing.T) {
 					logs.Reset()
 
 					if test.Destination != nil {
+						body := test.Destination.Response.Body
+						if j := test.Destination.Response.BodyJSON; j != nil {
+							b, err := json.Marshal(j)
+							require.NoError(t, err)
+							body = string(b)
+						}
 						respSetter.Set(&SendResponse{
 							Status:  test.Destination.Response.Status,
-							Body:    test.Destination.Response.Body,
+							Body:    body,
 							Headers: copyMap(test.Destination.Response.Headers),
 						})
 					} else {
 						respSetter.Set(nil)
 					}
+
 					respStatus, respHeaders, respBody := doRequest(
 						t, clientProxy,
 						test.Client.Input.Method,
@@ -90,22 +101,44 @@ func TestServer(t *testing.T) {
 						test.Client.Input.Endpoint,
 						func(r *fasthttp.Request) {
 							r.Header.Set("Content-Type", "application/json")
-							r.SetBodyString(test.Client.Input.Body)
+							body := test.Client.Input.Body
+							if j := test.Client.Input.BodyJSON; j != nil {
+								b, err := json.Marshal(j)
+								require.NoError(t, err)
+								body = string(b)
+							}
+							r.SetBodyString(body)
 						},
 					)
 
 					if test.Destination != nil {
-						forwarded := <-forwarded
-						compareHeaders(
-							t, "forwarded",
-							test.Destination.ExpectForwarded.Headers,
-							forwarded.Headers,
-						)
-						assert.Equal(
-							t, test.Destination.ExpectForwarded.Body,
-							forwarded.Body,
-							"unexpected body was forwarded to destination",
-						)
+						var f ReceivedRequest
+						ok := false
+						select {
+						case x := <-forwarded:
+							ok = true
+							f = x
+						default:
+							t.Errorf("the request wansn't forwarded as expected")
+						}
+						if ok {
+							compareHeaders(
+								t, "forwarded",
+								test.Destination.ExpectForwarded.Headers,
+								f.Headers,
+							)
+							j := test.Destination.ExpectForwarded.BodyJSON
+							body := test.Destination.ExpectForwarded.Body
+							if j != nil {
+								b, err := json.Marshal(j)
+								require.NoError(t, err)
+								body = string(b)
+							}
+							assert.Equal(
+								t, body, f.Body,
+								"unexpected body was forwarded to destination",
+							)
+						}
 					}
 
 					// Compare results
@@ -119,15 +152,31 @@ func TestServer(t *testing.T) {
 						t, "response",
 						test.Client.ExpectResponse.Headers, respHeaders,
 					)
-					assert.Equal(
-						t, test.Client.ExpectResponse.Body,
-						respBody,
-						"unexpected response body",
-					)
+					{
+						body := test.Client.ExpectResponse.Body
+						if j := test.Client.ExpectResponse.BodyJSON; j != nil {
+							b, err := json.Marshal(j)
+							require.NoError(t, err)
+							body = string(b)
+						}
+						assert.Equal(
+							t, body, respBody,
+							"unexpected response body",
+						)
+					}
 
 					// Check logs
 					logs.ReadLogs(func(m []map[string]any) {
-						assert.Equal(t, test.Logs, m)
+						for i, x := range m {
+							if i > len(test.Logs) {
+								t.Errorf("unexpected log: %v", m[i])
+								continue
+							}
+							assert.Equal(t,
+								test.Logs[i], x,
+								"unexpected log at index %d", i,
+							)
+						}
 					})
 				})
 			}
@@ -169,7 +218,6 @@ func GetTests(t *testing.T, filesystem fs.FS, root string) []Test {
 	var tests []Test
 	d, err := fs.ReadDir(filesystem, root)
 	require.NoError(t, err)
-	fmt.Println("ROOT: ", root)
 	for _, testDir := range d {
 		n := testDir.Name()
 		if !strings.HasPrefix(n, "test_") || !strings.HasSuffix(n, ".yaml") {
@@ -184,6 +232,33 @@ func GetTests(t *testing.T, filesystem fs.FS, root string) []Test {
 		d.KnownFields(true)
 		err = d.Decode(&m)
 		require.NoError(t, err)
+
+		isXOR(t,
+			m.Client.Input.Body,
+			m.Client.Input.BodyJSON,
+			"client.input.body",
+			"client.input.body(JSON)",
+		)
+		isXOR(t,
+			m.Client.ExpectResponse.Body,
+			m.Client.ExpectResponse.BodyJSON,
+			"client.expect-response.body",
+			"client.expect-response.body(JSON)",
+		)
+		if m.Destination != nil {
+			isXOR(t,
+				m.Destination.ExpectForwarded.Body,
+				m.Destination.ExpectForwarded.BodyJSON,
+				"destination.expect-forwarded.body",
+				"destination.expect-forwarded.body(JSON)",
+			)
+			isXOR(t,
+				m.Destination.Response.Body,
+				m.Destination.Response.BodyJSON,
+				"destination.expect-forwarded.body",
+				"destination.expect-forwarded.body(JSON)",
+			)
+		}
 
 		tests = append(tests, Test{
 			Name:      n,
@@ -407,4 +482,18 @@ func copyMap[K comparable, V any](m map[K]V) (copy map[K]V) {
 		copy[k] = v
 	}
 	return copy
+}
+
+func isXOR(
+	t *testing.T,
+	a string, b map[string]any,
+	aTitle, bTitle string,
+) {
+	if (a != "" && b == nil) || (a == "" && b != nil) {
+		return
+	}
+	t.Fatalf(`"%s" (%q) and "%s" (%v) are mutually exclusive, `+
+		`make sure you're using either of them, not both at the same time!`,
+		aTitle, a, bTitle, b,
+	)
 }

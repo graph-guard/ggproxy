@@ -1,0 +1,72 @@
+client:
+  input:
+    method: POST
+    endpoint: /testservice
+    body(JSON):
+      query: >
+        query {
+          queryFirstField {
+            queryFirstSubfield
+            querySecondSubfield
+          }
+          querySecondField
+        }
+
+  expect-response:
+    status: 200
+    headers:
+      Content-Length: ^166$
+      Content-Type: ^text/plain; charset=utf-8$
+      Server: ^fasthttp$
+      Date: .
+      X-Custom-Header: value
+    body(JSON):
+      data:
+        queryFirstField:
+          queryFirstSubfield: "first subfield value"
+          querySecondSubfield: "second subfield value"
+        querySecondField: "second query field value"
+
+destination:
+  expect-forwarded:
+    headers:
+      Host: ^http://localhost:8081/test$
+      Content-Length: ^119$
+      Content-Type: ^application/json$
+      User-Agent: ^fasthttp$
+      Date: .
+    body(JSON):
+      query: >
+        query {
+          queryFirstField {
+            queryFirstSubfield
+            querySecondSubfield
+          }
+          querySecondField
+        }
+
+  response:
+    status: 200
+    headers:
+      X-Custom-Header: value
+    body(JSON):
+      data:
+        queryFirstField:
+          queryFirstSubfield: "first subfield value"
+          querySecondSubfield: "second subfield value"
+        querySecondField: "second query field value"
+
+logs:
+  - level: info
+    host: localhost:8080
+    message: "listening"
+    services:
+      - testservice
+  - level: info
+    path: "/testservice"
+    message: "handling request"
+  - level: debug
+    path: "/testservice"
+    query: |-
+      {"query":"query {\n  queryFirstField {\n    queryFirstSubfield\n    querySecondSubfield\n  }\n  querySecondField\n}\n"}
+
