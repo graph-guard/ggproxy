@@ -29,8 +29,20 @@ func TestReadConfig(t *testing.T) {
 			Filesystem: validFS,
 			DirPath:    validFSDirPath,
 			Expect: &config.Config{
-				Host:         "localhost:443",
-				DebugAPIHost: "localhost:3000",
+				Ingress: config.ServerConfig{
+					Host: "localhost:443",
+					TLS: config.TLS{
+						CertFile: "ingress.cert",
+						KeyFile:  "ingress.key",
+					},
+				},
+				API: config.ServerConfig{
+					Host: "localhost:3000",
+					TLS: config.TLS{
+						CertFile: "api.cert",
+						KeyFile:  "api.key",
+					},
+				},
 				ServicesEnabled: []*config.Service{
 					{
 						ID:             "service_a",
@@ -135,7 +147,7 @@ func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
 	}
 }
 
-func TestReadConfigErrorMissingHostConfig(t *testing.T) {
+func TestReadConfigErrorMissingIngressHostConfig(t *testing.T) {
 	for _, m := range [2]string{
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
@@ -146,15 +158,125 @@ func TestReadConfigErrorMissingHostConfig(t *testing.T) {
 				config.ServerConfigFile1,
 			)
 			fs[p].Data = lines(
-				"host: ",
+				`ingress:`,
+				`  host: `,
 			)
 			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorMissing{
 				FilePath: p,
-				Feature:  "host",
+				Feature:  "ingress.host",
 			}, err)
 		})
 	}
+}
+
+func TestReadConfigErrorMissingAPIHostConfig(t *testing.T) {
+	for _, m := range [2]string{
+		config.ServicesDisabledDir, config.ServicesEnabledDir,
+	} {
+		t.Run(m, func(t *testing.T) {
+			fs, path := validFS()
+			p := filepath.Join(
+				path,
+				config.ServerConfigFile1,
+			)
+			fs[p].Data = lines(
+				`ingress:`,
+				`  host: localhost:8080`,
+				`api:`,
+				`  host: `,
+			)
+			err := testError(t, fs, path)
+			require.Equal(t, &config.ErrorMissing{
+				FilePath: p,
+				Feature:  "api.host",
+			}, err)
+		})
+	}
+}
+
+func TestReadConfigErrorMissingIngressTLSCert(t *testing.T) {
+	fs, path := validFS()
+	p := filepath.Join(
+		path,
+		config.ServerConfigFile1,
+	)
+	fs[p].Data = lines(
+		`ingress:`,
+		`  host: localhost:8080`,
+		`  tls:`,
+		`    key-file: ingress.key`,
+		`api:`,
+		`  host: localhost:9090`,
+	)
+	err := testError(t, fs, path)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "ingress.tls.cert-file",
+	}, err)
+}
+
+func TestReadConfigErrorMissingIngressTLSKey(t *testing.T) {
+	fs, path := validFS()
+	p := filepath.Join(
+		path,
+		config.ServerConfigFile1,
+	)
+	fs[p].Data = lines(
+		`ingress:`,
+		`  host: localhost:8080`,
+		`  tls:`,
+		`    cert-file: ingress.cert`,
+		`api:`,
+		`  host: localhost:9090`,
+	)
+	err := testError(t, fs, path)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "ingress.tls.key-file",
+	}, err)
+}
+
+func TestReadConfigErrorMissingAPITLSCert(t *testing.T) {
+	fs, path := validFS()
+	p := filepath.Join(
+		path,
+		config.ServerConfigFile1,
+	)
+	fs[p].Data = lines(
+		`ingress:`,
+		`  host: localhost:8080`,
+		`api:`,
+		`  host: localhost:9090`,
+		`  tls:`,
+		`    key-file: api.key`,
+	)
+	err := testError(t, fs, path)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "api.tls.cert-file",
+	}, err)
+}
+
+func TestReadConfigErrorMissingAPITLSKey(t *testing.T) {
+	fs, path := validFS()
+	p := filepath.Join(
+		path,
+		config.ServerConfigFile1,
+	)
+	fs[p].Data = lines(
+		`ingress:`,
+		`  host: localhost:8080`,
+		`api:`,
+		`  host: localhost:9090`,
+		`  tls:`,
+		`    cert-file: api.cert`,
+	)
+	err := testError(t, fs, path)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "api.tls.key-file",
+	}, err)
 }
 
 func TestReadConfigErrorMissingConfig(t *testing.T) {
@@ -216,13 +338,19 @@ func TestReadConfigErrorDuplicateServerConfig(t *testing.T) {
 		path,
 		config.ServerConfigFile1,
 	)] = &fstest.MapFile{
-		Data: []byte(`host: localhost:8080/`),
+		Data: lines(
+			`ingress:`,
+			`  host: localhost:8080/`,
+		),
 	}
 	fs[filepath.Join(
 		path,
 		config.ServerConfigFile2,
 	)] = &fstest.MapFile{
-		Data: []byte(`host: localhost:9090/`),
+		Data: lines(
+			`ingress:`,
+			`  host: localhost:9090/`,
+		),
 	}
 	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorConflict{Items: []string{
@@ -480,7 +608,8 @@ func minValidFS() (filesystem fstest.MapFS, path string) {
 			config.ServerConfigFile1,
 		): &fstest.MapFile{
 			Data: lines(
-				`host: localhost:443`,
+				`ingress:`,
+				`  host: localhost:443`,
 			),
 		},
 
@@ -515,8 +644,16 @@ func validFS() (filesystem fstest.MapFS, path string) {
 			config.ServerConfigFile1,
 		): &fstest.MapFile{
 			Data: lines(
-				`host: localhost:443`,
-				`debug-api-host: localhost:3000`,
+				`ingress:`,
+				`  host: localhost:443`,
+				`  tls:`,
+				`    cert-file: ingress.cert`,
+				`    key-file: ingress.key`,
+				`api:`,
+				`  host: localhost:3000`,
+				`  tls:`,
+				`    cert-file: api.cert`,
+				`    key-file: api.key`,
 			),
 		},
 

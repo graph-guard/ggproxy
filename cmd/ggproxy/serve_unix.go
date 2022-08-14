@@ -23,18 +23,19 @@ func serve(w io.Writer, c cli.CommandServe) {
 		Writer: &log.IOWriter{Writer: w},
 	}
 
-	var s *server.Server
+	var s *server.Ingress
 	{
 		lServer := l
 		lServer.Context = log.NewContext(nil).
 			Str("server", "ingress").Value()
-		s = server.New(
+		s = server.NewIngress(
 			conf,
 			10*time.Second,
 			10*time.Second,
 			1024*1024*4,
 			1024*1024*4,
 			lServer,
+			nil,
 			nil,
 		)
 	}
@@ -48,21 +49,22 @@ func serve(w io.Writer, c cli.CommandServe) {
 	stopped := make(chan struct{})
 	stopTriggered := RegisterStop(explicitStop)
 
-	var sDebug *server.ServerDebug
+	var api *server.API
 	{
-		lServerDebug := l
-		lServerDebug.Context = log.NewContext(nil).
-			Str("server", "debug").Value()
+		lServerAPI := l
+		lServerAPI.Context = log.NewContext(nil).
+			Str("server", "api").Value()
 
-		if conf.DebugAPIHost != "" {
+		if conf.API.Host != "" {
 			wg.Add(1)
-			sDebug = server.NewDebug(
+			api = server.NewAPI(
 				conf,
 				10*time.Second,
 				10*time.Second,
 				1024*1024*4,
 				1024*1024*4,
-				lServerDebug,
+				lServerAPI,
+				nil,
 			)
 		}
 	}
@@ -91,15 +93,15 @@ func serve(w io.Writer, c cli.CommandServe) {
 		return
 	}
 
-	if sDebug != nil {
-		// Start debug server
+	if api != nil {
+		// Start API server
 		go func() {
 			<-stopTriggered
-			_ = sDebug.Shutdown()
+			_ = api.Shutdown()
 		}()
 		go func() {
 			defer wg.Done()
-			sDebug.Serve(nil)
+			api.Serve(nil)
 		}()
 	}
 

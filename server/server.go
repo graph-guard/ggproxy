@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -12,31 +13,33 @@ import (
 	"github.com/graph-guard/gguard-proxy/gqlreduce"
 	"github.com/graph-guard/gguard-proxy/server/internal/tokenwriter"
 	"github.com/graph-guard/gqt"
-	"github.com/phuslu/log"
+	plog "github.com/phuslu/log"
 	"github.com/tidwall/gjson"
 	"github.com/valyala/fasthttp"
 )
 
-type Server struct {
+// Ingress is the server receiving incomming proxy traffic
+type Ingress struct {
 	config   *config.Config
 	server   *fasthttp.Server
 	client   *fasthttp.Client
 	services map[string]*service
-	log      log.Logger
+	log      plog.Logger
 }
 
-type ServerDebug struct {
+// API is the metrics, inspection and debug server
+type API struct {
 	config   *config.Config
 	server   *fasthttp.Server
 	services map[string]*service
-	log      log.Logger
+	log      plog.Logger
 }
 
 type service struct {
 	source         string
 	destination    string
 	forwardReduced bool
-	log            log.Logger
+	log            plog.Logger
 	matcherpool    sync.Pool
 }
 
@@ -45,20 +48,25 @@ type matcher struct {
 	Engine  *rmap.RulesMap
 }
 
-func New(
+func NewIngress(
 	config *config.Config,
 	readTimeout, writeTimeout time.Duration,
 	readBufferSize, writeBufferSize int,
-	log log.Logger,
+	log plog.Logger,
 	client *fasthttp.Client,
-) *Server {
+	tlsConfig *tls.Config,
+) *Ingress {
 	services := make(map[string]*service)
 
 	if client == nil {
 		client = &fasthttp.Client{}
 	}
 
-	srv := &Server{
+	lFasthttp := log
+	lFasthttp.Context = plog.NewContext(nil).
+		Str("server-module", "fasthttp").Value()
+
+	srv := &Ingress{
 		config: config,
 		server: &fasthttp.Server{
 			ReadTimeout:                  readTimeout,
@@ -66,6 +74,8 @@ func New(
 			ReadBufferSize:               readBufferSize,
 			WriteBufferSize:              writeBufferSize,
 			DisablePreParseMultipartForm: false,
+			TLSConfig:                    tlsConfig,
+			Logger:                       &lFasthttp,
 		},
 		client:   client,
 		log:      log,
@@ -119,15 +129,20 @@ func New(
 	return srv
 }
 
-func NewDebug(
+func NewAPI(
 	config *config.Config,
 	readTimeout, writeTimeout time.Duration,
 	readBufferSize, writeBufferSize int,
-	log log.Logger,
-) *ServerDebug {
+	log plog.Logger,
+	tlsConfig *tls.Config,
+) *API {
 	services := make(map[string]*service)
 
-	srv := &ServerDebug{
+	lFasthttp := log
+	lFasthttp.Context = plog.NewContext(nil).
+		Str("server-module", "fasthttp").Value()
+
+	srv := &API{
 		config: config,
 		server: &fasthttp.Server{
 			ReadTimeout:                  readTimeout,
@@ -135,6 +150,8 @@ func NewDebug(
 			ReadBufferSize:               readBufferSize,
 			WriteBufferSize:              writeBufferSize,
 			DisablePreParseMultipartForm: false,
+			TLSConfig:                    tlsConfig,
+			Logger:                       &lFasthttp,
 		},
 		log:      log,
 		services: services,
@@ -196,7 +213,7 @@ func NewDebug(
 	return srv
 }
 
-func (s *Server) handle(ctx *fasthttp.RequestCtx) {
+func (s *Ingress) handle(ctx *fasthttp.RequestCtx) {
 	s.log.Info().
 		Bytes("path", ctx.Path()).
 		Msg("handling request")
@@ -299,10 +316,10 @@ func (s *Server) handle(ctx *fasthttp.RequestCtx) {
 	)
 }
 
-func (s *ServerDebug) handle(ctx *fasthttp.RequestCtx) {
+func (s *API) handle(ctx *fasthttp.RequestCtx) {
 	s.log.Info().
 		Bytes("path", ctx.Path()).
-		Msg("handling debug request")
+		Msg("handling request")
 
 	if string(ctx.Method()) != fasthttp.MethodPost {
 		ctx.Error(fasthttp.StatusMessage(
@@ -349,7 +366,7 @@ func (s *ServerDebug) handle(ctx *fasthttp.RequestCtx) {
 			{
 				resp, err := json.Marshal(match)
 				if err != nil {
-					s.log.Error().Err(err).Msg("marshalling debug response")
+					s.log.Error().Err(err).Msg("marshalling response")
 				}
 				ctx.Response.SetBody(resp)
 			}
@@ -360,21 +377,41 @@ func (s *ServerDebug) handle(ctx *fasthttp.RequestCtx) {
 	)
 }
 
-func (s *Server) Serve(listener net.Listener) {
+func (s *Ingress) Serve(listener net.Listener) {
 	serviceIDs := make([]string, len(s.config.ServicesEnabled))
 	for i := range s.config.ServicesEnabled {
 		serviceIDs[i] = s.config.ServicesEnabled[i].ID
 	}
 	s.log.Info().
-		Str("host", s.config.Host).
+		Str("host", s.config.Ingress.Host).
+		Bool("tls", s.config.Ingress.TLS.CertFile != "").
 		Strs("services", serviceIDs).
 		Msg("listening")
 
 	var err error
-	if listener != nil {
-		err = s.server.Serve(listener)
+	if s.config.Ingress.TLS.CertFile != "" {
+		// TLS enabled
+		if listener != nil {
+			err = s.server.ServeTLS(
+				listener,
+				s.config.Ingress.TLS.CertFile,
+				s.config.Ingress.TLS.KeyFile,
+			)
+		} else {
+			err = s.server.ListenAndServeTLS(
+				s.config.Ingress.Host,
+				s.config.Ingress.TLS.CertFile,
+				s.config.Ingress.TLS.KeyFile,
+			)
+		}
 	} else {
-		err = s.server.ListenAndServe(s.config.Host)
+		// TLS disabled
+		if listener != nil {
+			err = s.server.Serve(listener)
+
+		} else {
+			err = s.server.ListenAndServe(s.config.Ingress.Host)
+		}
 	}
 	if err != nil {
 		s.log.Fatal().Err(err).Msg("listening")
@@ -383,7 +420,7 @@ func (s *Server) Serve(listener net.Listener) {
 
 // Shutdown returns once the server was shutdown.
 // Logs shutdown and errors.
-func (s *Server) Shutdown() error {
+func (s *Ingress) Shutdown() error {
 	err := s.server.Shutdown()
 	if err != nil {
 		s.log.Error().Err(err).Msg("shutting down")
@@ -393,21 +430,41 @@ func (s *Server) Shutdown() error {
 	return nil
 }
 
-func (s *ServerDebug) Serve(listener net.Listener) {
+func (s *API) Serve(listener net.Listener) {
 	serviceIDs := make([]string, len(s.config.ServicesEnabled))
 	for i := range s.config.ServicesEnabled {
 		serviceIDs[i] = s.config.ServicesEnabled[i].ID
 	}
 	s.log.Info().
-		Str("host", s.config.DebugAPIHost).
+		Str("host", s.config.API.Host).
+		Bool("tls", s.config.API.TLS.CertFile != "").
 		Strs("services", serviceIDs).
 		Msg("listening")
 
 	var err error
-	if listener != nil {
-		err = s.server.Serve(listener)
+	if s.config.API.TLS.CertFile != "" {
+		// TLS enabled
+		if listener != nil {
+			err = s.server.ServeTLS(
+				listener,
+				s.config.API.TLS.CertFile,
+				s.config.API.TLS.KeyFile,
+			)
+		} else {
+			err = s.server.ListenAndServeTLS(
+				s.config.API.Host,
+				s.config.API.TLS.CertFile,
+				s.config.API.TLS.KeyFile,
+			)
+		}
 	} else {
-		err = s.server.ListenAndServe(s.config.DebugAPIHost)
+		// TLS disabled
+		if listener != nil {
+			err = s.server.Serve(listener)
+
+		} else {
+			err = s.server.ListenAndServe(s.config.API.Host)
+		}
 	}
 	if err != nil {
 		s.log.Fatal().Err(err).Msg("listening")
@@ -416,7 +473,7 @@ func (s *ServerDebug) Serve(listener net.Listener) {
 
 // Shutdown returns once the server was shutdown.
 // Logs shutdown and errors.
-func (s *ServerDebug) Shutdown() error {
+func (s *API) Shutdown() error {
 	err := s.server.Shutdown()
 	if err != nil {
 		s.log.Error().Err(err).Msg("shutting down")

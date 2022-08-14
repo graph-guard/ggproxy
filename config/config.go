@@ -24,10 +24,20 @@ const ServiceConfigFile2 = "config.yml"
 const FileExtGQT = ".gqt"
 
 type Config struct {
-	Host             string
-	DebugAPIHost     string
+	Ingress          ServerConfig
+	API              ServerConfig
 	ServicesEnabled  []*Service
 	ServicesDisabled []*Service
+}
+
+type ServerConfig struct {
+	Host string
+	TLS  TLS
+}
+
+type TLS struct {
+	CertFile string
+	KeyFile  string
 }
 
 type Service struct {
@@ -95,14 +105,68 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 					Message:  err.Error(),
 				}
 			}
-			if c.Host == "" {
+
+			if c.Ingress.Host == "" {
 				return nil, &ErrorMissing{
 					FilePath: p,
-					Feature:  "host",
+					Feature:  "ingress.host",
 				}
 			}
-			conf.Host = c.Host
-			conf.DebugAPIHost = c.DebugAPIHost
+			conf.Ingress.Host = c.Ingress.Host
+
+			if c.Ingress.TLS != nil {
+				c := c.Ingress.TLS
+				// If either of ingress.cert-file and ingress.key-file are
+				// present then both must be defined, otherwise TLS must be nil.
+				switch {
+				case c.CertFile != "" && c.KeyFile == "":
+					return nil, &ErrorMissing{
+						FilePath: p,
+						Feature:  "ingress.tls.key-file",
+					}
+				case (c.KeyFile != "" && c.CertFile == "") ||
+					(c.KeyFile == "" && c.CertFile == ""):
+					return nil, &ErrorMissing{
+						FilePath: p,
+						Feature:  "ingress.tls.cert-file",
+					}
+				}
+				conf.Ingress.TLS.CertFile = c.CertFile
+				conf.Ingress.TLS.KeyFile = c.KeyFile
+			}
+
+			if c.API != nil {
+				c := c.API
+				if c.Host == "" {
+					return nil, &ErrorMissing{
+						FilePath: p,
+						Feature:  "api.host",
+					}
+				}
+				conf.API.Host = c.Host
+
+				if c.TLS != nil {
+					c := c.TLS
+					// If either of api.cert-file and api.key-file are present
+					// then both must be defined, otherwise TLS must be nil.
+					switch {
+					case c.CertFile != "" && c.KeyFile == "":
+						return nil, &ErrorMissing{
+							FilePath: p,
+							Feature:  "api.tls.key-file",
+						}
+					case (c.KeyFile != "" && c.CertFile == "") ||
+						(c.KeyFile == "" && c.CertFile == ""):
+						return nil, &ErrorMissing{
+							FilePath: p,
+							Feature:  "api.tls.cert-file",
+						}
+					}
+					conf.API.TLS.CertFile = c.CertFile
+					conf.API.TLS.KeyFile = c.KeyFile
+				}
+			}
+
 		}
 	}
 
@@ -257,8 +321,20 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 }
 
 type serverConfig struct {
-	Host         string `yaml:"host"`
-	DebugAPIHost string `yaml:"debug-api-host"`
+	Ingress struct {
+		Host string `yaml:"host"`
+		TLS  *struct {
+			CertFile string `yaml:"cert-file"`
+			KeyFile  string `yaml:"key-file"`
+		} `yaml:"tls"`
+	} `yaml:"ingress"`
+	API *struct {
+		Host string `yaml:"host"`
+		TLS  *struct {
+			CertFile string `yaml:"cert-file"`
+			KeyFile  string `yaml:"key-file"`
+		} `yaml:"tls"`
+	} `yaml:"api"`
 }
 
 type serviceConfig struct {

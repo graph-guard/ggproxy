@@ -68,7 +68,7 @@ type Test struct {
 	TestModel
 }
 
-func TestServer(t *testing.T) {
+func TestIngress(t *testing.T) {
 	setups := GetSetups(t, testsFS, "tests")
 	for _, setup := range setups {
 		t.Run(setup.Name, func(t *testing.T) {
@@ -336,7 +336,7 @@ func launchSetup(t *testing.T, s Setup) (
 		TimeFormat: "23:59:59",
 		Writer:     &plog.IOWriter{Writer: logRecorder},
 	}
-	server := server.New(
+	server := server.NewIngress(
 		s.Config,
 		time.Second*10,
 		time.Second*10,
@@ -348,6 +348,7 @@ func launchSetup(t *testing.T, s Setup) (
 				return lnDest.Dial()
 			},
 		},
+		nil,
 	)
 
 	go func() {
@@ -497,3 +498,16 @@ func isXOR(
 		aTitle, a, bTitle, b,
 	)
 }
+
+// func checkLogs(t *testing.T, expected, actual []map[string]any) {
+// 	for i, x := range expected {
+// 		if i >= len(expected) {
+// 			t.Errorf("unexpected log: %v", actual[i])
+// 			continue
+// 		}
+// 		assert.Equal(t,
+// 			expected[i], x,
+// 			"unexpected log at index %d", i,
+// 		)
+// 	}
+// }

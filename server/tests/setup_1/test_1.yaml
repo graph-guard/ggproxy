@@ -42,13 +42,14 @@ destination:
 
 logs:
   - level: info
-    host: localhost:8080
     message: 'listening'
+    host: localhost:8080
+    tls: false
     services:
       - service_a
   - level: info
-    path: /service_a
     message: 'handling request'
+    path: /service_a
   - level: debug
     path: /service_a
     query: '{"operationName":"X","query":"mutation X { a { a0(a0_0: [ 0 ]) } }"}'
