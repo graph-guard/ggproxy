@@ -3,6 +3,7 @@ module github.com/graph-guard/gguard-proxy
 go 1.18
 
 require (
+	github.com/dustin/go-humanize v1.0.0
 	github.com/graph-guard/gqlscan v1.0.0
 	github.com/graph-guard/gqt v0.0.0-20220714090301-a9dea11904c1
 	github.com/phuslu/log v1.0.81

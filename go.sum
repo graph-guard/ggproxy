@@ -4,6 +4,7 @@ github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSs
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/dustin/go-humanize v1.0.0 h1:VSnTsYCnlFHaM2/igO1h6X3HA71jcobQuxemgkq4zYo=
+github.com/dustin/go-humanize v1.0.0/go.mod h1:HtrtbFcZ19U5GC7JDqmcUSB87Iq5E25KnS6fMYU6eOk=
 github.com/graph-guard/gqlscan v1.0.0 h1:hUEDqnJQJ7nV9S8hCPJuYI/H97KP3unu0Gu7wd0wV8A=
 github.com/graph-guard/gqlscan v1.0.0/go.mod h1:A7TeIFxoiP39gw/r4sWjDnTZJnNy+4kaytP9Kh7Luuk=
 github.com/graph-guard/gqt v0.0.0-20220714090301-a9dea11904c1 h1:v9Cbmh1boJQEV0LddLg6XeDGq8nTAgsVz6rjAUy4fbI=

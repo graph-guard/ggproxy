@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,82 +24,53 @@ type TestError struct {
 }
 
 func TestReadConfig(t *testing.T) {
-	validFS, validFSDirPath := validFS()
+	validFS, validFSDirPath, conf := validFS()
 	for _, td := range []TestOK{
 		{
 			Filesystem: validFS,
 			DirPath:    validFSDirPath,
-			Expect: &config.Config{
-				Ingress: config.ServerConfig{
-					Host: "localhost:443",
-					TLS: config.TLS{
-						CertFile: "ingress.cert",
-						KeyFile:  "ingress.key",
-					},
-				},
-				API: config.ServerConfig{
-					Host: "localhost:3000",
-					TLS: config.TLS{
-						CertFile: "api.cert",
-						KeyFile:  "api.key",
-					},
-				},
-				ServicesEnabled: []*config.Service{
-					{
-						ID:             "service_a",
-						Name:           "Service A",
-						ForwardURL:     "http://localhost:8080/path",
-						ForwardReduced: true,
-						TemplatesEnabled: []*config.Template{
-							{
-								ID:     "template_b",
-								Tags:   []string{"tag_b1", "tag_b2"},
-								Source: lines(`query { bar }`),
-								Document: gqt.DocQuery{
-									Selections: []gqt.Selection{
-										gqt.SelectionField{
-											Name: "bar",
-										},
-									},
-								},
-							},
-							{
-								ID:     "template_a",
-								Name:   "Template A",
-								Tags:   []string{"tag_a"},
-								Source: lines(`query { foo }`),
-								Document: gqt.DocQuery{
-									Selections: []gqt.Selection{
-										gqt.SelectionField{
-											Name: "foo",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-				ServicesDisabled: []*config.Service{
-					{
-						ID:             "service_b",
-						ForwardURL:     "http://localhost:9090/",
-						ForwardReduced: false,
-						TemplatesDisabled: []*config.Template{
-							{
-								ID:     "template_c",
-								Source: []byte(`query { maz }`),
-								Document: gqt.DocQuery{
-									Selections: []gqt.Selection{
-										gqt.SelectionField{
-											Name: "maz",
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
+			Expect:     conf,
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			c, err := config.ReadConfig(td.Filesystem, td.DirPath)
+			require.NoError(t, err)
+			require.Equal(t, td.Expect, c)
+		})
+	}
+}
+
+func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
+	validFS, validFSDirPath, conf := validFS()
+
+	validFS[filepath.Join(
+		validFSDirPath,
+		config.ServerConfigFile1,
+	)] = &fstest.MapFile{
+		Data: lines(
+			`ingress:`,
+			`  host: localhost:443`,
+			`  tls:`,
+			`    cert-file: ingress.cert`,
+			`    key-file: ingress.key`,
+			`  # max-request-body-size: 1234`,
+			`api:`,
+			`  host: localhost:3000`,
+			`  tls:`,
+			`    cert-file: api.cert`,
+			`    key-file: api.key`,
+			`  # max-request-body-size: 1234`,
+		),
+	}
+
+	conf.Ingress.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
+	conf.API.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
+
+	for _, td := range []TestOK{
+		{
+			Filesystem: validFS,
+			DirPath:    validFSDirPath,
+			Expect:     conf,
 		},
 	} {
 		t.Run("", func(t *testing.T) {
@@ -110,7 +82,7 @@ func TestReadConfig(t *testing.T) {
 }
 
 func TestReadConfigErrorMissingServerConfig(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServerConfigFile1,
@@ -127,7 +99,7 @@ func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs, path := validFS()
+			fs, path, _ := validFS()
 			p := filepath.Join(
 				path,
 				config.ServiceConfigFile1,
@@ -152,7 +124,7 @@ func TestReadConfigErrorMissingIngressHostConfig(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs, path := validFS()
+			fs, path, _ := validFS()
 			p := filepath.Join(
 				path,
 				config.ServerConfigFile1,
@@ -175,7 +147,7 @@ func TestReadConfigErrorMissingAPIHostConfig(t *testing.T) {
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
 		t.Run(m, func(t *testing.T) {
-			fs, path := validFS()
+			fs, path, _ := validFS()
 			p := filepath.Join(
 				path,
 				config.ServerConfigFile1,
@@ -196,7 +168,7 @@ func TestReadConfigErrorMissingAPIHostConfig(t *testing.T) {
 }
 
 func TestReadConfigErrorMissingIngressTLSCert(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServerConfigFile1,
@@ -217,7 +189,7 @@ func TestReadConfigErrorMissingIngressTLSCert(t *testing.T) {
 }
 
 func TestReadConfigErrorMissingIngressTLSKey(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServerConfigFile1,
@@ -238,7 +210,7 @@ func TestReadConfigErrorMissingIngressTLSKey(t *testing.T) {
 }
 
 func TestReadConfigErrorMissingAPITLSCert(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServerConfigFile1,
@@ -259,7 +231,7 @@ func TestReadConfigErrorMissingAPITLSCert(t *testing.T) {
 }
 
 func TestReadConfigErrorMissingAPITLSKey(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServerConfigFile1,
@@ -276,6 +248,54 @@ func TestReadConfigErrorMissingAPITLSKey(t *testing.T) {
 	require.Equal(t, &config.ErrorMissing{
 		FilePath: p,
 		Feature:  "api.tls.key-file",
+	}, err)
+}
+
+func TestReadConfigErrorIllegalIngressMaxReqBodySize(t *testing.T) {
+	fs, path, _ := validFS()
+	p := filepath.Join(
+		path,
+		config.ServerConfigFile1,
+	)
+	fs[p].Data = lines(
+		`ingress:`,
+		`  host: localhost:8080`,
+		`  max-request-body-size: 255`,
+		`api:`,
+		`  host: localhost:9090`,
+	)
+	err := testError(t, fs, path)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: p,
+		Feature:  "ingress.max-request-body-size",
+		Message: fmt.Sprintf(
+			"maximum request body size should not be smaller than %d B",
+			config.MinReqBodySize,
+		),
+	}, err)
+}
+
+func TestReadConfigErrorIllegalAPIMaxReqBodySize(t *testing.T) {
+	fs, path, _ := validFS()
+	p := filepath.Join(
+		path,
+		config.ServerConfigFile1,
+	)
+	fs[p].Data = lines(
+		`ingress:`,
+		`  host: localhost:8080`,
+		`api:`,
+		`  host: localhost:9090`,
+		`  max-request-body-size: 255`,
+	)
+	err := testError(t, fs, path)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: p,
+		Feature:  "api.max-request-body-size",
+		Message: fmt.Sprintf(
+			"maximum request body size should not be smaller than %d B",
+			config.MinReqBodySize,
+		),
 	}, err)
 }
 
@@ -305,7 +325,7 @@ func TestReadConfigErrorMissingConfig(t *testing.T) {
 }
 
 func TestReadConfigErrorMalformedMetadata(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServicesEnabledDir,
@@ -360,7 +380,7 @@ func TestReadConfigErrorDuplicateServerConfig(t *testing.T) {
 }
 
 func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	fs[filepath.Join(
 		path,
 		config.ServicesEnabledDir,
@@ -495,7 +515,7 @@ func TestReadConfigErrorInvalidForwardURL(t *testing.T) {
 }
 
 func TestReadConfigErrorInvalidTemplate(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServicesDisabledDir,
@@ -515,7 +535,7 @@ func TestReadConfigErrorInvalidTemplate(t *testing.T) {
 }
 
 func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServicesDisabledDir,
@@ -535,7 +555,7 @@ func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
 }
 
 func TestReadConfigErrorInvalidServiceID(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	fs[filepath.Join(
 		path,
 		config.ServicesDisabledDir,
@@ -557,7 +577,7 @@ func TestReadConfigErrorInvalidServiceID(t *testing.T) {
 }
 
 func TestReadConfigErrorMalformedConfig(t *testing.T) {
-	fs, path := validFS()
+	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServicesEnabledDir,
@@ -635,7 +655,7 @@ func minValidFS() (filesystem fstest.MapFS, path string) {
 	return
 }
 
-func validFS() (filesystem fstest.MapFS, path string) {
+func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 	path = "testconfigroot"
 	filesystem = fstest.MapFS{
 		// Relevant files
@@ -649,11 +669,19 @@ func validFS() (filesystem fstest.MapFS, path string) {
 				`  tls:`,
 				`    cert-file: ingress.cert`,
 				`    key-file: ingress.key`,
+				fmt.Sprintf(
+					`  max-request-body-size: %d`,
+					config.MinReqBodySize+256,
+				),
 				`api:`,
 				`  host: localhost:3000`,
 				`  tls:`,
 				`    cert-file: api.cert`,
 				`    key-file: api.key`,
+				fmt.Sprintf(
+					`  max-request-body-size: %d`,
+					config.MinReqBodySize+256,
+				),
 			),
 		},
 
@@ -769,6 +797,81 @@ func validFS() (filesystem fstest.MapFS, path string) {
 			Data: []byte(`this file should be ignored`),
 		},
 	}
+
+	conf = &config.Config{
+		Ingress: config.ServerConfig{
+			Host: "localhost:443",
+			TLS: config.TLS{
+				CertFile: "ingress.cert",
+				KeyFile:  "ingress.key",
+			},
+			MaxReqBodySizeBytes: config.MinReqBodySize + 256,
+		},
+		API: &config.ServerConfig{
+			Host: "localhost:3000",
+			TLS: config.TLS{
+				CertFile: "api.cert",
+				KeyFile:  "api.key",
+			},
+			MaxReqBodySizeBytes: config.MinReqBodySize + 256,
+		},
+		ServicesEnabled: []*config.Service{
+			{
+				ID:             "service_a",
+				Name:           "Service A",
+				ForwardURL:     "http://localhost:8080/path",
+				ForwardReduced: true,
+				TemplatesEnabled: []*config.Template{
+					{
+						ID:     "template_b",
+						Tags:   []string{"tag_b1", "tag_b2"},
+						Source: lines(`query { bar }`),
+						Document: gqt.DocQuery{
+							Selections: []gqt.Selection{
+								gqt.SelectionField{
+									Name: "bar",
+								},
+							},
+						},
+					},
+					{
+						ID:     "template_a",
+						Name:   "Template A",
+						Tags:   []string{"tag_a"},
+						Source: lines(`query { foo }`),
+						Document: gqt.DocQuery{
+							Selections: []gqt.Selection{
+								gqt.SelectionField{
+									Name: "foo",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		ServicesDisabled: []*config.Service{
+			{
+				ID:             "service_b",
+				ForwardURL:     "http://localhost:9090/",
+				ForwardReduced: false,
+				TemplatesDisabled: []*config.Template{
+					{
+						ID:     "template_c",
+						Source: []byte(`query { maz }`),
+						Document: gqt.DocQuery{
+							Selections: []gqt.Selection{
+								gqt.SelectionField{
+									Name: "maz",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
 	return
 }
 

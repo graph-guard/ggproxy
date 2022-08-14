@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/dustin/go-humanize"
 	"github.com/graph-guard/gguard-proxy/config/metadata"
 	"github.com/graph-guard/gqt"
 	yaml "gopkg.in/yaml.v3"
@@ -23,16 +24,30 @@ const ServiceConfigFile1 = "config.yaml"
 const ServiceConfigFile2 = "config.yml"
 const FileExtGQT = ".gqt"
 
+// MinReqBodySize defines the minimum accepted value for
+// `max-request-body-size` in bytes.
+const MinReqBodySize = 256
+
+// DefaultMaxReqBodySize defines the default maximum
+// request body size in bytes.
+const DefaultMaxReqBodySize = 4 * 1024 * 1024
+
+var msgMaxReqBodySizeTooSmall = fmt.Sprintf(
+	"maximum request body size should not be smaller than %s",
+	humanize.Bytes(MinReqBodySize),
+)
+
 type Config struct {
 	Ingress          ServerConfig
-	API              ServerConfig
+	API              *ServerConfig
 	ServicesEnabled  []*Service
 	ServicesDisabled []*Service
 }
 
 type ServerConfig struct {
-	Host string
-	TLS  TLS
+	Host                string
+	TLS                 TLS
+	MaxReqBodySizeBytes int
 }
 
 type TLS struct {
@@ -67,7 +82,15 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 	var servicesDisabledDir bool
 	var serverConf bool
 
-	conf := &Config{}
+	// Set default config values
+	conf := &Config{
+		Ingress: ServerConfig{
+			MaxReqBodySizeBytes: DefaultMaxReqBodySize,
+		},
+		API: &ServerConfig{
+			MaxReqBodySizeBytes: DefaultMaxReqBodySize,
+		},
+	}
 
 	for _, o := range d {
 		n := o.Name()
@@ -106,67 +129,9 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 				}
 			}
 
-			if c.Ingress.Host == "" {
-				return nil, &ErrorMissing{
-					FilePath: p,
-					Feature:  "ingress.host",
-				}
+			if err = setConfig(conf, c, p); err != nil {
+				return nil, err
 			}
-			conf.Ingress.Host = c.Ingress.Host
-
-			if c.Ingress.TLS != nil {
-				c := c.Ingress.TLS
-				// If either of ingress.cert-file and ingress.key-file are
-				// present then both must be defined, otherwise TLS must be nil.
-				switch {
-				case c.CertFile != "" && c.KeyFile == "":
-					return nil, &ErrorMissing{
-						FilePath: p,
-						Feature:  "ingress.tls.key-file",
-					}
-				case (c.KeyFile != "" && c.CertFile == "") ||
-					(c.KeyFile == "" && c.CertFile == ""):
-					return nil, &ErrorMissing{
-						FilePath: p,
-						Feature:  "ingress.tls.cert-file",
-					}
-				}
-				conf.Ingress.TLS.CertFile = c.CertFile
-				conf.Ingress.TLS.KeyFile = c.KeyFile
-			}
-
-			if c.API != nil {
-				c := c.API
-				if c.Host == "" {
-					return nil, &ErrorMissing{
-						FilePath: p,
-						Feature:  "api.host",
-					}
-				}
-				conf.API.Host = c.Host
-
-				if c.TLS != nil {
-					c := c.TLS
-					// If either of api.cert-file and api.key-file are present
-					// then both must be defined, otherwise TLS must be nil.
-					switch {
-					case c.CertFile != "" && c.KeyFile == "":
-						return nil, &ErrorMissing{
-							FilePath: p,
-							Feature:  "api.tls.key-file",
-						}
-					case (c.KeyFile != "" && c.CertFile == "") ||
-						(c.KeyFile == "" && c.CertFile == ""):
-						return nil, &ErrorMissing{
-							FilePath: p,
-							Feature:  "api.tls.cert-file",
-						}
-					}
-					conf.API.TLS.CertFile = c.CertFile
-					conf.API.TLS.KeyFile = c.KeyFile
-				}
-			}
-
 		}
 	}
 
@@ -327,6 +292,7 @@ type serverConfig struct {
 			CertFile string `yaml:"cert-file"`
 			KeyFile  string `yaml:"key-file"`
 		} `yaml:"tls"`
+		MaxRequestBodySizeBytes *int `yaml:"max-request-body-size"`
 	} `yaml:"ingress"`
 	API *struct {
 		Host string `yaml:"host"`
@@ -334,6 +300,7 @@ type serverConfig struct {
 			CertFile string `yaml:"cert-file"`
 			KeyFile  string `yaml:"key-file"`
 		} `yaml:"tls"`
+		MaxRequestBodySizeBytes *int `yaml:"max-request-body-size"`
 	} `yaml:"api"`
 }
 
@@ -531,4 +498,107 @@ func (e ErrorIllegal) Error() string {
 	b.WriteString(": ")
 	b.WriteString(e.Message)
 	return b.String()
+}
+
+func setConfig(conf *Config, c serverConfig, filePath string) (err error) {
+	if c.API == nil {
+		// Disable API server
+		conf.API = nil
+	}
+
+	if c.Ingress.Host == "" {
+		return &ErrorMissing{
+			FilePath: filePath,
+			Feature:  "ingress.host",
+		}
+	}
+	conf.Ingress.Host = c.Ingress.Host
+
+	if c.Ingress.TLS != nil {
+		c := c.Ingress.TLS
+		// If either of ingress.cert-file and ingress.key-file are
+		// present then both must be defined, otherwise TLS must be nil.
+		switch {
+		case c.CertFile != "" && c.KeyFile == "":
+			return &ErrorMissing{
+				FilePath: filePath,
+				Feature:  "ingress.tls.key-file",
+			}
+		case (c.KeyFile != "" && c.CertFile == "") ||
+			(c.KeyFile == "" && c.CertFile == ""):
+			return &ErrorMissing{
+				FilePath: filePath,
+				Feature:  "ingress.tls.cert-file",
+			}
+		}
+		conf.Ingress.TLS.CertFile = c.CertFile
+		conf.Ingress.TLS.KeyFile = c.KeyFile
+	}
+
+	if conf.Ingress.MaxReqBodySizeBytes, err = getReqBodySize(
+		c.Ingress.MaxRequestBodySizeBytes,
+		filePath, "ingress.max-request-body-size",
+	); err != nil {
+		return err
+	}
+
+	if c.API != nil {
+		c := c.API
+		if c.Host == "" {
+			return &ErrorMissing{
+				FilePath: filePath,
+				Feature:  "api.host",
+			}
+		}
+		conf.API.Host = c.Host
+
+		if c.TLS != nil {
+			c := c.TLS
+			// If either of api.cert-file and api.key-file are present
+			// then both must be defined, otherwise TLS must be nil.
+			switch {
+			case c.CertFile != "" && c.KeyFile == "":
+				return &ErrorMissing{
+					FilePath: filePath,
+					Feature:  "api.tls.key-file",
+				}
+			case (c.KeyFile != "" && c.CertFile == "") ||
+				(c.KeyFile == "" && c.CertFile == ""):
+				return &ErrorMissing{
+					FilePath: filePath,
+					Feature:  "api.tls.cert-file",
+				}
+			}
+			conf.API.TLS.CertFile = c.CertFile
+			conf.API.TLS.KeyFile = c.KeyFile
+		}
+
+		if conf.API.MaxReqBodySizeBytes, err = getReqBodySize(
+			c.MaxRequestBodySizeBytes,
+			filePath, "api.max-request-body-size",
+		); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// getReqBodySize reads and validates a request body size value or
+// uses the default if none is given.
+func getReqBodySize(
+	reqBodySize *int,
+	filePath, feature string,
+) (int, error) {
+	if reqBodySize == nil {
+		return DefaultMaxReqBodySize, nil
+	}
+	if *reqBodySize < MinReqBodySize {
+		return 0, &ErrorIllegal{
+			FilePath: filePath,
+			Feature:  feature,
+			Message:  msgMaxReqBodySizeTooSmall,
+		}
+	}
+	return *reqBodySize, nil
 }
