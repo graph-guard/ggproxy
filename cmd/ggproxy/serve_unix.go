@@ -49,6 +49,8 @@ func serve(w io.Writer, c cli.CommandServe) {
 	stopped := make(chan struct{})
 	stopTriggered := RegisterStop(explicitStop)
 
+	start := time.Now()
+
 	var api *server.API
 	{
 		lServerAPI := l
@@ -61,10 +63,9 @@ func serve(w io.Writer, c cli.CommandServe) {
 				conf,
 				10*time.Second,
 				10*time.Second,
-				1024*1024*4,
-				1024*1024*4,
 				lServerAPI,
 				nil,
+				start,
 			)
 		}
 	}
