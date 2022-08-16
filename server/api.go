@@ -1,9 +1,12 @@
 package server
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	stdlog "log"
+	"net"
 	"net/http"
 	"net/url"
 	"sync"
@@ -26,14 +29,23 @@ import (
 
 // API is the metrics, inspection and debug server
 type API struct {
-	lock   sync.Mutex
-	config *config.Config
-	server *http.Server
-	log    plog.Logger
-	graph  *handler.Server
+	auth         Auth
+	config       *config.Config
+	server       *http.Server
+	log          plog.Logger
+	graphHandler http.HandlerFunc
+
+	lock  sync.Mutex
+	graph *handler.Server
+}
+
+type Auth struct {
+	Username string
+	Password string
 }
 
 func NewAPI(
+	auth Auth,
 	conf *config.Config,
 	readTimeout, writeTimeout time.Duration,
 	log plog.Logger,
@@ -48,6 +60,7 @@ func NewAPI(
 	graphServer := makeGraphServer(start, conf, ingressServer)
 
 	srv := &API{
+		auth:   auth,
 		config: conf,
 		server: &http.Server{
 			Addr:         conf.API.Host,
@@ -63,7 +76,20 @@ func NewAPI(
 		graph: graphServer,
 	}
 	srv.server.Handler = srv
+	srv.graphHandler = makeBasicAuth(
+		auth.Username,
+		auth.Password,
+		srv.handleGraph,
+	)
 	return srv
+}
+
+func (s *API) handleGraph(w http.ResponseWriter, r *http.Request) {
+	func() {
+		s.lock.Lock()
+		defer s.lock.Unlock()
+		s.graph.ServeHTTP(w, r)
+	}()
 }
 
 func (s *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -75,11 +101,7 @@ func (s *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case fasthttp.MethodPost:
 		switch r.URL.Path {
 		case "/graph":
-			func() {
-				s.lock.Lock()
-				defer s.lock.Unlock()
-				s.graph.ServeHTTP(w, r)
-			}()
+			s.graphHandler(w, r)
 		default:
 			const c = http.StatusNotFound
 			http.Error(w, http.StatusText(c), c)
@@ -90,6 +112,86 @@ func (s *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(c), c)
 		return
 	}
+}
+
+func (s *API) Serve(listener net.Listener) {
+	serviceIDs := make([]string, len(s.config.ServicesEnabled))
+	for i := range s.config.ServicesEnabled {
+		serviceIDs[i] = s.config.ServicesEnabled[i].ID
+	}
+	s.log.Info().
+		Str("host", s.config.API.Host).
+		Bool("tls", s.config.API.TLS.CertFile != "").
+		Strs("services", serviceIDs).
+		Bool("auth", s.auth.Username != "").
+		Msg("listening")
+
+	var err error
+	if s.config.API.TLS.CertFile != "" {
+		// TLS enabled
+		if listener != nil {
+			err = s.server.ServeTLS(
+				listener,
+				s.config.API.TLS.CertFile,
+				s.config.API.TLS.KeyFile,
+			)
+		} else {
+			err = s.server.ListenAndServeTLS(
+				s.config.API.TLS.CertFile,
+				s.config.API.TLS.KeyFile,
+			)
+		}
+	} else {
+		// TLS disabled
+		if listener != nil {
+			err = s.server.Serve(listener)
+
+		} else {
+			err = s.server.ListenAndServe()
+		}
+	}
+	if err != nil && !errors.Is(err, http.ErrServerClosed) {
+		s.log.Fatal().Err(err).Msg("listening")
+	}
+}
+
+// Shutdown returns once the server was shutdown.
+// Logs shutdown and errors.
+func (s *API) Shutdown() error {
+	err := s.server.Shutdown(context.Background())
+	if err != nil {
+		s.log.Error().Err(err).Msg("shutting down")
+		return err
+	}
+	s.log.Info().Msg("shutdown")
+	return nil
+}
+
+func makeBasicAuth(
+	username, password string,
+	next http.HandlerFunc,
+) http.HandlerFunc {
+	if username == "" {
+		// No auth
+		return next
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set(
+			"WWW-Authenticate", `Basic realm="restricted", charset="UTF-8"`,
+		)
+		u, p, ok := r.BasicAuth()
+		if !ok {
+			const c = http.StatusUnauthorized
+			http.Error(w, http.StatusText(c), c)
+			return
+		}
+		if u != username || p != password {
+			const c = http.StatusForbidden
+			http.Error(w, http.StatusText(c), c)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 type logWriter struct {

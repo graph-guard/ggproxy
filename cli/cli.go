@@ -4,8 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 )
+
+const APIUsernameEnv = "GGPROXY_API_USERNAME"
+const APIPasswordEnv = "GGPROXY_API_PASSWORD"
 
 // Command can be any of:
 //
@@ -16,6 +20,8 @@ import (
 type Command any
 
 type CommandServe struct {
+	APIUsername   string
+	APIPassword   string
 	ConfigDirPath string
 }
 
@@ -43,11 +49,9 @@ func Parse(w io.Writer, args []string) (cmd Command) {
 	}
 
 	parseFlags := func() (ok bool) {
-		if err := flags.Parse(args[2:]); err != nil {
-			// flags will automatically call .Usage()
-			return false
-		}
-		return true
+		err := flags.Parse(args[2:])
+		// flags will automatically call .Usage()
+		return err == nil
 	}
 
 	if len(args) < 2 {
@@ -57,21 +61,40 @@ func Parse(w io.Writer, args []string) (cmd Command) {
 
 	switch args[1] {
 	case "serve":
+		c := CommandServe{}
+		c.APIUsername = os.Getenv(APIUsernameEnv)
+		c.APIPassword = os.Getenv(APIPasswordEnv)
+
 		flags.Usage = func() {
 			writeLines(w,
 				"",
 				fmt.Sprintf("usage: %s serve [-config <path>]", executableName),
 				"",
-				"serve flags available:",
+				"flags:",
 				"-config <path>: defines the configuration directory path "+
 					"(default: ./config)",
+				"",
+				"environment variables:",
+				fmt.Sprintf("%s: API basic auth username "+
+					"(enables basic auth if set)", APIUsernameEnv),
+				fmt.Sprintf("%s: API basic auth password", APIPasswordEnv),
 			)
 		}
-		c := CommandServe{}
+
 		flags.StringVar(&c.ConfigDirPath, "config", "./config", "")
 		if !parseFlags() {
 			return
 		}
+
+		if c.APIUsername != "" && c.APIPassword == "" {
+			writeLines(w,
+				APIPasswordEnv+" isn't set.",
+				"Make sure you provide it when "+APIUsernameEnv+" is defined.",
+			)
+			flags.Usage()
+			os.Exit(1)
+		}
+
 		cmd = c
 
 	case "reload":

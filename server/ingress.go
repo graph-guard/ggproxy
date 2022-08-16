@@ -1,12 +1,9 @@
 package server
 
 import (
-	"context"
 	"crypto/tls"
-	"errors"
 	"fmt"
 	"net"
-	"net/http"
 	"sync"
 	"time"
 
@@ -334,58 +331,6 @@ func (s *Ingress) Serve(listener net.Listener) {
 // Logs shutdown and errors.
 func (s *Ingress) Shutdown() error {
 	err := s.server.Shutdown()
-	if err != nil {
-		s.log.Error().Err(err).Msg("shutting down")
-		return err
-	}
-	s.log.Info().Msg("shutdown")
-	return nil
-}
-
-func (s *API) Serve(listener net.Listener) {
-	serviceIDs := make([]string, len(s.config.ServicesEnabled))
-	for i := range s.config.ServicesEnabled {
-		serviceIDs[i] = s.config.ServicesEnabled[i].ID
-	}
-	s.log.Info().
-		Str("host", s.config.API.Host).
-		Bool("tls", s.config.API.TLS.CertFile != "").
-		Strs("services", serviceIDs).
-		Msg("listening")
-
-	var err error
-	if s.config.API.TLS.CertFile != "" {
-		// TLS enabled
-		if listener != nil {
-			err = s.server.ServeTLS(
-				listener,
-				s.config.API.TLS.CertFile,
-				s.config.API.TLS.KeyFile,
-			)
-		} else {
-			err = s.server.ListenAndServeTLS(
-				s.config.API.TLS.CertFile,
-				s.config.API.TLS.KeyFile,
-			)
-		}
-	} else {
-		// TLS disabled
-		if listener != nil {
-			err = s.server.Serve(listener)
-
-		} else {
-			err = s.server.ListenAndServe()
-		}
-	}
-	if err != nil && !errors.Is(err, http.ErrServerClosed) {
-		s.log.Fatal().Err(err).Msg("listening")
-	}
-}
-
-// Shutdown returns once the server was shutdown.
-// Logs shutdown and errors.
-func (s *API) Shutdown() error {
-	err := s.server.Shutdown(context.Background())
 	if err != nil {
 		s.log.Error().Err(err).Msg("shutting down")
 		return err

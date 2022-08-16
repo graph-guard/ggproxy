@@ -60,6 +60,10 @@ func serve(w io.Writer, c cli.CommandServe) {
 		if conf.API.Host != "" {
 			wg.Add(1)
 			api = server.NewAPI(
+				server.Auth{
+					Username: c.APIUsername,
+					Password: c.APIPassword,
+				},
 				conf,
 				10*time.Second,
 				10*time.Second,

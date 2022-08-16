@@ -78,10 +78,15 @@ func TestCommandServe(t *testing.T) {
 				"",
 				"usage: ggproxy serve [-config <path>]",
 				"",
-				"serve flags available:",
+				"flags:",
 				"-config <path>: "+
 					"defines the configuration directory path "+
 					"(default: ./config)",
+				"",
+				"environment variables:",
+				"GGPROXY_API_USERNAME: API basic auth username "+
+					"(enables basic auth if set)",
+				"GGPROXY_API_PASSWORD: API basic auth password",
 			),
 			out.String(),
 		)
