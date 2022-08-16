@@ -40,12 +40,13 @@ func NewAPI(
 	log plog.Logger,
 	tlsConfig *tls.Config,
 	start time.Time, // When was the server started?
+	ingressServer *Ingress,
 ) *API {
 	lHTTPServer := log
 	lHTTPServer.Context = plog.NewContext(nil).
 		Str("server-module", "fasthttp").Value()
 
-	graphServer := makeGraphServer(start, conf)
+	graphServer := makeGraphServer(start, conf, ingressServer)
 
 	srv := &API{
 		config: conf,
@@ -106,9 +107,10 @@ func (w *logWriter) Write(data []byte) (int, error) {
 func makeGraphServer(
 	start time.Time,
 	conf *config.Config,
+	ingressServer *Ingress,
 ) *handler.Server {
 	reducer := gqlreduce.NewReducer()
-	services := makeServices(conf)
+	services := makeServices(conf, ingressServer)
 	s := handler.NewDefaultServer(
 		generated.NewExecutableSchema(
 			generated.Config{Resolvers: &graph.Resolver{
@@ -138,16 +140,19 @@ func makeGraphServer(
 	return s
 }
 
-func makeServices(conf *config.Config) map[string]*model.Service {
+func makeServices(
+	conf *config.Config,
+	ingressServer *Ingress,
+) map[string]*model.Service {
 	m := make(
 		map[string]*model.Service,
 		len(conf.ServicesEnabled)+len(conf.ServicesDisabled),
 	)
 	for _, s := range conf.ServicesEnabled {
-		m[s.ID] = makeService(conf, s, true)
+		m[s.ID] = makeService(conf, s, true, ingressServer)
 	}
 	for _, s := range conf.ServicesDisabled {
-		m[s.ID] = makeService(conf, s, false)
+		m[s.ID] = makeService(conf, s, false, ingressServer)
 	}
 	return m
 }
@@ -156,8 +161,11 @@ func makeService(
 	c *config.Config,
 	s *config.Service,
 	enabled bool,
+	ingressServer *Ingress,
 ) *model.Service {
+	stats := ingressServer.GetServiceStatistics(s.ID)
 	service := &model.Service{
+		Stats: stats,
 		TemplatesByID: make(
 			map[string]*model.Template,
 			len(s.TemplatesEnabled)+len(s.TemplatesDisabled),
@@ -176,12 +184,12 @@ func makeService(
 			d[t.ID] = t.Document
 			tm := &model.Template{
 				Service: service,
+				Stats:   ingressServer.GetTemplateStatistics(s.ID, t.ID),
 
-				ID:         t.ID,
-				Tags:       t.Tags,
-				Source:     string(t.Source),
-				Statistics: nil, //TODO
-				Enabled:    true,
+				ID:      t.ID,
+				Tags:    t.Tags,
+				Source:  string(t.Source),
+				Enabled: true,
 			}
 			service.TemplatesEnabled[i] = tm
 			service.TemplatesByID[t.ID] = tm
@@ -190,12 +198,12 @@ func makeService(
 			d[t.ID] = t.Document
 			tm := &model.Template{
 				Service: service,
+				Stats:   ingressServer.GetTemplateStatistics(s.ID, t.ID),
 
-				ID:         t.ID,
-				Tags:       t.Tags,
-				Source:     string(t.Source),
-				Statistics: nil, //TODO
-				Enabled:    false,
+				ID:      t.ID,
+				Tags:    t.Tags,
+				Source:  string(t.Source),
+				Enabled: false,
 			}
 			service.TemplatesDisabled[i] = tm
 			service.TemplatesByID[t.ID] = tm

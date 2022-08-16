@@ -77,14 +77,27 @@ func (r *serviceResolver) MatchingTemplates(ctx context.Context, obj *model.Serv
 
 // Statistics is the resolver for the statistics field.
 func (r *serviceResolver) Statistics(ctx context.Context, obj *model.Service) (*model.ServiceStatistics, error) {
-	// TODO
-	return &model.ServiceStatistics{}, nil
+	return &model.ServiceStatistics{
+		BlockedRequests:       int(obj.Stats.GetBlockedRequests()),
+		ForwardedRequests:     int(obj.Stats.GetForwardedRequests()),
+		ReceivedBytes:         int(obj.Stats.GetReceivedBytes()),
+		SentBytes:             int(obj.Stats.GetSentBytes()),
+		HighestProcessingTime: int(obj.Stats.GetHighestProcessingTime()),
+		AverageProcessingTime: int(obj.Stats.GetAverageProcessingTime()),
+		HighestResponseTime:   int(obj.Stats.GetHighestResponseTime()),
+		AverageResponseTime:   int(obj.Stats.GetAverageResponseTime()),
+	}, nil
 }
 
 // Statistics is the resolver for the statistics field.
 func (r *templateResolver) Statistics(ctx context.Context, obj *model.Template) (*model.TemplateStatistics, error) {
-	// TODO
-	return &model.TemplateStatistics{}, nil
+	return &model.TemplateStatistics{
+		Matches:               int(obj.Stats.GetMatches()),
+		HighestProcessingTime: int(obj.Stats.GetHighestProcessingTime()),
+		AverageProcessingTime: int(obj.Stats.GetAverageProcessingTime()),
+		HighestResponseTime:   int(obj.Stats.GetHighestResponseTime()),
+		AverageResponseTime:   int(obj.Stats.GetAverageResponseTime()),
+	}, nil
 }
 
 // Service is the resolver for the service field.

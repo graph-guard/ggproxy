@@ -84,6 +84,14 @@ type TemplateStatistics {
 	# lastMatch provides the time the template was last matched.
 	lastMatch: Time!
 
+	# highestProcessingTime provides the highest processing time
+	# for requests matching this template in milliseconds.
+	highestProcessingTime: Int!
+
+	# averageProcessingTime provides the average processing time
+	# for requests matching this template in milliseconds.
+	averageProcessingTime: Int!
+
 	# highestResponseTime provides the highest response time
 	# for requests matching this template in milliseconds.
 	highestResponseTime: Int!
@@ -106,6 +114,14 @@ type ServiceStatistics {
 	
 	# sentBytes provides the total number of bytes sent by the service.
 	sentBytes: Int!
+
+	# highestProcessingTime provides the highest processing time
+	# for requests matching this template in milliseconds.
+	highestProcessingTime: Int!
+
+	# averageProcessingTime provides the average processing time
+	# for requests matching this template in milliseconds.
+	averageProcessingTime: Int!
 
 	# highestResponseTime provides the highest response time in milliseconds.
 	highestResponseTime: Int!

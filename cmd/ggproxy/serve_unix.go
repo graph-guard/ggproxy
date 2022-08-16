@@ -66,6 +66,7 @@ func serve(w io.Writer, c cli.CommandServe) {
 				lServerAPI,
 				nil,
 				start,
+				s,
 			)
 		}
 	}

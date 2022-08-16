@@ -66,12 +66,14 @@ type ComplexityRoot struct {
 	}
 
 	ServiceStatistics struct {
-		AverageResponseTime func(childComplexity int) int
-		BlockedRequests     func(childComplexity int) int
-		ForwardedRequests   func(childComplexity int) int
-		HighestResponseTime func(childComplexity int) int
-		ReceivedBytes       func(childComplexity int) int
-		SentBytes           func(childComplexity int) int
+		AverageProcessingTime func(childComplexity int) int
+		AverageResponseTime   func(childComplexity int) int
+		BlockedRequests       func(childComplexity int) int
+		ForwardedRequests     func(childComplexity int) int
+		HighestProcessingTime func(childComplexity int) int
+		HighestResponseTime   func(childComplexity int) int
+		ReceivedBytes         func(childComplexity int) int
+		SentBytes             func(childComplexity int) int
 	}
 
 	Template struct {
@@ -84,10 +86,12 @@ type ComplexityRoot struct {
 	}
 
 	TemplateStatistics struct {
-		AverageResponseTime func(childComplexity int) int
-		HighestResponseTime func(childComplexity int) int
-		LastMatch           func(childComplexity int) int
-		Matches             func(childComplexity int) int
+		AverageProcessingTime func(childComplexity int) int
+		AverageResponseTime   func(childComplexity int) int
+		HighestProcessingTime func(childComplexity int) int
+		HighestResponseTime   func(childComplexity int) int
+		LastMatch             func(childComplexity int) int
+		Matches               func(childComplexity int) int
 	}
 }
 
@@ -222,6 +226,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Service.TemplatesEnabled(childComplexity), true
 
+	case "ServiceStatistics.averageProcessingTime":
+		if e.complexity.ServiceStatistics.AverageProcessingTime == nil {
+			break
+		}
+
+		return e.complexity.ServiceStatistics.AverageProcessingTime(childComplexity), true
+
 	case "ServiceStatistics.averageResponseTime":
 		if e.complexity.ServiceStatistics.AverageResponseTime == nil {
 			break
@@ -242,6 +253,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.ServiceStatistics.ForwardedRequests(childComplexity), true
+
+	case "ServiceStatistics.highestProcessingTime":
+		if e.complexity.ServiceStatistics.HighestProcessingTime == nil {
+			break
+		}
+
+		return e.complexity.ServiceStatistics.HighestProcessingTime(childComplexity), true
 
 	case "ServiceStatistics.highestResponseTime":
 		if e.complexity.ServiceStatistics.HighestResponseTime == nil {
@@ -306,12 +324,26 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Template.Tags(childComplexity), true
 
+	case "TemplateStatistics.averageProcessingTime":
+		if e.complexity.TemplateStatistics.AverageProcessingTime == nil {
+			break
+		}
+
+		return e.complexity.TemplateStatistics.AverageProcessingTime(childComplexity), true
+
 	case "TemplateStatistics.averageResponseTime":
 		if e.complexity.TemplateStatistics.AverageResponseTime == nil {
 			break
 		}
 
 		return e.complexity.TemplateStatistics.AverageResponseTime(childComplexity), true
+
+	case "TemplateStatistics.highestProcessingTime":
+		if e.complexity.TemplateStatistics.HighestProcessingTime == nil {
+			break
+		}
+
+		return e.complexity.TemplateStatistics.HighestProcessingTime(childComplexity), true
 
 	case "TemplateStatistics.highestResponseTime":
 		if e.complexity.TemplateStatistics.HighestResponseTime == nil {
@@ -472,6 +504,14 @@ type TemplateStatistics {
 	# lastMatch provides the time the template was last matched.
 	lastMatch: Time!
 
+	# highestProcessingTime provides the highest processing time
+	# for requests matching this template in milliseconds.
+	highestProcessingTime: Int!
+
+	# averageProcessingTime provides the average processing time
+	# for requests matching this template in milliseconds.
+	averageProcessingTime: Int!
+
 	# highestResponseTime provides the highest response time
 	# for requests matching this template in milliseconds.
 	highestResponseTime: Int!
@@ -494,6 +534,14 @@ type ServiceStatistics {
 	
 	# sentBytes provides the total number of bytes sent by the service.
 	sentBytes: Int!
+
+	# highestProcessingTime provides the highest processing time
+	# for requests matching this template in milliseconds.
+	highestProcessingTime: Int!
+
+	# averageProcessingTime provides the average processing time
+	# for requests matching this template in milliseconds.
+	averageProcessingTime: Int!
 
 	# highestResponseTime provides the highest response time in milliseconds.
 	highestResponseTime: Int!
@@ -1414,6 +1462,10 @@ func (ec *executionContext) fieldContext_Service_statistics(ctx context.Context,
 				return ec.fieldContext_ServiceStatistics_receivedBytes(ctx, field)
 			case "sentBytes":
 				return ec.fieldContext_ServiceStatistics_sentBytes(ctx, field)
+			case "highestProcessingTime":
+				return ec.fieldContext_ServiceStatistics_highestProcessingTime(ctx, field)
+			case "averageProcessingTime":
+				return ec.fieldContext_ServiceStatistics_averageProcessingTime(ctx, field)
 			case "highestResponseTime":
 				return ec.fieldContext_ServiceStatistics_highestResponseTime(ctx, field)
 			case "averageResponseTime":
@@ -1589,6 +1641,94 @@ func (ec *executionContext) _ServiceStatistics_sentBytes(ctx context.Context, fi
 }
 
 func (ec *executionContext) fieldContext_ServiceStatistics_sentBytes(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ServiceStatistics",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ServiceStatistics_highestProcessingTime(ctx context.Context, field graphql.CollectedField, obj *model.ServiceStatistics) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ServiceStatistics_highestProcessingTime(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.HighestProcessingTime, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ServiceStatistics_highestProcessingTime(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ServiceStatistics",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ServiceStatistics_averageProcessingTime(ctx context.Context, field graphql.CollectedField, obj *model.ServiceStatistics) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_ServiceStatistics_averageProcessingTime(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.AverageProcessingTime, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_ServiceStatistics_averageProcessingTime(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "ServiceStatistics",
 		Field:      field,
@@ -1864,6 +2004,10 @@ func (ec *executionContext) fieldContext_Template_statistics(ctx context.Context
 				return ec.fieldContext_TemplateStatistics_matches(ctx, field)
 			case "lastMatch":
 				return ec.fieldContext_TemplateStatistics_lastMatch(ctx, field)
+			case "highestProcessingTime":
+				return ec.fieldContext_TemplateStatistics_highestProcessingTime(ctx, field)
+			case "averageProcessingTime":
+				return ec.fieldContext_TemplateStatistics_averageProcessingTime(ctx, field)
 			case "highestResponseTime":
 				return ec.fieldContext_TemplateStatistics_highestResponseTime(ctx, field)
 			case "averageResponseTime":
@@ -2066,6 +2210,94 @@ func (ec *executionContext) fieldContext_TemplateStatistics_lastMatch(ctx contex
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			return nil, errors.New("field of type Time does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TemplateStatistics_highestProcessingTime(ctx context.Context, field graphql.CollectedField, obj *model.TemplateStatistics) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_TemplateStatistics_highestProcessingTime(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.HighestProcessingTime, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_TemplateStatistics_highestProcessingTime(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TemplateStatistics",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _TemplateStatistics_averageProcessingTime(ctx context.Context, field graphql.CollectedField, obj *model.TemplateStatistics) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_TemplateStatistics_averageProcessingTime(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.AverageProcessingTime, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_TemplateStatistics_averageProcessingTime(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "TemplateStatistics",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
 		},
 	}
 	return fc, nil
@@ -4219,6 +4451,20 @@ func (ec *executionContext) _ServiceStatistics(ctx context.Context, sel ast.Sele
 			if out.Values[i] == graphql.Null {
 				invalids++
 			}
+		case "highestProcessingTime":
+
+			out.Values[i] = ec._ServiceStatistics_highestProcessingTime(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "averageProcessingTime":
+
+			out.Values[i] = ec._ServiceStatistics_averageProcessingTime(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
 		case "highestResponseTime":
 
 			out.Values[i] = ec._ServiceStatistics_highestResponseTime(ctx, field, obj)
@@ -4353,6 +4599,20 @@ func (ec *executionContext) _TemplateStatistics(ctx context.Context, sel ast.Sel
 		case "lastMatch":
 
 			out.Values[i] = ec._TemplateStatistics_lastMatch(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "highestProcessingTime":
+
+			out.Values[i] = ec._TemplateStatistics_highestProcessingTime(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				invalids++
+			}
+		case "averageProcessingTime":
+
+			out.Values[i] = ec._TemplateStatistics_averageProcessingTime(ctx, field, obj)
 
 			if out.Values[i] == graphql.Null {
 				invalids++

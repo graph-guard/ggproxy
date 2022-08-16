@@ -7,17 +7,21 @@ import (
 )
 
 type ServiceStatistics struct {
-	BlockedRequests     int `json:"blockedRequests"`
-	ForwardedRequests   int `json:"forwardedRequests"`
-	ReceivedBytes       int `json:"receivedBytes"`
-	SentBytes           int `json:"sentBytes"`
-	HighestResponseTime int `json:"highestResponseTime"`
-	AverageResponseTime int `json:"averageResponseTime"`
+	BlockedRequests       int `json:"blockedRequests"`
+	ForwardedRequests     int `json:"forwardedRequests"`
+	ReceivedBytes         int `json:"receivedBytes"`
+	SentBytes             int `json:"sentBytes"`
+	HighestProcessingTime int `json:"highestProcessingTime"`
+	AverageProcessingTime int `json:"averageProcessingTime"`
+	HighestResponseTime   int `json:"highestResponseTime"`
+	AverageResponseTime   int `json:"averageResponseTime"`
 }
 
 type TemplateStatistics struct {
-	Matches             int       `json:"matches"`
-	LastMatch           time.Time `json:"lastMatch"`
-	HighestResponseTime int       `json:"highestResponseTime"`
-	AverageResponseTime int       `json:"averageResponseTime"`
+	Matches               int       `json:"matches"`
+	LastMatch             time.Time `json:"lastMatch"`
+	HighestProcessingTime int       `json:"highestProcessingTime"`
+	AverageProcessingTime int       `json:"averageProcessingTime"`
+	HighestResponseTime   int       `json:"highestResponseTime"`
+	AverageResponseTime   int       `json:"averageResponseTime"`
 }

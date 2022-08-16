@@ -14,6 +14,7 @@ import (
 	"github.com/graph-guard/gguard-proxy/engines/rmap"
 	"github.com/graph-guard/gguard-proxy/gqlreduce"
 	"github.com/graph-guard/gguard-proxy/server/internal/tokenwriter"
+	"github.com/graph-guard/gguard-proxy/statistics"
 	"github.com/graph-guard/gqt"
 	plog "github.com/phuslu/log"
 	"github.com/tidwall/gjson"
@@ -30,11 +31,13 @@ type Ingress struct {
 }
 
 type service struct {
-	source         string
-	destination    string
-	forwardReduced bool
-	log            plog.Logger
-	matcherpool    sync.Pool
+	source             string
+	destination        string
+	forwardReduced     bool
+	log                plog.Logger
+	matcherpool        sync.Pool
+	statistics         *statistics.ServiceSync
+	templateStatistics map[string]*statistics.TemplateSync
 }
 
 type matcher struct {
@@ -80,6 +83,15 @@ func NewIngress(
 
 	for _, serviceEnabled := range config.ServicesEnabled {
 		s := serviceEnabled
+
+		templateStatistics := make(
+			map[string]*statistics.TemplateSync,
+			len(s.TemplatesEnabled),
+		)
+		for _, t := range s.TemplatesEnabled {
+			templateStatistics[t.ID] = statistics.NewTemplateSync()
+		}
+
 		services[s.ID] = &service{
 			source:         s.ID,
 			destination:    s.ForwardURL,
@@ -105,6 +117,8 @@ func NewIngress(
 					}
 				},
 			},
+			statistics:         statistics.NewServiceSync(),
+			templateStatistics: templateStatistics,
 		}
 
 		// Warm up matcher pool
@@ -124,7 +138,26 @@ func NewIngress(
 	return srv
 }
 
+func (s *Ingress) GetServiceStatistics(id string) *statistics.ServiceSync {
+	if s, ok := s.services[id]; ok {
+		return s.statistics
+	}
+	return nil
+}
+
+func (s *Ingress) GetTemplateStatistics(
+	serviceID, templateID string,
+) *statistics.TemplateSync {
+	if s, ok := s.services[serviceID]; ok {
+		if s, ok := s.templateStatistics[templateID]; ok {
+			return s
+		}
+	}
+	return nil
+}
+
 func (s *Ingress) handle(ctx *fasthttp.RequestCtx) {
+	start := time.Now()
 	s.log.Info().
 		Bytes("path", ctx.Path()).
 		Msg("handling request")
@@ -146,9 +179,10 @@ func (s *Ingress) handle(ctx *fasthttp.RequestCtx) {
 		ctx.Error(fasthttp.StatusMessage(c), c)
 		return
 	}
+	body := ctx.Request.Body()
 	s.log.Debug().
 		Bytes("path", ctx.Path()).
-		Bytes("query", ctx.Request.Body()).
+		Bytes("query", body).
 		Msg("")
 
 	query, operationName, variablesJSON, err := extractData(ctx)
@@ -162,12 +196,24 @@ func (s *Ingress) handle(ctx *fasthttp.RequestCtx) {
 	m.Reducer.Reduce(
 		query, operationName, variablesJSON,
 		func(operation []gqlreduce.Token) {
-			if !m.Engine.Match(operation) {
+			templateID := m.Engine.Match(operation)
+			if templateID == "" {
+				timeProcessing := time.Since(start)
+				service.statistics.Update(
+					len(body), 0,
+					true,
+					timeProcessing, 0,
+				)
 				ctx.Error(fasthttp.StatusMessage(
 					fasthttp.StatusForbidden,
 				), fasthttp.StatusForbidden)
 				return
 			}
+
+			templateStatistics := service.templateStatistics[templateID]
+
+			timeProcessing := time.Since(start)
+			startForward := time.Now()
 
 			// Forward request
 			freq := fasthttp.AcquireRequest()
@@ -214,9 +260,27 @@ func (s *Ingress) handle(ctx *fasthttp.RequestCtx) {
 			})
 			ctx.Response.SetStatusCode(fresp.StatusCode())
 			ctx.Response.SetBody(fresp.Body())
+
+			timeForwarding := time.Since(startForward)
+			service.statistics.Update(
+				len(body), 0,
+				true,
+				timeProcessing, timeForwarding,
+			)
+			templateStatistics.Update(
+				timeProcessing, timeForwarding,
+			)
 		},
 		func(err error) {
 			s.log.Error().Err(err).Msg("reducer error")
+
+			timeProcessing := time.Since(start)
+			service.statistics.Update(
+				len(body), 0,
+				true,
+				timeProcessing, 0,
+			)
+
 			ctx.Error(
 				fasthttp.StatusMessage(fasthttp.StatusBadRequest),
 				fasthttp.StatusBadRequest,

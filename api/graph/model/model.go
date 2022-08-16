@@ -1,27 +1,30 @@
 package model
 
-import "github.com/graph-guard/gguard-proxy/engines/rmap"
+import (
+	"github.com/graph-guard/gguard-proxy/engines/rmap"
+	"github.com/graph-guard/gguard-proxy/statistics"
+)
 
 type Service struct {
 	Matcher       *rmap.RulesMap
 	TemplatesByID map[string]*Template
+	Stats         *statistics.ServiceSync
 
-	ID                string             `json:"id"`
-	TemplatesEnabled  []*Template        `json:"templatesEnabled"`
-	TemplatesDisabled []*Template        `json:"templatesDisabled"`
-	IngressURL        string             `json:"ingressURL"`
-	ForwardURL        string             `json:"forwardURL"`
-	ForwardReduced    bool               `json:"forwardReduced"`
-	Enabled           bool               `json:"enabled"`
-	Statistics        *ServiceStatistics `json:"statistics"`
+	ID                string      `json:"id"`
+	TemplatesEnabled  []*Template `json:"templatesEnabled"`
+	TemplatesDisabled []*Template `json:"templatesDisabled"`
+	IngressURL        string      `json:"ingressURL"`
+	ForwardURL        string      `json:"forwardURL"`
+	ForwardReduced    bool        `json:"forwardReduced"`
+	Enabled           bool        `json:"enabled"`
 }
 
 type Template struct {
 	Service *Service
+	Stats   *statistics.TemplateSync
 
-	ID         string              `json:"id"`
-	Tags       []string            `json:"tags"`
-	Source     string              `json:"source"`
-	Statistics *TemplateStatistics `json:"statistics"`
-	Enabled    bool                `json:"enabled"`
+	ID      string   `json:"id"`
+	Tags    []string `json:"tags"`
+	Source  string   `json:"source"`
+	Enabled bool     `json:"enabled"`
 }

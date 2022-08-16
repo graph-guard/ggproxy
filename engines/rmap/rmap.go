@@ -498,14 +498,17 @@ func ConstraintIdAndValue(c gqt.Constraint) (Constraint, any) {
 	}
 }
 
-// Match searches for a matching template.
-// Accepts a text query, query variables and operation name.
-// Returns nil if matching template is found, ErrNoMatch if not found.
-func (rm *RulesMap) Match(operation []gqlreduce.Token) (match bool) {
+// Match returns the ID of the matching template or "" if none was matched.
+func (rm *RulesMap) Match(operation []gqlreduce.Token) (id string) {
 	rm.FindMatch(operation, func(mask *bitmask.Set) {
-		match = mask.Size() > 0
+		if mask.Size() > 0 {
+			mask.Visit(func(n int) (skip bool) {
+				id = rm.templateIDs[n]
+				return true
+			})
+		}
 	})
-	return
+	return id
 }
 
 // MatchAll calls fn for every matching template.
