@@ -93,10 +93,6 @@ func (s *API) handleGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	s.log.Info().
-		Str("path", r.URL.Path).
-		Msg("handling request")
-
 	switch string(r.Method) {
 	case fasthttp.MethodPost:
 		switch r.URL.Path {
