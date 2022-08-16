@@ -38,16 +38,21 @@ var msgMaxReqBodySizeTooSmall = fmt.Sprintf(
 )
 
 type Config struct {
-	Ingress          ServerConfig
-	API              *ServerConfig
+	Ingress          IngressServerConfig
+	API              *APIServerConfig
 	ServicesEnabled  []*Service
 	ServicesDisabled []*Service
 }
 
-type ServerConfig struct {
+type IngressServerConfig struct {
 	Host                string
 	TLS                 TLS
 	MaxReqBodySizeBytes int
+}
+
+type APIServerConfig struct {
+	Host string
+	TLS  TLS
 }
 
 type TLS struct {
@@ -84,12 +89,10 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 
 	// Set default config values
 	conf := &Config{
-		Ingress: ServerConfig{
+		Ingress: IngressServerConfig{
 			MaxReqBodySizeBytes: DefaultMaxReqBodySize,
 		},
-		API: &ServerConfig{
-			MaxReqBodySizeBytes: DefaultMaxReqBodySize,
-		},
+		API: &APIServerConfig{},
 	}
 
 	for _, o := range d {
@@ -300,7 +303,6 @@ type serverConfig struct {
 			CertFile string `yaml:"cert-file"`
 			KeyFile  string `yaml:"key-file"`
 		} `yaml:"tls"`
-		MaxRequestBodySizeBytes *int `yaml:"max-request-body-size"`
 	} `yaml:"api"`
 }
 
@@ -571,13 +573,6 @@ func setConfig(conf *Config, c serverConfig, filePath string) (err error) {
 			}
 			conf.API.TLS.CertFile = c.CertFile
 			conf.API.TLS.KeyFile = c.KeyFile
-		}
-
-		if conf.API.MaxReqBodySizeBytes, err = getReqBodySize(
-			c.MaxRequestBodySizeBytes,
-			filePath, "api.max-request-body-size",
-		); err != nil {
-			return err
 		}
 	}
 

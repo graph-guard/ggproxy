@@ -59,12 +59,10 @@ func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 			`  tls:`,
 			`    cert-file: api.cert`,
 			`    key-file: api.key`,
-			`  # max-request-body-size: 1234`,
 		),
 	}
 
 	conf.Ingress.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
-	conf.API.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
 
 	for _, td := range []TestOK{
 		{
@@ -268,30 +266,6 @@ func TestReadConfigErrorIllegalIngressMaxReqBodySize(t *testing.T) {
 	require.Equal(t, &config.ErrorIllegal{
 		FilePath: p,
 		Feature:  "ingress.max-request-body-size",
-		Message: fmt.Sprintf(
-			"maximum request body size should not be smaller than %d B",
-			config.MinReqBodySize,
-		),
-	}, err)
-}
-
-func TestReadConfigErrorIllegalAPIMaxReqBodySize(t *testing.T) {
-	fs, path, _ := validFS()
-	p := filepath.Join(
-		path,
-		config.ServerConfigFile1,
-	)
-	fs[p].Data = lines(
-		`ingress:`,
-		`  host: localhost:8080`,
-		`api:`,
-		`  host: localhost:9090`,
-		`  max-request-body-size: 255`,
-	)
-	err := testError(t, fs, path)
-	require.Equal(t, &config.ErrorIllegal{
-		FilePath: p,
-		Feature:  "api.max-request-body-size",
 		Message: fmt.Sprintf(
 			"maximum request body size should not be smaller than %d B",
 			config.MinReqBodySize,
@@ -678,10 +652,6 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 				`  tls:`,
 				`    cert-file: api.cert`,
 				`    key-file: api.key`,
-				fmt.Sprintf(
-					`  max-request-body-size: %d`,
-					config.MinReqBodySize+256,
-				),
 			),
 		},
 
@@ -799,7 +769,7 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 	}
 
 	conf = &config.Config{
-		Ingress: config.ServerConfig{
+		Ingress: config.IngressServerConfig{
 			Host: "localhost:443",
 			TLS: config.TLS{
 				CertFile: "ingress.cert",
@@ -807,13 +777,12 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 			},
 			MaxReqBodySizeBytes: config.MinReqBodySize + 256,
 		},
-		API: &config.ServerConfig{
+		API: &config.APIServerConfig{
 			Host: "localhost:3000",
 			TLS: config.TLS{
 				CertFile: "api.cert",
 				KeyFile:  "api.key",
 			},
-			MaxReqBodySizeBytes: config.MinReqBodySize + 256,
 		},
 		ServicesEnabled: []*config.Service{
 			{

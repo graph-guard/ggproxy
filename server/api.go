@@ -26,12 +26,11 @@ import (
 
 // API is the metrics, inspection and debug server
 type API struct {
-	lock           sync.Mutex
-	config         *config.Config
-	server         *http.Server
-	log            plog.Logger
-	graph          *handler.Server
-	maxReqBodySize int
+	lock   sync.Mutex
+	config *config.Config
+	server *http.Server
+	log    plog.Logger
+	graph  *handler.Server
 }
 
 func NewAPI(
@@ -60,9 +59,8 @@ func NewAPI(
 				Msg: "http server log",
 			}, "", 0),
 		},
-		log:            log,
-		graph:          graphServer,
-		maxReqBodySize: conf.API.MaxReqBodySizeBytes,
+		log:   log,
+		graph: graphServer,
 	}
 	srv.server.Handler = srv
 	return srv
