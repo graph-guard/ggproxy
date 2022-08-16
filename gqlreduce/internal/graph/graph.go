@@ -1,8 +1,8 @@
 package graph
 
 import (
-	"github.com/graph-guard/gguard-proxy/utilities/container/hamap"
-	"github.com/graph-guard/gguard-proxy/utilities/stack"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
+	"github.com/graph-guard/ggproxy/utilities/stack"
 )
 
 const MaxFragments = 128

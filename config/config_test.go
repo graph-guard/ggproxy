@@ -7,7 +7,7 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/graph-guard/gguard-proxy/config"
+	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/gqt"
 	"github.com/stretchr/testify/require"
 )

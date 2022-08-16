@@ -3,7 +3,7 @@ package amap_test
 import (
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/container/amap"
+	"github.com/graph-guard/ggproxy/utilities/container/amap"
 	"github.com/stretchr/testify/require"
 )
 

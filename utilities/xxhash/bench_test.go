@@ -3,7 +3,7 @@ package xxhash_test
 import (
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/xxhash"
+	"github.com/graph-guard/ggproxy/utilities/xxhash"
 
 	"github.com/pierrec/xxHash/xxHash64"
 )

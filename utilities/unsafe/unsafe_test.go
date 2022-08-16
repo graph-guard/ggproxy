@@ -3,7 +3,7 @@ package unsafe_test
 import (
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/unsafe"
+	"github.com/graph-guard/ggproxy/utilities/unsafe"
 	"github.com/stretchr/testify/require"
 )
 

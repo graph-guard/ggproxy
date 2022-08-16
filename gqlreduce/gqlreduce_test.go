@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
-	"github.com/graph-guard/gguard-proxy/utilities/decl"
+	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/utilities/decl"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"
 )

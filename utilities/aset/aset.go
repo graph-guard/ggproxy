@@ -1,6 +1,6 @@
 package aset
 
-import "github.com/graph-guard/gguard-proxy/utilities/math"
+import "github.com/graph-guard/ggproxy/utilities/math"
 
 type ElementInterface interface {
 	uint8 | uint16 | uint32 | uint64 | int | int8 | int16 | int32 | int64 | float32 | float64

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
-	"github.com/graph-guard/gguard-proxy/server/internal/tokenwriter"
+	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/server/internal/tokenwriter"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"
 )

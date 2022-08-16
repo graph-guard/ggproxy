@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/graph-guard/gguard-proxy/cli"
-	"github.com/graph-guard/gguard-proxy/server"
+	"github.com/graph-guard/ggproxy/cli"
+	"github.com/graph-guard/ggproxy/server"
 	"github.com/phuslu/log"
 )
 

@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/dustin/go-humanize"
-	"github.com/graph-guard/gguard-proxy/config/metadata"
+	"github.com/graph-guard/ggproxy/config/metadata"
 	"github.com/graph-guard/gqt"
 	yaml "gopkg.in/yaml.v3"
 )

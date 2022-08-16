@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/gqlreduce/internal/graph"
-	"github.com/graph-guard/gguard-proxy/utilities/decl"
+	"github.com/graph-guard/ggproxy/gqlreduce/internal/graph"
+	"github.com/graph-guard/ggproxy/utilities/decl"
 	"github.com/stretchr/testify/require"
 )
 

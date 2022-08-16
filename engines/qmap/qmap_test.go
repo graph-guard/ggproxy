@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/engines/qmap"
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
-	"github.com/graph-guard/gguard-proxy/utilities/container/hamap"
-	"github.com/graph-guard/gguard-proxy/utilities/xxhash"
+	"github.com/graph-guard/ggproxy/engines/qmap"
+	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
+	"github.com/graph-guard/ggproxy/utilities/xxhash"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"
 )

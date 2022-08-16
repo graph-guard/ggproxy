@@ -3,9 +3,9 @@ package graph
 import (
 	"time"
 
-	"github.com/graph-guard/gguard-proxy/api/graph/model"
-	"github.com/graph-guard/gguard-proxy/config"
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/api/graph/model"
+	"github.com/graph-guard/ggproxy/config"
+	"github.com/graph-guard/ggproxy/gqlreduce"
 )
 
 //go:generate go run github.com/99designs/gqlgen

@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/mhstore"
+	"github.com/graph-guard/ggproxy/utilities/mhstore"
 	"github.com/stretchr/testify/require"
 )
 

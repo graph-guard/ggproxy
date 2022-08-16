@@ -1,4 +1,4 @@
-module github.com/graph-guard/gguard-proxy
+module github.com/graph-guard/ggproxy
 
 go 1.18
 

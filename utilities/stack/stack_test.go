@@ -3,7 +3,7 @@ package stack_test
 import (
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/stack"
+	"github.com/graph-guard/ggproxy/utilities/stack"
 	"github.com/stretchr/testify/require"
 )
 

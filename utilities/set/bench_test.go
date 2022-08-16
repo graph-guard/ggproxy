@@ -6,7 +6,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/set"
+	"github.com/graph-guard/ggproxy/utilities/set"
 )
 
 var GB bool

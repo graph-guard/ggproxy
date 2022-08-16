@@ -1,7 +1,7 @@
 package amap
 
 import (
-	"github.com/graph-guard/gguard-proxy/utilities/math"
+	"github.com/graph-guard/ggproxy/utilities/math"
 )
 
 type KeyInterface interface {

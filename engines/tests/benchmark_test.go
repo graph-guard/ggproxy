@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/engines/rmap"
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/engines/rmap"
+	"github.com/graph-guard/ggproxy/gqlreduce"
 	"github.com/graph-guard/gqt"
 )
 

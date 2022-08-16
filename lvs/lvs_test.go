@@ -8,7 +8,7 @@ import (
 	"encoding/pem"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/lvs"
+	"github.com/graph-guard/ggproxy/lvs"
 	"github.com/stretchr/testify/require"
 )
 

@@ -5,7 +5,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/container"
+	"github.com/graph-guard/ggproxy/utilities/container"
 )
 
 func forEachImplB(

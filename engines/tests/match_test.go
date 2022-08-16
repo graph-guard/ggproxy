@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/engines/rmap"
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
-	"github.com/graph-guard/gguard-proxy/utilities/xxhash"
+	"github.com/graph-guard/ggproxy/engines/rmap"
+	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/utilities/xxhash"
 	"github.com/graph-guard/gqt"
 	"github.com/stretchr/testify/require"
 )

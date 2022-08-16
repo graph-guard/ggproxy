@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/container/hamap"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/stretchr/testify/require"
 )
 

@@ -3,7 +3,7 @@ package set_test
 import (
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/set"
+	"github.com/graph-guard/ggproxy/utilities/set"
 
 	"github.com/stretchr/testify/require"
 )

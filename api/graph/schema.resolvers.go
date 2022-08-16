@@ -7,9 +7,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/graph-guard/gguard-proxy/api/graph/generated"
-	"github.com/graph-guard/gguard-proxy/api/graph/model"
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/api/graph/generated"
+	"github.com/graph-guard/ggproxy/api/graph/model"
+	"github.com/graph-guard/ggproxy/gqlreduce"
 )
 
 // Uptime is the resolver for the uptime field.

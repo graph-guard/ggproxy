@@ -9,7 +9,7 @@
 package hamap
 
 import (
-	"github.com/graph-guard/gguard-proxy/utilities/math"
+	"github.com/graph-guard/ggproxy/utilities/math"
 	"github.com/zeebo/xxh3"
 )
 

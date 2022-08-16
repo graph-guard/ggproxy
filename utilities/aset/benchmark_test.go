@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/aset"
+	"github.com/graph-guard/ggproxy/utilities/aset"
 )
 
 func BenchmarkAdd(b *testing.B) {

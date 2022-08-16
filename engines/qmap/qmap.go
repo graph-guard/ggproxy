@@ -5,11 +5,11 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
-	"github.com/graph-guard/gguard-proxy/utilities/container/hamap"
-	"github.com/graph-guard/gguard-proxy/utilities/stack"
-	"github.com/graph-guard/gguard-proxy/utilities/unsafe"
-	"github.com/graph-guard/gguard-proxy/utilities/xxhash"
+	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
+	"github.com/graph-guard/ggproxy/utilities/stack"
+	"github.com/graph-guard/ggproxy/utilities/unsafe"
+	"github.com/graph-guard/ggproxy/utilities/xxhash"
 	"github.com/graph-guard/gqlscan"
 )
 

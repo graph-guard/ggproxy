@@ -1,6 +1,6 @@
 package mhstore
 
-import "github.com/graph-guard/gguard-proxy/utilities/aset"
+import "github.com/graph-guard/ggproxy/utilities/aset"
 
 // MHStore stands for Mask-Hash-Store.
 // Storage for faster calculation of matching hashes per mask.

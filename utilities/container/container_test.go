@@ -4,10 +4,10 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/container"
-	"github.com/graph-guard/gguard-proxy/utilities/container/gomap"
-	"github.com/graph-guard/gguard-proxy/utilities/container/hamap"
-	"github.com/graph-guard/gguard-proxy/utilities/container/linear"
+	"github.com/graph-guard/ggproxy/utilities/container"
+	"github.com/graph-guard/ggproxy/utilities/container/gomap"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
+	"github.com/graph-guard/ggproxy/utilities/container/linear"
 	"github.com/stretchr/testify/require"
 )
 

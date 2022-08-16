@@ -3,7 +3,7 @@ package main
 import (
 	"io"
 
-	"github.com/graph-guard/gguard-proxy/cli"
+	"github.com/graph-guard/ggproxy/cli"
 )
 
 func serve(w io.Writer, c cli.CommandServe) {

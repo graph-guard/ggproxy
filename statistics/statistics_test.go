@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/graph-guard/gguard-proxy/statistics"
+	"github.com/graph-guard/ggproxy/statistics"
 	"github.com/stretchr/testify/require"
 )
 

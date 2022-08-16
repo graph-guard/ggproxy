@@ -1,8 +1,8 @@
 package model
 
 import (
-	"github.com/graph-guard/gguard-proxy/engines/rmap"
-	"github.com/graph-guard/gguard-proxy/statistics"
+	"github.com/graph-guard/ggproxy/engines/rmap"
+	"github.com/graph-guard/ggproxy/statistics"
 )
 
 type Service struct {

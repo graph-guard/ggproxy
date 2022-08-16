@@ -3,7 +3,7 @@ package gqlreduce_test
 import (
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlreduce"
 )
 
 var GI int

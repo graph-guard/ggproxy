@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/cli"
+	"github.com/graph-guard/ggproxy/cli"
 
 	"github.com/stretchr/testify/require"
 )

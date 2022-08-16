@@ -7,11 +7,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/graph-guard/gguard-proxy/gqlreduce/internal/graph"
-	"github.com/graph-guard/gguard-proxy/utilities/container/hamap"
-	"github.com/graph-guard/gguard-proxy/utilities/segmented"
-	"github.com/graph-guard/gguard-proxy/utilities/stack"
-	"github.com/graph-guard/gguard-proxy/utilities/unsafe"
+	"github.com/graph-guard/ggproxy/gqlreduce/internal/graph"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
+	"github.com/graph-guard/ggproxy/utilities/segmented"
+	"github.com/graph-guard/ggproxy/utilities/stack"
+	"github.com/graph-guard/ggproxy/utilities/unsafe"
 	"github.com/graph-guard/gqlscan"
 	"github.com/tidwall/gjson"
 )

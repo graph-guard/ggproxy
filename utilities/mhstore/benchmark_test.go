@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/mhstore"
+	"github.com/graph-guard/ggproxy/utilities/mhstore"
 )
 
 func BenchmarkAdd(b *testing.B) {

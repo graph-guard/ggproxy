@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/graph-guard/gguard-proxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlreduce"
 	"github.com/graph-guard/gqlscan"
 )
 

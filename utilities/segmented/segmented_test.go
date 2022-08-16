@@ -3,7 +3,7 @@ package segmented_test
 import (
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/segmented"
+	"github.com/graph-guard/ggproxy/utilities/segmented"
 	"github.com/stretchr/testify/require"
 )
 

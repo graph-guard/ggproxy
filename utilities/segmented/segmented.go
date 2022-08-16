@@ -2,7 +2,7 @@
 package segmented
 
 import (
-	"github.com/graph-guard/gguard-proxy/utilities/container/hamap"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 )
 
 // Segment defines the start and end indexes of a segment.

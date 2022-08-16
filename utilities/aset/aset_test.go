@@ -3,8 +3,8 @@ package aset_test
 import (
 	"testing"
 
-	"github.com/graph-guard/gguard-proxy/utilities/aset"
-	"github.com/graph-guard/gguard-proxy/utilities/math"
+	"github.com/graph-guard/ggproxy/utilities/aset"
+	"github.com/graph-guard/ggproxy/utilities/math"
 	"github.com/stretchr/testify/require"
 )
 

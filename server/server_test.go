@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/graph-guard/gguard-proxy/config"
-	"github.com/graph-guard/gguard-proxy/server"
+	"github.com/graph-guard/ggproxy/config"
+	"github.com/graph-guard/ggproxy/server"
 	plog "github.com/phuslu/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
