@@ -8,8 +8,10 @@ import (
 	"path/filepath"
 )
 
-const APIUsernameEnv = "GGPROXY_API_USERNAME"
-const APIPasswordEnv = "GGPROXY_API_PASSWORD"
+const EnvAPIUsername = "GGPROXY_API_USERNAME"
+const EnvAPIPassword = "GGPROXY_API_PASSWORD"
+const EnvLicence = "GGPROXY_LICENCE"
+const LinkDashboardDownload = "https://graphguard.io/dashboard#download"
 
 // Command can be any of:
 //
@@ -20,16 +22,23 @@ const APIPasswordEnv = "GGPROXY_API_PASSWORD"
 type Command any
 
 type CommandServe struct {
+	ConfigDirPath string
+	LicenceKey    string
 	APIUsername   string
 	APIPassword   string
-	ConfigDirPath string
 }
 
 type CommandReload struct{}
 
 type CommandStop struct{}
 
-func Parse(w io.Writer, args []string) (cmd Command) {
+func Parse(
+	w io.Writer,
+	args []string,
+	validateLicenceKey func(string) bool,
+) (cmd Command) {
+	fm := fmt.Sprintf
+
 	executableName := "ggproxy"
 	if len(args) > 0 {
 		executableName = filepath.Base(args[0])
@@ -39,7 +48,7 @@ func Parse(w io.Writer, args []string) (cmd Command) {
 	flags.SetOutput(w)
 	flags.Usage = func() {
 		writeLines(w,
-			fmt.Sprintf("usage: %s <command> [flags]", executableName),
+			fm("usage: %s <command> [flags]", executableName),
 			"",
 			"commands available:",
 			" serve - turns the CLI into a server and starts listening",
@@ -62,50 +71,68 @@ func Parse(w io.Writer, args []string) (cmd Command) {
 	switch args[1] {
 	case "serve":
 		c := CommandServe{}
-		c.APIUsername = os.Getenv(APIUsernameEnv)
-		c.APIPassword = os.Getenv(APIPasswordEnv)
+		c.APIUsername = os.Getenv(EnvAPIUsername)
+		c.APIPassword = os.Getenv(EnvAPIPassword)
+		c.LicenceKey = os.Getenv(EnvLicence)
 
 		flags.Usage = func() {
 			writeLines(w,
 				"",
-				fmt.Sprintf("usage: %s serve [-config <path>]", executableName),
+				fm("usage: %s serve [-config <path>]", executableName),
 				"",
 				"flags:",
 				"-config <path>: defines the configuration directory path "+
 					"(default: ./config)",
 				"",
 				"environment variables:",
-				fmt.Sprintf("%s: API basic auth username "+
-					"(enables basic auth if set)", APIUsernameEnv),
-				fmt.Sprintf("%s: API basic auth password", APIPasswordEnv),
+				fm("%s: API basic auth username "+
+					"(enables basic auth if set)", EnvAPIUsername),
+				fm("%s: API basic auth password", EnvAPIPassword),
+				fm("%s: Licence key", EnvLicence),
 			)
 		}
 
 		flags.StringVar(&c.ConfigDirPath, "config", "./config", "")
 		if !parseFlags() {
-			return
+			return nil
+		}
+
+		if c.LicenceKey == "" {
+			writeLines(w,
+				EnvLicence+" isn't set.",
+				fm("You can get the licence key at %s", LinkDashboardDownload),
+			)
+			flags.Usage()
+			return nil
+		} else if !validateLicenceKey(c.LicenceKey) {
+			writeLines(w,
+				EnvLicence+" contains an invalid licence key!",
+				fm("You can get a valid licence key at %s", LinkDashboardDownload),
+			)
+			flags.Usage()
+			return nil
 		}
 
 		if c.APIUsername != "" && c.APIPassword == "" {
 			writeLines(w,
-				APIPasswordEnv+" isn't set.",
-				"Make sure you provide it when "+APIUsernameEnv+" is defined.",
+				EnvAPIPassword+" isn't set.",
+				"Make sure you provide it when "+EnvAPIUsername+" is defined.",
 			)
 			flags.Usage()
-			os.Exit(1)
+			return nil
 		}
 
 		cmd = c
 
 	case "reload":
 		if !parseFlags() {
-			return
+			return nil
 		}
 		cmd = CommandReload{}
 
 	case "stop":
 		if !parseFlags() {
-			return
+			return nil
 		}
 		cmd = CommandStop{}
 

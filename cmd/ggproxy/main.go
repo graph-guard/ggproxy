@@ -8,13 +8,20 @@ import (
 )
 
 func main() {
-	switch c := cli.Parse(os.Stdout, os.Args).(type) {
+	w := os.Stdout
+	switch c := cli.Parse(
+		w,
+		os.Args,
+		func(licenceKey string) bool {
+			return licenceKey == "CLOSEDBETAAUG2022"
+		},
+	).(type) {
 	case cli.CommandServe:
-		serve(os.Stdout, c)
+		serve(w, c)
 	case cli.CommandReload:
-		reload(os.Stdout, c)
+		reload(w, c)
 	case cli.CommandStop:
-		stop(os.Stdout, c)
+		stop(w, c)
 	default:
 		panic(fmt.Errorf("unexpected command: %#v", c))
 	}
