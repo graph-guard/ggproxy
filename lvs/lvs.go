@@ -41,7 +41,7 @@ var ErrFailParseClaims = errors.New("fail to parse claims")
 var ErrLicenseExpire = errors.New("license expire")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims
-func ValidateLicenseToken(licenseToken string) (claims *JwtClaim, err error) {
+func ValidateLicenseToken(licenseToken string) (*JwtClaim, error) {
 	decodedPublicKey, err := decodePublicKey([]byte(PublicKey))
 	if err != nil {
 		return nil, err
@@ -56,22 +56,19 @@ func ValidateLicenseToken(licenseToken string) (claims *JwtClaim, err error) {
 	)
 
 	if err != nil {
-		return
+		return nil, err
 	}
 
 	claims, ok := token.Claims.(*JwtClaim)
 	if !ok {
-		err = ErrFailParseClaims
-		return
+		return nil, ErrFailParseClaims
 	}
 
 	if claims.ExpiresAt < time.Now().Local().Unix() {
-		err = ErrLicenseExpire
-		return
+		return nil, ErrLicenseExpire
 	}
 
-	return
-
+	return claims, nil
 }
 
 func decodePublicKey(pemEncoded []byte) (crypto.PublicKey, error) {
