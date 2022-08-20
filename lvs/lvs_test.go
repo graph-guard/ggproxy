@@ -50,6 +50,8 @@ func GenerateLicenseToken(expirationHours int64) (signedToken string, err error)
 			IssuedAt:  time.Now().Local().Unix(),
 			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(expirationHours)).Unix(),
 		},
+		Type: lvs.Beta,
+		Plan: lvs.Unlimited,
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES512, claims)

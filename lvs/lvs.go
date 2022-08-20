@@ -14,6 +14,12 @@ import (
 type Type uint16
 type Plan uint16
 
+type JwtClaim struct {
+	jwt.StandardClaims
+	Type Type `json:"type"`
+	Plan Plan `json:"plan"`
+}
+
 const (
 	Beta Type = iota
 	Individual
@@ -27,12 +33,6 @@ const (
 	Big
 	Unlimited
 )
-
-type JwtClaim struct {
-	jwt.StandardClaims
-	Type Type `json:"type"`
-	Plan Plan `json:"plan"`
-}
 
 // Encoded public key, uniq per client
 var PublicKey string
