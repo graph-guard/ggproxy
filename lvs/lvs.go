@@ -37,8 +37,8 @@ const (
 // Encoded public key, uniq per client
 var PublicKey string
 
-var ErrFailedParseClaims = errors.New("failed to parse claims")
-var ErrJWTExpired = errors.New("JWT is expired")
+var ErrFailParseClaims = errors.New("fail to parse claims")
+var ErrLicenseExpire = errors.New("license expire")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims
 func ValidateLicenseToken(licenseToken string) (claims *JwtClaim, err error) {
@@ -61,12 +61,12 @@ func ValidateLicenseToken(licenseToken string) (claims *JwtClaim, err error) {
 
 	claims, ok := token.Claims.(*JwtClaim)
 	if !ok {
-		err = ErrFailedParseClaims
+		err = ErrFailParseClaims
 		return
 	}
 
 	if claims.ExpiresAt < time.Now().Local().Unix() {
-		err = ErrJWTExpired
+		err = ErrLicenseExpire
 		return
 	}
 
