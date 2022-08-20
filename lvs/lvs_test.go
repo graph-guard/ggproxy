@@ -1,13 +1,14 @@
 package lvs_test
 
 import (
-	"crypto/ecdsa"
-	"crypto/rand"
+	"crypto"
 	"crypto/x509"
 	_ "embed"
 	"encoding/pem"
 	"testing"
+	"time"
 
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/graph-guard/ggproxy/lvs"
 	"github.com/stretchr/testify/require"
 )
@@ -31,41 +32,42 @@ XaRiQUHCa5lES8UIwF8=
 -----END PUBLIC KEY-----
 `
 
-var fingerprint = "62f8216d-7b07-4a39-a0cb-b33635de2e55"
-
 func TestVerifyLicenceKey(t *testing.T) {
-	decodedLicenseKey, err := GenerateLicenseKey()
+	decodedLicenseKey, err := GenerateLicenseToken(1)
 	require.NoError(t, err)
 	require.NotEmpty(t, decodedLicenseKey)
 
-	lvs.Fingerprint = fingerprint
 	lvs.PublicKey = publicKey
 
-	valid, err := lvs.VerifyLicenceKey(decodedLicenseKey)
+	claims, err := lvs.ValidateLicenseToken(decodedLicenseKey)
 	require.NoError(t, err)
-	require.Equal(t, true, valid)
+	require.NotNil(t, claims)
 }
 
-func GenerateLicenseKey() ([]byte, error) {
-	hash, err := lvs.CalculateExecutableHash()
-	if err != nil {
-		return nil, err
+func GenerateLicenseToken(expirationHours int64) (signedToken string, err error) {
+	claims := &lvs.JwtClaim{
+		StandardClaims: jwt.StandardClaims{
+			IssuedAt:  time.Now().Local().Unix(),
+			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(expirationHours)).Unix(),
+		},
 	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodES512, claims)
 
 	decodedPrivateKey, err := decodePrivateKey([]byte(privateKey))
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 
-	key, err := ecdsa.SignASN1(rand.Reader, decodedPrivateKey, hash)
+	signedToken, err = token.SignedString(decodedPrivateKey)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	return key, nil
+	return
 }
 
-func decodePrivateKey(pemEncoded []byte) (*ecdsa.PrivateKey, error) {
+func decodePrivateKey(pemEncoded []byte) (crypto.PrivateKey, error) {
 	block, _ := pem.Decode(pemEncoded)
 	x509Encoded := block.Bytes
 	privateKey, err := x509.ParseECPrivateKey(x509Encoded)

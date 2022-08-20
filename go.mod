@@ -4,6 +4,7 @@ go 1.18
 
 require (
 	github.com/99designs/gqlgen v0.17.13
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/dustin/go-humanize v1.0.0
 	github.com/graph-guard/gqlscan v1.0.0
 	github.com/graph-guard/gqt v0.0.0-20220714090301-a9dea11904c1

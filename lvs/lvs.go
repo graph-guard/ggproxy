@@ -1,60 +1,87 @@
 package lvs
 
 import (
-	"crypto/ecdsa"
-	"crypto/sha512"
+	"crypto"
 	"crypto/x509"
 	_ "embed"
 	"encoding/pem"
-	"hash"
-	"io"
-	"os"
+	"errors"
+	"time"
+
+	jwt "github.com/dgrijalva/jwt-go"
 )
 
-var Fingerprint string
+type Type uint16
+type Plan uint16
+
+const (
+	Beta Type = iota
+	Individual
+	Commercial
+)
+
+const (
+	Tiny Plan = iota
+	Small
+	Medium
+	Big
+	Unlimited
+)
+
+type JwtClaim struct {
+	jwt.StandardClaims
+	Type Type `json:"type"`
+	Plan Plan `json:"plan"`
+}
+
+// Encoded public key, uniq per client
 var PublicKey string
 
-func VerifyLicenceKey(key []byte) (bool, error) {
-	pubDecoded, err := decodePublicKey([]byte(PublicKey))
-	if err != nil {
-		return false, err
-	}
-	hash, err := CalculateExecutableHash()
-	if err != nil {
-		return false, err
-	}
+var ErrFailedParseClaims = errors.New("failed to parse claims")
+var ErrJWTExpired = errors.New("JWT is expired")
 
-	return ecdsa.VerifyASN1(pubDecoded, hash, key), nil
-}
-
-func CalculateExecutableHash() ([]byte, error) {
-	var h hash.Hash = sha512.New()
-
-	executable, err := os.Executable()
-	if err != nil {
-		panic(err)
-	}
-	f, err := os.Open(executable)
+// ValidateLicenseToken verifies the license and return license key parameters as claims
+func ValidateLicenseToken(licenseToken string) (claims *JwtClaim, err error) {
+	decodedPublicKey, err := decodePublicKey([]byte(PublicKey))
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
 
-	if _, err := io.Copy(h, f); err != nil {
-		return nil, err
+	token, err := jwt.ParseWithClaims(
+		licenseToken,
+		&JwtClaim{},
+		func(token *jwt.Token) (interface{}, error) {
+			return decodedPublicKey, nil
+		},
+	)
+
+	if err != nil {
+		return
 	}
 
-	return h.Sum(nil), nil
+	claims, ok := token.Claims.(*JwtClaim)
+	if !ok {
+		err = ErrFailedParseClaims
+		return
+	}
+
+	if claims.ExpiresAt < time.Now().Local().Unix() {
+		err = ErrJWTExpired
+		return
+	}
+
+	return
+
 }
 
-func decodePublicKey(pemEncoded []byte) (*ecdsa.PublicKey, error) {
+func decodePublicKey(pemEncoded []byte) (crypto.PublicKey, error) {
 	blockPub, _ := pem.Decode(pemEncoded)
 	x509Encoded := blockPub.Bytes
 	genericPublicKey, err := x509.ParsePKIXPublicKey(x509Encoded)
 	if err != nil {
 		return nil, err
 	}
-	publicKey := genericPublicKey.(*ecdsa.PublicKey)
+	publicKey := genericPublicKey.(crypto.PublicKey)
 
 	return publicKey, nil
 }
