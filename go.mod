@@ -2,13 +2,12 @@ module github.com/graph-guard/ggproxy
 
 go 1.18
 
-replace github.com/graph-guard/backend => /home/null/workspace/graph-guard/backend
-
 require (
 	github.com/99designs/gqlgen v0.17.13
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/dustin/go-humanize v1.0.0
-	github.com/graph-guard/backend v0.0.0-00010101000000-000000000000
+	github.com/google/uuid v1.3.0
+	github.com/graph-guard/backend v0.0.0-20220821131029-eb259269f099
 	github.com/graph-guard/gqlscan v1.0.0
 	github.com/graph-guard/gqt v0.0.0-20220714090301-a9dea11904c1
 	github.com/phuslu/log v1.0.81
@@ -27,7 +26,6 @@ require (
 	github.com/andybalholm/brotli v1.0.4 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/google/uuid v1.3.0 // indirect
 	github.com/gorilla/websocket v1.5.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/klauspost/compress v1.15.9 // indirect
