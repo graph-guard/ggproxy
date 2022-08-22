@@ -1,14 +1,13 @@
 package lvs_test
 
 import (
-	"crypto"
-	"crypto/x509"
 	_ "embed"
-	"encoding/pem"
+	"fmt"
 	"testing"
 	"time"
 
-	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/google/uuid"
+	blvs "github.com/graph-guard/backend/lvs"
 	"github.com/graph-guard/ggproxy/lvs"
 	"github.com/stretchr/testify/require"
 )
@@ -33,49 +32,31 @@ XaRiQUHCa5lES8UIwF8=
 `
 
 func TestVerifyLicenceKey(t *testing.T) {
-	decodedLicenseKey, err := GenerateLicenseToken(1)
+	decodedLicenseKey, err := blvs.GenerateLicenseToken(
+		Time(t, "2022-01-01T14:00:00Z"),
+		1,
+		lvs.Beta,
+		lvs.Unlimited,
+		uuid.New(),
+		[]byte(privateKey),
+		[]byte(publicKey),
+	)
 	require.NoError(t, err)
 	require.NotEmpty(t, decodedLicenseKey)
 
-	claims, err := lvs.ValidateLicenseToken(decodedLicenseKey)
+	claims, err := lvs.ValidateLicenseToken(
+		Time(t, "2022-01-01T14:00:00Z"),
+		string(decodedLicenseKey),
+	)
+
+	fmt.Printf("%#v", err)
+
 	require.NoError(t, err)
 	require.NotNil(t, claims)
 }
 
-func GenerateLicenseToken(expirationHours int64) (signedToken string, err error) {
-	claims := &lvs.LicenseTokenClaim{
-		StandardClaims: jwt.StandardClaims{
-			IssuedAt:  time.Now().Local().Unix(),
-			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(expirationHours)).Unix(),
-		},
-		Type: lvs.Beta,
-		Plan: lvs.Unlimited,
-		Pub:  []byte(publicKey),
-	}
-
-	token := jwt.NewWithClaims(jwt.SigningMethodES512, claims)
-
-	decodedPrivateKey, err := decodePrivateKey([]byte(privateKey))
-	if err != nil {
-		return "", err
-	}
-
-	signedToken, err = token.SignedString(decodedPrivateKey)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-func decodePrivateKey(pemEncoded []byte) (crypto.PrivateKey, error) {
-	block, _ := pem.Decode(pemEncoded)
-	x509Encoded := block.Bytes
-	privateKey, err := x509.ParseECPrivateKey(x509Encoded)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return privateKey, nil
+func Time(t *testing.T, s string) time.Time {
+	tm, err := time.Parse(time.RFC3339, s)
+	require.NoError(t, err)
+	return tm
 }
