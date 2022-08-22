@@ -1,14 +1,12 @@
 package lvs_test
 
 import (
-	"crypto"
-	"crypto/x509"
 	_ "embed"
-	"encoding/pem"
 	"testing"
 	"time"
 
-	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/google/uuid"
+	blvs "github.com/graph-guard/backend/lvs"
 	"github.com/graph-guard/ggproxy/lvs"
 	"github.com/stretchr/testify/require"
 )
@@ -33,50 +31,45 @@ XaRiQUHCa5lES8UIwF8=
 `
 
 func TestVerifyLicenceKey(t *testing.T) {
-	decodedLicenseKey, err := GenerateLicenseToken(1)
+	decodedLicenseKey, err := blvs.GenerateLicenseToken(
+		time.Now().Local(),
+		1,
+		lvs.Beta,
+		lvs.Unlimited,
+		uuid.New(),
+		[]byte(privateKey),
+	)
 	require.NoError(t, err)
 	require.NotEmpty(t, decodedLicenseKey)
 
-	lvs.PublicKey = publicKey
+	lvs.PublicKey = []byte(publicKey)
 
-	claims, err := lvs.ValidateLicenseToken(decodedLicenseKey)
+	claims, err := lvs.ValidateLicenseToken(
+		string(decodedLicenseKey),
+	)
+
 	require.NoError(t, err)
 	require.NotNil(t, claims)
 }
 
-func GenerateLicenseToken(expirationHours int64) (signedToken string, err error) {
-	claims := &lvs.JwtClaim{
-		StandardClaims: jwt.StandardClaims{
-			IssuedAt:  time.Now().Local().Unix(),
-			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(expirationHours)).Unix(),
-		},
-		Type: lvs.Beta,
-		Plan: lvs.Unlimited,
-	}
+func TestLicenceKeyExpired(t *testing.T) {
+	decodedLicenseKey, err := blvs.GenerateLicenseToken(
+		time.Now().Local(),
+		-1,
+		lvs.Beta,
+		lvs.Unlimited,
+		uuid.New(),
+		[]byte(privateKey),
+	)
+	require.NoError(t, err)
+	require.NotEmpty(t, decodedLicenseKey)
 
-	token := jwt.NewWithClaims(jwt.SigningMethodES512, claims)
+	lvs.PublicKey = []byte(publicKey)
 
-	decodedPrivateKey, err := decodePrivateKey([]byte(privateKey))
-	if err != nil {
-		return "", err
-	}
+	claims, err := lvs.ValidateLicenseToken(
+		string(decodedLicenseKey),
+	)
 
-	signedToken, err = token.SignedString(decodedPrivateKey)
-	if err != nil {
-		return
-	}
-
-	return
-}
-
-func decodePrivateKey(pemEncoded []byte) (crypto.PrivateKey, error) {
-	block, _ := pem.Decode(pemEncoded)
-	x509Encoded := block.Bytes
-	privateKey, err := x509.ParseECPrivateKey(x509Encoded)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return privateKey, nil
+	require.Error(t, lvs.ErrLicenseExpired, err)
+	require.Nil(t, claims)
 }

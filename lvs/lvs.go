@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"encoding/pem"
 	"errors"
-	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
 )
@@ -14,7 +13,7 @@ import (
 type Type uint16
 type Plan uint16
 
-type JwtClaim struct {
+type LicenseTokenClaim struct {
 	jwt.StandardClaims
 	Type Type `json:"type"`
 	Plan Plan `json:"plan"`
@@ -22,7 +21,7 @@ type JwtClaim struct {
 
 const (
 	Beta Type = iota
-	Individual
+	Community
 	Commercial
 )
 
@@ -34,46 +33,45 @@ const (
 	Unlimited
 )
 
-// Encoded public key, uniq per client
-var PublicKey string
+// Encoded public key
+var PublicKey []byte
 
 var ErrFailParseClaims = errors.New("fail to parse claims")
-var ErrLicenseExpire = errors.New("license expire")
+var ErrLicenseExpired = errors.New("license expired")
 
-// ValidateLicenseToken verifies the license and return license key parameters as claims
-func ValidateLicenseToken(licenseToken string) (*JwtClaim, error) {
-	decodedPublicKey, err := decodePublicKey([]byte(PublicKey))
+// ValidateLicenseToken verifies the license and return license key parameters as claims.
+func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
+	decodedPublicKey, err := decodePublicKey(PublicKey)
 	if err != nil {
 		return nil, err
 	}
 
 	token, err := jwt.ParseWithClaims(
 		licenseToken,
-		&JwtClaim{},
+		&LicenseTokenClaim{},
 		func(token *jwt.Token) (interface{}, error) {
 			return decodedPublicKey, nil
 		},
 	)
 
-	if err != nil {
-		return nil, err
+	e, ok := err.(*jwt.ValidationError)
+	if ok {
+		if e.Errors&jwt.ValidationErrorExpired != 0 {
+			return nil, ErrLicenseExpired
+		}
 	}
 
-	claims, ok := token.Claims.(*JwtClaim)
+	claims, ok := token.Claims.(*LicenseTokenClaim)
 	if !ok {
 		return nil, ErrFailParseClaims
 	}
 
-	if claims.ExpiresAt < time.Now().Local().Unix() {
-		return nil, ErrLicenseExpire
-	}
-
-	return claims, nil
+	return claims, err
 }
 
 func decodePublicKey(pemEncoded []byte) (crypto.PublicKey, error) {
-	blockPub, _ := pem.Decode(pemEncoded)
-	x509Encoded := blockPub.Bytes
+	block, _ := pem.Decode(pemEncoded)
+	x509Encoded := block.Bytes
 	genericPublicKey, err := x509.ParsePKIXPublicKey(x509Encoded)
 	if err != nil {
 		return nil, err
