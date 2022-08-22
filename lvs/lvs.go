@@ -64,9 +64,9 @@ func ValidateLicenseToken(timeNow time.Time, licenseToken string) (*LicenseToken
 		return nil, err
 	}
 
-	if claims.ExpiresAt < timeNow.Unix() {
-		return nil, ErrLicenseExpire
-	}
+	// if claims.ExpiresAt < timeNow.Unix() {
+	// 	return nil, ErrLicenseExpire
+	// }
 
 	return claims, nil
 }
