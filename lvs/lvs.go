@@ -6,7 +6,6 @@ import (
 	_ "embed"
 	"encoding/pem"
 	"errors"
-	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
 )
@@ -16,9 +15,8 @@ type Plan uint16
 
 type LicenseTokenClaim struct {
 	jwt.StandardClaims
-	Type Type   `json:"type"`
-	Plan Plan   `json:"plan"`
-	Pub  []byte `json:"pub"`
+	Type Type `json:"type"`
+	Plan Plan `json:"plan"`
 }
 
 const (
@@ -35,27 +33,22 @@ const (
 	Unlimited
 )
 
+// Encoded public key
+var PublicKey []byte
+
 var ErrFailParseClaims = errors.New("fail to parse claims")
 var ErrLicenseExpired = errors.New("license expired")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims.
-func ValidateLicenseToken(timeNow time.Time, licenseToken string) (*LicenseTokenClaim, error) {
-	token, _, err := new(jwt.Parser).ParseUnverified(licenseToken, &LicenseTokenClaim{})
+func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
+	decodedPublicKey, err := decodePublicKey(PublicKey)
 	if err != nil {
 		return nil, err
 	}
 
-	claims, ok := token.Claims.(*LicenseTokenClaim)
-	if !ok {
-		return nil, ErrFailParseClaims
-	}
-	decodedPublicKey, err := decodePublicKey(claims.Pub)
-	if err != nil {
-		return nil, err
-	}
-
-	token, err = jwt.Parse(
+	token, err := jwt.ParseWithClaims(
 		licenseToken,
+		&LicenseTokenClaim{},
 		func(token *jwt.Token) (interface{}, error) {
 			return decodedPublicKey, nil
 		},
@@ -66,6 +59,11 @@ func ValidateLicenseToken(timeNow time.Time, licenseToken string) (*LicenseToken
 		if e.Errors&jwt.ValidationErrorExpired != 0 {
 			return nil, ErrLicenseExpired
 		}
+	}
+
+	claims, ok := token.Claims.(*LicenseTokenClaim)
+	if !ok {
+		return nil, ErrFailParseClaims
 	}
 
 	return claims, err

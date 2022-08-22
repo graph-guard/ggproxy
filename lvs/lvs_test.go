@@ -2,7 +2,6 @@ package lvs_test
 
 import (
 	_ "embed"
-	"fmt"
 	"testing"
 	"time"
 
@@ -33,30 +32,44 @@ XaRiQUHCa5lES8UIwF8=
 
 func TestVerifyLicenceKey(t *testing.T) {
 	decodedLicenseKey, err := blvs.GenerateLicenseToken(
-		Time(t, "2022-01-01T14:00:00Z"),
+		time.Now().Local(),
 		1,
 		lvs.Beta,
 		lvs.Unlimited,
 		uuid.New(),
 		[]byte(privateKey),
-		[]byte(publicKey),
 	)
 	require.NoError(t, err)
 	require.NotEmpty(t, decodedLicenseKey)
 
+	lvs.PublicKey = []byte(publicKey)
+
 	claims, err := lvs.ValidateLicenseToken(
-		Time(t, "2022-01-01T14:00:00Z"),
 		string(decodedLicenseKey),
 	)
-
-	fmt.Printf("%#v", err)
 
 	require.NoError(t, err)
 	require.NotNil(t, claims)
 }
 
-func Time(t *testing.T, s string) time.Time {
-	tm, err := time.Parse(time.RFC3339, s)
+func TestLicenceKeyExpired(t *testing.T) {
+	decodedLicenseKey, err := blvs.GenerateLicenseToken(
+		time.Now().Local(),
+		-1,
+		lvs.Beta,
+		lvs.Unlimited,
+		uuid.New(),
+		[]byte(privateKey),
+	)
 	require.NoError(t, err)
-	return tm
+	require.NotEmpty(t, decodedLicenseKey)
+
+	lvs.PublicKey = []byte(publicKey)
+
+	claims, err := lvs.ValidateLicenseToken(
+		string(decodedLicenseKey),
+	)
+
+	require.Error(t, lvs.ErrLicenseExpired, err)
+	require.Nil(t, claims)
 }
