@@ -44,15 +44,39 @@ type Service {
 	# enabled provides true if the service is enabled, otherwise provides false.
 	enabled: Boolean!
 
-	# matchingTemplates provides all templates that match the given operation.
-	matchingTemplates(
+	# matchAll provides insights into what templates match the given query.
+	matchAll(
 		query: String!
 		operationName: String
 		variablesJSON: String
-	): [Template!]!
+	): MatchResult!
+
+	# match provides matching results for the given query.
+	# It's similar to matchAll except that it matches one template only.
+	match(
+		query: String!
+		operationName: String
+		variablesJSON: String
+	): MatchResult!
 
 	# statistics provides all service statistics.
 	statistics: ServiceStatistics!
+}
+
+type MatchResult {
+	# templates provides all templates that matched the query.
+	# Provides an empty array if there was no match.
+	templates: [Template!]!
+	
+	# forwarded provides the forwarded query.
+	# Provides null if there was no match.
+	forwarded: String
+
+	# timeParsingNS provides the parsing time in nanoseconds.
+	timeParsingNS: Float!
+
+	# timeMatchingNS provides the matching time in nanoseconds.
+	timeMatchingNS: Float!
 }
 
 # Template is a query or mutation request template.

@@ -4,12 +4,14 @@ package graph
 // will be copied through when generating and any unknown code will be moved to the end.
 
 import (
+	"bytes"
 	"context"
 	"time"
 
 	"github.com/graph-guard/ggproxy/api/graph/generated"
 	"github.com/graph-guard/ggproxy/api/graph/model"
 	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/utilities/tokenwriter"
 )
 
 // Uptime is the resolver for the uptime field.
@@ -43,8 +45,13 @@ func (r *queryResolver) Services(ctx context.Context) ([]*model.Service, error) 
 	return l, nil
 }
 
-// MatchingTemplates is the resolver for the matchingTemplates field.
-func (r *serviceResolver) MatchingTemplates(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) ([]*model.Template, error) {
+// MatchAll is the resolver for the matchAll field.
+func (r *serviceResolver) MatchAll(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) (*model.MatchResult, error) {
+	// Declare here instead of using named return variables
+	// to avoid code generation overriding them.
+	m := new(model.MatchResult)
+	var err error
+
 	oprName := []byte(nil)
 	if operationName != nil {
 		oprName = []byte(*operationName)
@@ -55,24 +62,81 @@ func (r *serviceResolver) MatchingTemplates(ctx context.Context, obj *model.Serv
 		varsJSON = []byte(*variablesJSON)
 	}
 
-	var err error
-	var matchedTemplates []*model.Template
+	startParsing := time.Now()
 	r.Resolver.Reducer.Reduce(
 		[]byte(query), oprName, varsJSON,
 		func(operation []gqlreduce.Token) {
+			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
+			startMatching := time.Now()
 			obj.Matcher.MatchAll(
 				operation,
 				func(id string) {
 					t := obj.TemplatesByID[id]
-					matchedTemplates = append(matchedTemplates, t)
+					m.Templates = append(m.Templates, t)
 				},
 			)
+			m.TimeMatchingNs = nsToF64(time.Since(startMatching).Nanoseconds())
+			var forwarded bytes.Buffer
+			if err = tokenwriter.Write(&forwarded, operation); err != nil {
+				r.Log.Error().
+					Err(err).
+					Msg("writing reduced")
+				return
+			}
+			forwardStr := forwarded.String()
+			m.Forwarded = &forwardStr
 		},
 		func(errReducer error) {
+			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
 			err = errReducer
 		},
 	)
-	return matchedTemplates, err
+	return m, err
+}
+
+// Match is the resolver for the match field.
+func (r *serviceResolver) Match(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) (*model.MatchResult, error) {
+	// Declare here instead of using named return variables
+	// to avoid code generation overriding them.
+	m := new(model.MatchResult)
+	var err error
+
+	oprName := []byte(nil)
+	if operationName != nil {
+		oprName = []byte(*operationName)
+	}
+
+	varsJSON := []byte(nil)
+	if variablesJSON != nil {
+		varsJSON = []byte(*variablesJSON)
+	}
+
+	startParsing := time.Now()
+	r.Resolver.Reducer.Reduce(
+		[]byte(query), oprName, varsJSON,
+		func(operation []gqlreduce.Token) {
+			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
+			startMatching := time.Now()
+			if id := obj.Matcher.Match(operation); id != "" {
+				m.Templates = []*model.Template{obj.TemplatesByID[id]}
+			}
+			m.TimeMatchingNs = nsToF64(time.Since(startMatching).Nanoseconds())
+			var forwarded bytes.Buffer
+			if err = tokenwriter.Write(&forwarded, operation); err != nil {
+				r.Log.Error().
+					Err(err).
+					Msg("writing reduced")
+				return
+			}
+			forwardStr := forwarded.String()
+			m.Forwarded = &forwardStr
+		},
+		func(errReducer error) {
+			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
+			err = errReducer
+		},
+	)
+	return m, err
 }
 
 // Statistics is the resolver for the statistics field.

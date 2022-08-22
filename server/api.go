@@ -214,6 +214,7 @@ func makeGraphServer(
 				Conf:     conf,
 				Reducer:  reducer,
 				Services: services,
+				Log:      ingressServer.log,
 			}},
 		),
 	)

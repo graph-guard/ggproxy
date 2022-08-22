@@ -6,6 +6,13 @@ import (
 	"time"
 )
 
+type MatchResult struct {
+	Templates      []*Template `json:"templates"`
+	Forwarded      *string     `json:"forwarded"`
+	TimeParsingNs  float64     `json:"timeParsingNS"`
+	TimeMatchingNs float64     `json:"timeMatchingNS"`
+}
+
 type ServiceStatistics struct {
 	BlockedRequests       int `json:"blockedRequests"`
 	ForwardedRequests     int `json:"forwardedRequests"`
