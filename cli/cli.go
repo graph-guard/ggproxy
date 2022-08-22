@@ -10,7 +10,7 @@ import (
 
 const EnvAPIUsername = "GGPROXY_API_USERNAME"
 const EnvAPIPassword = "GGPROXY_API_PASSWORD"
-const EnvLicence = "GGPROXY_LICENCE"
+const EnvLicense = "GGPROXY_LICENSE"
 const LinkDashboardDownload = "https://graphguard.io/dashboard#download"
 
 // Command can be any of:
@@ -23,7 +23,7 @@ type Command any
 
 type CommandServe struct {
 	ConfigDirPath string
-	LicenceKey    string
+	LicenseToken  string
 	APIUsername   string
 	APIPassword   string
 }
@@ -35,7 +35,7 @@ type CommandStop struct{}
 func Parse(
 	w io.Writer,
 	args []string,
-	validateLicenceKey func(string) bool,
+	validateLicenseToken func(string) bool,
 ) (cmd Command) {
 	fm := fmt.Sprintf
 
@@ -73,7 +73,7 @@ func Parse(
 		c := CommandServe{}
 		c.APIUsername = os.Getenv(EnvAPIUsername)
 		c.APIPassword = os.Getenv(EnvAPIPassword)
-		c.LicenceKey = os.Getenv(EnvLicence)
+		c.LicenseToken = os.Getenv(EnvLicense)
 
 		flags.Usage = func() {
 			writeLines(w,
@@ -88,7 +88,7 @@ func Parse(
 				fm("%s: API basic auth username "+
 					"(enables basic auth if set)", EnvAPIUsername),
 				fm("%s: API basic auth password", EnvAPIPassword),
-				fm("%s: Licence key", EnvLicence),
+				fm("%s: License key", EnvLicense),
 			)
 		}
 
@@ -97,17 +97,17 @@ func Parse(
 			return nil
 		}
 
-		if c.LicenceKey == "" {
+		if c.LicenseToken == "" {
 			writeLines(w,
-				EnvLicence+" isn't set.",
-				fm("You can get the licence key at %s", LinkDashboardDownload),
+				EnvLicense+" isn't set.",
+				fm("You can get the license key at %s", LinkDashboardDownload),
 			)
 			flags.Usage()
 			return nil
-		} else if !validateLicenceKey(c.LicenceKey) {
+		} else if !validateLicenseToken(c.LicenseToken) {
 			writeLines(w,
-				EnvLicence+" contains an invalid licence key!",
-				fm("You can get a valid licence key at %s", LinkDashboardDownload),
+				EnvLicense+" contains an invalid license key!",
+				fm("You can get a valid license key at %s", LinkDashboardDownload),
 			)
 			flags.Usage()
 			return nil

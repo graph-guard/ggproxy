@@ -53,7 +53,7 @@ func TestUnknownCommand(t *testing.T) {
 }
 
 func TestCommandServe(t *testing.T) {
-	os.Setenv(cli.EnvLicence, "TESTLICENCEKEY")
+	os.Setenv(cli.EnvLicense, "TESTLICENSETOKEN")
 	os.Setenv(cli.EnvAPIUsername, "testusername")
 	os.Setenv(cli.EnvAPIPassword, "testpassword")
 
@@ -66,7 +66,7 @@ func TestCommandServe(t *testing.T) {
 		)
 		require.Equal(t, cli.CommandServe{
 			ConfigDirPath: "./config",
-			LicenceKey:    "TESTLICENCEKEY",
+			LicenseToken:  "TESTLICENSETOKEN",
 			APIUsername:   "testusername",
 			APIPassword:   "testpassword",
 		}, c)
@@ -84,7 +84,7 @@ func TestCommandServe(t *testing.T) {
 			func(s string) bool { return true },
 		)
 		require.Equal(t, cli.CommandServe{
-			LicenceKey:    "TESTLICENCEKEY",
+			LicenseToken:  "TESTLICENSETOKEN",
 			ConfigDirPath: "./custom_config",
 			APIUsername:   "testusername",
 			APIPassword:   "testpassword",
@@ -118,7 +118,7 @@ func TestCommandServe(t *testing.T) {
 				"GGPROXY_API_USERNAME: API basic auth username "+
 					"(enables basic auth if set)",
 				"GGPROXY_API_PASSWORD: API basic auth password",
-				"GGPROXY_LICENCE: Licence key",
+				"GGPROXY_LICENSE: License key",
 			),
 			out.String(),
 		)
@@ -154,17 +154,17 @@ func TestAPIPasswordNotSet(t *testing.T) {
 			"GGPROXY_API_USERNAME: API basic auth username "+
 				"(enables basic auth if set)",
 			"GGPROXY_API_PASSWORD: API basic auth password",
-			"GGPROXY_LICENCE: Licence key",
+			"GGPROXY_LICENSE: License key",
 		),
 		out.String(),
 	)
 }
 
-func TestLicenceKeyNotSet(t *testing.T) {
+func TestLicenseTokenNotSet(t *testing.T) {
 	out := new(bytes.Buffer)
 	os.Setenv(cli.EnvAPIUsername, "testusername")
 	os.Setenv(cli.EnvAPIPassword, "testpassword")
-	os.Setenv(cli.EnvLicence, "")
+	os.Setenv(cli.EnvLicense, "")
 	c := cli.Parse(
 		out,
 		[]string{"ggproxy", "serve"},
@@ -174,9 +174,9 @@ func TestLicenceKeyNotSet(t *testing.T) {
 
 	require.Equal(t,
 		lines(
-			fmt.Sprintf("%s isn't set.", cli.EnvLicence),
+			fmt.Sprintf("%s isn't set.", cli.EnvLicense),
 			fmt.Sprintf(
-				"You can get the licence key at %s",
+				"You can get the license key at %s",
 				cli.LinkDashboardDownload,
 			),
 			"",
@@ -191,17 +191,17 @@ func TestLicenceKeyNotSet(t *testing.T) {
 			"GGPROXY_API_USERNAME: API basic auth username "+
 				"(enables basic auth if set)",
 			"GGPROXY_API_PASSWORD: API basic auth password",
-			"GGPROXY_LICENCE: Licence key",
+			"GGPROXY_LICENSE: License key",
 		),
 		out.String(),
 	)
 }
 
-func TestLicenceKeyInvalid(t *testing.T) {
+func TestLicenseTokenInvalid(t *testing.T) {
 	out := new(bytes.Buffer)
 	os.Setenv(cli.EnvAPIUsername, "testusername")
 	os.Setenv(cli.EnvAPIPassword, "testpassword")
-	os.Setenv(cli.EnvLicence, "thiskeyisinvalid")
+	os.Setenv(cli.EnvLicense, "thiskeyisinvalid")
 	c := cli.Parse(
 		out,
 		[]string{"ggproxy", "serve"},
@@ -211,9 +211,9 @@ func TestLicenceKeyInvalid(t *testing.T) {
 
 	require.Equal(t,
 		lines(
-			fmt.Sprintf("%s contains an invalid licence key!", cli.EnvLicence),
+			fmt.Sprintf("%s contains an invalid license key!", cli.EnvLicense),
 			fmt.Sprintf(
-				"You can get a valid licence key at %s",
+				"You can get a valid license key at %s",
 				cli.LinkDashboardDownload,
 			),
 			"",
@@ -228,7 +228,7 @@ func TestLicenceKeyInvalid(t *testing.T) {
 			"GGPROXY_API_USERNAME: API basic auth username "+
 				"(enables basic auth if set)",
 			"GGPROXY_API_PASSWORD: API basic auth password",
-			"GGPROXY_LICENCE: Licence key",
+			"GGPROXY_LICENSE: License key",
 		),
 		out.String(),
 	)

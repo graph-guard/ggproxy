@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"github.com/graph-guard/ggproxy/cli"
+	"github.com/graph-guard/ggproxy/lvs"
 )
 
 func main() {
@@ -12,8 +13,9 @@ func main() {
 	switch c := cli.Parse(
 		w,
 		os.Args,
-		func(licenceKey string) bool {
-			return licenceKey == "CLOSEDBETAAUG2022"
+		func(licenseToken string) bool {
+			_, err := lvs.ValidateLicenseToken(licenseToken)
+			return err == nil
 		},
 	).(type) {
 	case cli.CommandServe:

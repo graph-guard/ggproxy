@@ -34,14 +34,14 @@ const (
 )
 
 // Encoded public key
-var PublicKey []byte
+var PublicKey string
 
 var ErrFailParseClaims = errors.New("fail to parse claims")
 var ErrLicenseExpired = errors.New("license expired")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims.
 func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
-	decodedPublicKey, err := decodePublicKey(PublicKey)
+	decodedPublicKey, err := decodePublicKey([]byte(PublicKey))
 	if err != nil {
 		return nil, err
 	}

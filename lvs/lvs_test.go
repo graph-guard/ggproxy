@@ -30,8 +30,8 @@ XaRiQUHCa5lES8UIwF8=
 -----END PUBLIC KEY-----
 `
 
-func TestVerifyLicenceKey(t *testing.T) {
-	decodedLicenseKey, err := blvs.GenerateLicenseToken(
+func TestVerifyLicenseToken(t *testing.T) {
+	decodedLicenseToken, err := blvs.GenerateLicenseToken(
 		time.Now().Local(),
 		1,
 		lvs.Beta,
@@ -40,20 +40,20 @@ func TestVerifyLicenceKey(t *testing.T) {
 		[]byte(privateKey),
 	)
 	require.NoError(t, err)
-	require.NotEmpty(t, decodedLicenseKey)
+	require.NotEmpty(t, decodedLicenseToken)
 
-	lvs.PublicKey = []byte(publicKey)
+	lvs.PublicKey = publicKey
 
 	claims, err := lvs.ValidateLicenseToken(
-		string(decodedLicenseKey),
+		string(decodedLicenseToken),
 	)
 
 	require.NoError(t, err)
 	require.NotNil(t, claims)
 }
 
-func TestLicenceKeyExpired(t *testing.T) {
-	decodedLicenseKey, err := blvs.GenerateLicenseToken(
+func TestLicenseTokenExpired(t *testing.T) {
+	decodedLicenseToken, err := blvs.GenerateLicenseToken(
 		time.Now().Local(),
 		-1,
 		lvs.Beta,
@@ -62,12 +62,12 @@ func TestLicenceKeyExpired(t *testing.T) {
 		[]byte(privateKey),
 	)
 	require.NoError(t, err)
-	require.NotEmpty(t, decodedLicenseKey)
+	require.NotEmpty(t, decodedLicenseToken)
 
-	lvs.PublicKey = []byte(publicKey)
+	lvs.PublicKey = publicKey
 
 	claims, err := lvs.ValidateLicenseToken(
-		string(decodedLicenseKey),
+		string(decodedLicenseToken),
 	)
 
 	require.Error(t, lvs.ErrLicenseExpired, err)
