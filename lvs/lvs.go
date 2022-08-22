@@ -38,7 +38,7 @@ const (
 var ErrFailParseClaims = errors.New("fail to parse claims")
 var ErrLicenseExpire = errors.New("license expire")
 
-// ValidateLicenseToken verifies the license and return license key parameters as claims
+// ValidateLicenseToken verifies the license and return license key parameters as claims.
 func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
 	token, _, err := new(jwt.Parser).ParseUnverified(licenseToken, &LicenseTokenClaim{})
 	if err != nil {
@@ -72,8 +72,8 @@ func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
 }
 
 func decodePublicKey(pemEncoded []byte) (crypto.PublicKey, error) {
-	blockPub, _ := pem.Decode(pemEncoded)
-	x509Encoded := blockPub.Bytes
+	block, _ := pem.Decode(pemEncoded)
+	x509Encoded := block.Bytes
 	genericPublicKey, err := x509.ParsePKIXPublicKey(x509Encoded)
 	if err != nil {
 		return nil, err
