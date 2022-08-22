@@ -23,7 +23,7 @@ type LicenseTokenClaim struct {
 
 const (
 	Beta Type = iota
-	Individual
+	Community
 	Commercial
 )
 
@@ -39,7 +39,7 @@ var ErrFailParseClaims = errors.New("fail to parse claims")
 var ErrLicenseExpire = errors.New("license expire")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims.
-func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
+func ValidateLicenseToken(timeNow time.Time, licenseToken string) (*LicenseTokenClaim, error) {
 	token, _, err := new(jwt.Parser).ParseUnverified(licenseToken, &LicenseTokenClaim{})
 	if err != nil {
 		return nil, err
@@ -64,7 +64,7 @@ func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
 		return nil, err
 	}
 
-	if claims.ExpiresAt < time.Now().Local().Unix() {
+	if claims.ExpiresAt < timeNow.Unix() {
 		return nil, ErrLicenseExpire
 	}
 
