@@ -14,10 +14,11 @@ import (
 type Type uint16
 type Plan uint16
 
-type JwtClaim struct {
+type LicenseTokenClaim struct {
 	jwt.StandardClaims
-	Type Type `json:"type"`
-	Plan Plan `json:"plan"`
+	Type Type   `json:"type"`
+	Plan Plan   `json:"plan"`
+	Pub  []byte `json:"pub"`
 }
 
 const (
@@ -34,34 +35,33 @@ const (
 	Unlimited
 )
 
-// Encoded public key, uniq per client
-var PublicKey string
-
 var ErrFailParseClaims = errors.New("fail to parse claims")
 var ErrLicenseExpire = errors.New("license expire")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims
-func ValidateLicenseToken(licenseToken string) (*JwtClaim, error) {
-	decodedPublicKey, err := decodePublicKey([]byte(PublicKey))
+func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
+	token, _, err := new(jwt.Parser).ParseUnverified(licenseToken, &LicenseTokenClaim{})
 	if err != nil {
 		return nil, err
 	}
 
-	token, err := jwt.ParseWithClaims(
+	claims, ok := token.Claims.(*LicenseTokenClaim)
+	if !ok {
+		return nil, ErrFailParseClaims
+	}
+	decodedPublicKey, err := decodePublicKey(claims.Pub)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err = jwt.Parse(
 		licenseToken,
-		&JwtClaim{},
 		func(token *jwt.Token) (interface{}, error) {
 			return decodedPublicKey, nil
 		},
 	)
-
 	if err != nil {
 		return nil, err
-	}
-
-	claims, ok := token.Claims.(*JwtClaim)
-	if !ok {
-		return nil, ErrFailParseClaims
 	}
 
 	if claims.ExpiresAt < time.Now().Local().Unix() {

@@ -37,21 +37,20 @@ func TestVerifyLicenceKey(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, decodedLicenseKey)
 
-	lvs.PublicKey = publicKey
-
 	claims, err := lvs.ValidateLicenseToken(decodedLicenseKey)
 	require.NoError(t, err)
 	require.NotNil(t, claims)
 }
 
 func GenerateLicenseToken(expirationHours int64) (signedToken string, err error) {
-	claims := &lvs.JwtClaim{
+	claims := &lvs.LicenseTokenClaim{
 		StandardClaims: jwt.StandardClaims{
 			IssuedAt:  time.Now().Local().Unix(),
 			ExpiresAt: time.Now().Local().Add(time.Hour * time.Duration(expirationHours)).Unix(),
 		},
 		Type: lvs.Beta,
 		Plan: lvs.Unlimited,
+		Pub:  []byte(publicKey),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodES512, claims)
