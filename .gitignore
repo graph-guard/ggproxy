@@ -14,7 +14,12 @@
 # Dependency directories (remove the comment below to include it)
 # vendor/
 
+# IDE related
 .vscode/
+
+# Build directories
+build/
+dist/
 
 # clog configuration
 cmd/ggproxy/clog.toml

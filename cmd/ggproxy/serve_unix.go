@@ -78,7 +78,7 @@ func serve(w io.Writer, c cli.CommandServe) {
 	cmdServerStarted := make(chan bool)
 
 	// Start command server
-	cleanup := createVarDir(w, l)
+	cleanup := createRuntimeDir(w, l)
 	if cleanup == nil {
 		return
 	}
