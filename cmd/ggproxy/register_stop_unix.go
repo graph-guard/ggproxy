@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"os/signal"
+	"syscall"
 )
 
 // RegisterStop returns a channel that's closed once
@@ -12,7 +13,12 @@ func RegisterStop(
 ) (stopTriggered <-chan struct{}) {
 	s := make(chan struct{})
 	interrupt := make(chan os.Signal, 1)
-	signal.Notify(interrupt, os.Interrupt)
+	signal.Notify(interrupt, syscall.SIGHUP)
+	signal.Notify(interrupt, syscall.SIGINT)
+	signal.Notify(interrupt, syscall.SIGQUIT)
+	signal.Notify(interrupt, syscall.SIGABRT)
+	signal.Notify(interrupt, syscall.SIGKILL)
+	signal.Notify(interrupt, syscall.SIGTERM)
 	go func() {
 		select {
 		case <-explicitStop:

@@ -2,6 +2,7 @@ package main
 
 import (
 	"io"
+	"os"
 	"sync"
 	"time"
 
@@ -13,6 +14,8 @@ import (
 // serve turns the CLI process into a ggproxy server process
 // on *nix systems.
 func serve(w io.Writer, c cli.CommandServe) {
+	defer crashRecover()
+
 	conf := ReadConfig(w, c.ConfigDirPath)
 	if conf == nil {
 		return
@@ -123,4 +126,11 @@ func serve(w io.Writer, c cli.CommandServe) {
 
 	wg.Wait()
 	close(stopped)
+}
+
+// crashRecover executes in case of panic and removes pid and sock files
+func crashRecover() {
+	if r := recover(); r != nil {
+		os.RemoveAll(RuntimeDir)
+	}
 }
