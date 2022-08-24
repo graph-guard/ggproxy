@@ -7,7 +7,7 @@ before:
 builds:
   - id: ggproxy
     main: ./cmd/ggproxy
-    binary: usr/bin/ggproxy
+    binary: usr/local/bin/ggproxy
     gobinary: garble
     env:
       - CGO_ENABLED=0
