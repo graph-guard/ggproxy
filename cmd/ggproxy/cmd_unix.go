@@ -11,13 +11,13 @@ import (
 	"github.com/phuslu/log"
 )
 
-const DirVarRun = "/var/run/ggproxy"
-const FilePathPID = DirVarRun + "/ggproxy.pid"
-const FilePathCmdSock = DirVarRun + "/ggproxy_cmd.sock"
+const RuntimeDir = "/tmp/ggproxy"
+const FilePathPID = RuntimeDir + "/ggproxy.pid"
+const FilePathCmdSock = RuntimeDir + "/ggproxy_cmd.sock"
 const BufLenCmdSockRead = 64
 const BufLenCmdSockWrite = 64 * 1024
 
-// getPID reads the /var/run/ggproxy/ggproxy.pid file on *nix systems.
+// getPID reads the ggproxy.pid file on *nix systems.
 func getPID() string {
 	b, err := os.ReadFile(FilePathPID)
 	if errors.Is(err, os.ErrNotExist) {
@@ -26,7 +26,7 @@ func getPID() string {
 	return string(b)
 }
 
-// runCmdSockServer starts listening on /var/run/ggproxy/ggproxy_cmd.sock
+// runCmdSockServer starts listening on ggproxy_cmd.sock
 // and sends started<-true, otherwise sends started<-false if it failed.
 func runCmdSockServer(
 	l log.Logger,
@@ -158,11 +158,18 @@ func handleCmdSockMsg(
 	return buf
 }
 
-// createVarDir creates the following files:
+// createRuntimeDir creates the following files:
 //
-//	/var/run/ggproxy/ggproxy_cmd.sock
-//	/var/run/ggproxy/ggproxy.pid
-func createVarDir(w io.Writer, l log.Logger) (cleanup func(log.Logger)) {
+//	ggproxy_cmd.sock
+//	ggproxy.pid
+func createRuntimeDir(w io.Writer, l log.Logger) (cleanup func(log.Logger)) {
+	if _, err := os.Stat(RuntimeDir); errors.Is(err, os.ErrNotExist) {
+		err := os.Mkdir(RuntimeDir, os.ModePerm)
+		if err != nil {
+			l.Error().Err(err).Msg("creating runtime directory")
+		}
+	}
+
 	if pid := getPID(); pid != "" {
 		fmt.Fprintf(w, "another instance is already running "+
 			"(process id: %s)\n", pid)
@@ -192,7 +199,7 @@ func createVarDir(w io.Writer, l log.Logger) (cleanup func(log.Logger)) {
 	return cleanup
 }
 
-// request connects to /var/run/ggproxy/ggproxy_cmd.sock and sends
+// request connects to ggproxy_cmd.sock and sends
 // a command request to the running server instance.
 func request(msg, buf []byte) ([]byte, error) {
 	c, err := net.Dial("unix", FilePathCmdSock)

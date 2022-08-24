@@ -82,7 +82,7 @@ func Parse(
 				"",
 				"flags:",
 				"-config <path>: defines the configuration directory path "+
-					"(default: ./config)",
+					"(default: /etc/ggproxy)",
 				"",
 				"environment variables:",
 				fm("%s: API basic auth username "+
@@ -92,7 +92,7 @@ func Parse(
 			)
 		}
 
-		flags.StringVar(&c.ConfigDirPath, "config", "./config", "")
+		flags.StringVar(&c.ConfigDirPath, "config", "/etc/ggproxy", "")
 		if !parseFlags() {
 			return nil
 		}
