@@ -1,14 +1,14 @@
 # /etc/ggproxy/config.yaml
 
-ingress:
-  # Address and port of the ingress server.
+proxy:
+  # Address and port of the proxy server.
   host: localhost:8000
   # Optional, enables HTTPS.
   #tls:
     # Certificate file path.
-    #cert-file: ingress.cert
+    #cert-file: proxy.cert
     # Private key file path.
-    #key-file: ingress.key
+    #key-file: proxy.key
   # Optional, in bytes, default: 4MiB.
   #max-request-body-size: 1024
 

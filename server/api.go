@@ -51,13 +51,13 @@ func NewAPI(
 	log plog.Logger,
 	tlsConfig *tls.Config,
 	start time.Time, // When was the server started?
-	ingressServer *Ingress,
+	proxyServer *Proxy,
 ) *API {
 	lHTTPServer := log
 	lHTTPServer.Context = plog.NewContext(nil).
 		Str("server-module", "fasthttp").Value()
 
-	graphServer := makeGraphServer(start, conf, ingressServer)
+	graphServer := makeGraphServer(start, conf, proxyServer)
 
 	srv := &API{
 		auth:   auth,
@@ -203,10 +203,10 @@ func (w *logWriter) Write(data []byte) (int, error) {
 func makeGraphServer(
 	start time.Time,
 	conf *config.Config,
-	ingressServer *Ingress,
+	proxyServer *Proxy,
 ) *handler.Server {
 	reducer := gqlreduce.NewReducer()
-	services := makeServices(conf, ingressServer)
+	services := makeServices(conf, proxyServer)
 	s := handler.NewDefaultServer(
 		generated.NewExecutableSchema(
 			generated.Config{Resolvers: &graph.Resolver{
@@ -214,7 +214,7 @@ func makeGraphServer(
 				Conf:     conf,
 				Reducer:  reducer,
 				Services: services,
-				Log:      ingressServer.log,
+				Log:      proxyServer.log,
 			}},
 		),
 	)
@@ -239,17 +239,17 @@ func makeGraphServer(
 
 func makeServices(
 	conf *config.Config,
-	ingressServer *Ingress,
+	proxyServer *Proxy,
 ) map[string]*model.Service {
 	m := make(
 		map[string]*model.Service,
 		len(conf.ServicesEnabled)+len(conf.ServicesDisabled),
 	)
 	for _, s := range conf.ServicesEnabled {
-		m[s.ID] = makeService(conf, s, true, ingressServer)
+		m[s.ID] = makeService(conf, s, true, proxyServer)
 	}
 	for _, s := range conf.ServicesDisabled {
-		m[s.ID] = makeService(conf, s, false, ingressServer)
+		m[s.ID] = makeService(conf, s, false, proxyServer)
 	}
 	return m
 }
@@ -258,9 +258,9 @@ func makeService(
 	c *config.Config,
 	s *config.Service,
 	enabled bool,
-	ingressServer *Ingress,
+	proxyServer *Proxy,
 ) *model.Service {
-	stats := ingressServer.GetServiceStatistics(s.ID)
+	stats := proxyServer.GetServiceStatistics(s.ID)
 	service := &model.Service{
 		Stats: stats,
 		TemplatesByID: make(
@@ -281,7 +281,7 @@ func makeService(
 			d[t.ID] = t.Document
 			tm := &model.Template{
 				Service: service,
-				Stats:   ingressServer.GetTemplateStatistics(s.ID, t.ID),
+				Stats:   proxyServer.GetTemplateStatistics(s.ID, t.ID),
 
 				ID:      t.ID,
 				Tags:    t.Tags,
@@ -295,7 +295,7 @@ func makeService(
 			d[t.ID] = t.Document
 			tm := &model.Template{
 				Service: service,
-				Stats:   ingressServer.GetTemplateStatistics(s.ID, t.ID),
+				Stats:   proxyServer.GetTemplateStatistics(s.ID, t.ID),
 
 				ID:      t.ID,
 				Tags:    t.Tags,
@@ -316,17 +316,17 @@ func makeService(
 		}
 	}
 
-	{ // Set ingress URL
+	{ // Set proxy URL
 		scheme := "http"
-		if c.Ingress.TLS.CertFile != "" {
+		if c.Proxy.TLS.CertFile != "" {
 			scheme = "https"
 		}
 		u := url.URL{
 			Scheme: scheme,
-			Host:   c.Ingress.Host,
+			Host:   c.Proxy.Host,
 			Path:   s.ID,
 		}
-		service.IngressURL = u.String()
+		service.ProxyURL = u.String()
 	}
 
 	return service

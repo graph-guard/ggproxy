@@ -27,8 +27,8 @@ type Service {
 	# templatesDisabled provides a list of all disabled templates.
 	templatesDisabled: [Template!]!
 
-	# ingressURL provides the front-facing ingress URL of the service.
-	ingressURL: String!
+	# proxyURL provides the front-facing proxy URL of the service.
+	proxyURL: String!
 
 	# forwardURL provides the active forward endpoint URL
 	# that's targeted by the proxy.

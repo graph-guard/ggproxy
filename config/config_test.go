@@ -48,11 +48,11 @@ func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 		config.ServerConfigFile1,
 	)] = &fstest.MapFile{
 		Data: lines(
-			`ingress:`,
+			`proxy:`,
 			`  host: localhost:443`,
 			`  tls:`,
-			`    cert-file: ingress.cert`,
-			`    key-file: ingress.key`,
+			`    cert-file: proxy.cert`,
+			`    key-file: proxy.key`,
 			`  # max-request-body-size: 1234`,
 			`api:`,
 			`  host: localhost:3000`,
@@ -62,7 +62,7 @@ func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 		),
 	}
 
-	conf.Ingress.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
+	conf.Proxy.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
 
 	for _, td := range []TestOK{
 		{
@@ -117,7 +117,7 @@ func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
 	}
 }
 
-func TestReadConfigErrorMissingIngressHostConfig(t *testing.T) {
+func TestReadConfigErrorMissingProxyHostConfig(t *testing.T) {
 	for _, m := range [2]string{
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
@@ -128,13 +128,13 @@ func TestReadConfigErrorMissingIngressHostConfig(t *testing.T) {
 				config.ServerConfigFile1,
 			)
 			fs[p].Data = lines(
-				`ingress:`,
+				`proxy:`,
 				`  host: `,
 			)
 			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorMissing{
 				FilePath: p,
-				Feature:  "ingress.host",
+				Feature:  "proxy.host",
 			}, err)
 		})
 	}
@@ -151,7 +151,7 @@ func TestReadConfigErrorMissingAPIHostConfig(t *testing.T) {
 				config.ServerConfigFile1,
 			)
 			fs[p].Data = lines(
-				`ingress:`,
+				`proxy:`,
 				`  host: localhost:8080`,
 				`api:`,
 				`  host: `,
@@ -165,45 +165,45 @@ func TestReadConfigErrorMissingAPIHostConfig(t *testing.T) {
 	}
 }
 
-func TestReadConfigErrorMissingIngressTLSCert(t *testing.T) {
+func TestReadConfigErrorMissingProxyTLSCert(t *testing.T) {
 	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServerConfigFile1,
 	)
 	fs[p].Data = lines(
-		`ingress:`,
+		`proxy:`,
 		`  host: localhost:8080`,
 		`  tls:`,
-		`    key-file: ingress.key`,
+		`    key-file: proxy.key`,
 		`api:`,
 		`  host: localhost:9090`,
 	)
 	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorMissing{
 		FilePath: p,
-		Feature:  "ingress.tls.cert-file",
+		Feature:  "proxy.tls.cert-file",
 	}, err)
 }
 
-func TestReadConfigErrorMissingIngressTLSKey(t *testing.T) {
+func TestReadConfigErrorMissingProxyTLSKey(t *testing.T) {
 	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServerConfigFile1,
 	)
 	fs[p].Data = lines(
-		`ingress:`,
+		`proxy:`,
 		`  host: localhost:8080`,
 		`  tls:`,
-		`    cert-file: ingress.cert`,
+		`    cert-file: proxy.cert`,
 		`api:`,
 		`  host: localhost:9090`,
 	)
 	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorMissing{
 		FilePath: p,
-		Feature:  "ingress.tls.key-file",
+		Feature:  "proxy.tls.key-file",
 	}, err)
 }
 
@@ -214,7 +214,7 @@ func TestReadConfigErrorMissingAPITLSCert(t *testing.T) {
 		config.ServerConfigFile1,
 	)
 	fs[p].Data = lines(
-		`ingress:`,
+		`proxy:`,
 		`  host: localhost:8080`,
 		`api:`,
 		`  host: localhost:9090`,
@@ -235,7 +235,7 @@ func TestReadConfigErrorMissingAPITLSKey(t *testing.T) {
 		config.ServerConfigFile1,
 	)
 	fs[p].Data = lines(
-		`ingress:`,
+		`proxy:`,
 		`  host: localhost:8080`,
 		`api:`,
 		`  host: localhost:9090`,
@@ -249,14 +249,14 @@ func TestReadConfigErrorMissingAPITLSKey(t *testing.T) {
 	}, err)
 }
 
-func TestReadConfigErrorIllegalIngressMaxReqBodySize(t *testing.T) {
+func TestReadConfigErrorIllegalProxyMaxReqBodySize(t *testing.T) {
 	fs, path, _ := validFS()
 	p := filepath.Join(
 		path,
 		config.ServerConfigFile1,
 	)
 	fs[p].Data = lines(
-		`ingress:`,
+		`proxy:`,
 		`  host: localhost:8080`,
 		`  max-request-body-size: 255`,
 		`api:`,
@@ -265,7 +265,7 @@ func TestReadConfigErrorIllegalIngressMaxReqBodySize(t *testing.T) {
 	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorIllegal{
 		FilePath: p,
-		Feature:  "ingress.max-request-body-size",
+		Feature:  "proxy.max-request-body-size",
 		Message: fmt.Sprintf(
 			"maximum request body size should not be smaller than %d B",
 			config.MinReqBodySize,
@@ -333,7 +333,7 @@ func TestReadConfigErrorDuplicateServerConfig(t *testing.T) {
 		config.ServerConfigFile1,
 	)] = &fstest.MapFile{
 		Data: lines(
-			`ingress:`,
+			`proxy:`,
 			`  host: localhost:8080/`,
 		),
 	}
@@ -342,7 +342,7 @@ func TestReadConfigErrorDuplicateServerConfig(t *testing.T) {
 		config.ServerConfigFile2,
 	)] = &fstest.MapFile{
 		Data: lines(
-			`ingress:`,
+			`proxy:`,
 			`  host: localhost:9090/`,
 		),
 	}
@@ -602,7 +602,7 @@ func minValidFS() (filesystem fstest.MapFS, path string) {
 			config.ServerConfigFile1,
 		): &fstest.MapFile{
 			Data: lines(
-				`ingress:`,
+				`proxy:`,
 				`  host: localhost:443`,
 			),
 		},
@@ -638,11 +638,11 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 			config.ServerConfigFile1,
 		): &fstest.MapFile{
 			Data: lines(
-				`ingress:`,
+				`proxy:`,
 				`  host: localhost:443`,
 				`  tls:`,
-				`    cert-file: ingress.cert`,
-				`    key-file: ingress.key`,
+				`    cert-file: proxy.cert`,
+				`    key-file: proxy.key`,
 				fmt.Sprintf(
 					`  max-request-body-size: %d`,
 					config.MinReqBodySize+256,
@@ -769,11 +769,11 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 	}
 
 	conf = &config.Config{
-		Ingress: config.IngressServerConfig{
+		Proxy: config.ProxyServerConfig{
 			Host: "localhost:443",
 			TLS: config.TLS{
-				CertFile: "ingress.cert",
-				KeyFile:  "ingress.key",
+				CertFile: "proxy.cert",
+				KeyFile:  "proxy.key",
 			},
 			MaxReqBodySizeBytes: config.MinReqBodySize + 256,
 		},

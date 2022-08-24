@@ -68,7 +68,7 @@ type Test struct {
 	TestModel
 }
 
-func TestIngress(t *testing.T) {
+func TestProxy(t *testing.T) {
 	setups := GetSetups(t, testsFS, "tests")
 	for _, setup := range setups {
 		t.Run(setup.Name, func(t *testing.T) {
@@ -336,7 +336,7 @@ func launchSetup(t *testing.T, s Setup) (
 		TimeFormat: "23:59:59",
 		Writer:     &plog.IOWriter{Writer: logRecorder},
 	}
-	server := server.NewIngress(
+	server := server.NewProxy(
 		s.Config,
 		time.Second*10,
 		time.Second*10,

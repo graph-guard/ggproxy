@@ -18,8 +18,8 @@ import (
 	"github.com/valyala/fasthttp"
 )
 
-// Ingress is the server receiving incomming proxy traffic
-type Ingress struct {
+// Proxy is the server receiving incomming proxy traffic
+type Proxy struct {
 	config   *config.Config
 	server   *fasthttp.Server
 	client   *fasthttp.Client
@@ -42,14 +42,14 @@ type matcher struct {
 	Engine  *rmap.RulesMap
 }
 
-func NewIngress(
+func NewProxy(
 	config *config.Config,
 	readTimeout, writeTimeout time.Duration,
 	readBufferSize, writeBufferSize int,
 	log plog.Logger,
 	client *fasthttp.Client,
 	tlsConfig *tls.Config,
-) *Ingress {
+) *Proxy {
 	services := make(map[string]*service)
 
 	if client == nil {
@@ -60,7 +60,7 @@ func NewIngress(
 	lFasthttp.Context = plog.NewContext(nil).
 		Str("server-module", "fasthttp").Value()
 
-	srv := &Ingress{
+	srv := &Proxy{
 		config: config,
 		server: &fasthttp.Server{
 			ReadTimeout:                  readTimeout,
@@ -70,7 +70,7 @@ func NewIngress(
 			DisablePreParseMultipartForm: false,
 			TLSConfig:                    tlsConfig,
 			Logger:                       &lFasthttp,
-			MaxRequestBodySize:           config.Ingress.MaxReqBodySizeBytes,
+			MaxRequestBodySize:           config.Proxy.MaxReqBodySizeBytes,
 		},
 		client:   client,
 		log:      log,
@@ -135,14 +135,14 @@ func NewIngress(
 	return srv
 }
 
-func (s *Ingress) GetServiceStatistics(id string) *statistics.ServiceSync {
+func (s *Proxy) GetServiceStatistics(id string) *statistics.ServiceSync {
 	if s, ok := s.services[id]; ok {
 		return s.statistics
 	}
 	return nil
 }
 
-func (s *Ingress) GetTemplateStatistics(
+func (s *Proxy) GetTemplateStatistics(
 	serviceID, templateID string,
 ) *statistics.TemplateSync {
 	if s, ok := s.services[serviceID]; ok {
@@ -153,7 +153,7 @@ func (s *Ingress) GetTemplateStatistics(
 	return nil
 }
 
-func (s *Ingress) handle(ctx *fasthttp.RequestCtx) {
+func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 	start := time.Now()
 	s.log.Info().
 		Bytes("path", ctx.Path()).
@@ -286,31 +286,31 @@ func (s *Ingress) handle(ctx *fasthttp.RequestCtx) {
 	)
 }
 
-func (s *Ingress) Serve(listener net.Listener) {
+func (s *Proxy) Serve(listener net.Listener) {
 	serviceIDs := make([]string, len(s.config.ServicesEnabled))
 	for i := range s.config.ServicesEnabled {
 		serviceIDs[i] = s.config.ServicesEnabled[i].ID
 	}
 	s.log.Info().
-		Str("host", s.config.Ingress.Host).
-		Bool("tls", s.config.Ingress.TLS.CertFile != "").
+		Str("host", s.config.Proxy.Host).
+		Bool("tls", s.config.Proxy.TLS.CertFile != "").
 		Strs("services", serviceIDs).
 		Msg("listening")
 
 	var err error
-	if s.config.Ingress.TLS.CertFile != "" {
+	if s.config.Proxy.TLS.CertFile != "" {
 		// TLS enabled
 		if listener != nil {
 			err = s.server.ServeTLS(
 				listener,
-				s.config.Ingress.TLS.CertFile,
-				s.config.Ingress.TLS.KeyFile,
+				s.config.Proxy.TLS.CertFile,
+				s.config.Proxy.TLS.KeyFile,
 			)
 		} else {
 			err = s.server.ListenAndServeTLS(
-				s.config.Ingress.Host,
-				s.config.Ingress.TLS.CertFile,
-				s.config.Ingress.TLS.KeyFile,
+				s.config.Proxy.Host,
+				s.config.Proxy.TLS.CertFile,
+				s.config.Proxy.TLS.KeyFile,
 			)
 		}
 	} else {
@@ -319,7 +319,7 @@ func (s *Ingress) Serve(listener net.Listener) {
 			err = s.server.Serve(listener)
 
 		} else {
-			err = s.server.ListenAndServe(s.config.Ingress.Host)
+			err = s.server.ListenAndServe(s.config.Proxy.Host)
 		}
 	}
 	if err != nil {
@@ -329,7 +329,7 @@ func (s *Ingress) Serve(listener net.Listener) {
 
 // Shutdown returns once the server was shutdown.
 // Logs shutdown and errors.
-func (s *Ingress) Shutdown() error {
+func (s *Proxy) Shutdown() error {
 	err := s.server.Shutdown()
 	if err != nil {
 		s.log.Error().Err(err).Msg("shutting down")

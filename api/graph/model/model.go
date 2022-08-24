@@ -13,7 +13,7 @@ type Service struct {
 	ID                string      `json:"id"`
 	TemplatesEnabled  []*Template `json:"templatesEnabled"`
 	TemplatesDisabled []*Template `json:"templatesDisabled"`
-	IngressURL        string      `json:"ingressURL"`
+	ProxyURL          string      `json:"proxyURL"`
 	ForwardURL        string      `json:"forwardURL"`
 	ForwardReduced    bool        `json:"forwardReduced"`
 	Enabled           bool        `json:"enabled"`

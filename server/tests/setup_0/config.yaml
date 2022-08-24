@@ -1,2 +1,2 @@
-ingress:
+proxy:
   host: localhost:8080

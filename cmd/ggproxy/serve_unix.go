@@ -26,12 +26,12 @@ func serve(w io.Writer, c cli.CommandServe) {
 		Writer: &log.IOWriter{Writer: w},
 	}
 
-	var s *server.Ingress
+	var s *server.Proxy
 	{
 		lServer := l
 		lServer.Context = log.NewContext(nil).
-			Str("server", "ingress").Value()
-		s = server.NewIngress(
+			Str("server", "proxy").Value()
+		s = server.NewProxy(
 			conf,
 			10*time.Second,
 			10*time.Second,
@@ -114,7 +114,7 @@ func serve(w io.Writer, c cli.CommandServe) {
 		}()
 	}
 
-	// Start main ingress server
+	// Start main proxy server
 	go func() {
 		<-stopTriggered
 		_ = s.Shutdown()

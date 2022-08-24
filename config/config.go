@@ -38,13 +38,13 @@ var msgMaxReqBodySizeTooSmall = fmt.Sprintf(
 )
 
 type Config struct {
-	Ingress          IngressServerConfig
+	Proxy            ProxyServerConfig
 	API              *APIServerConfig
 	ServicesEnabled  []*Service
 	ServicesDisabled []*Service
 }
 
-type IngressServerConfig struct {
+type ProxyServerConfig struct {
 	Host                string
 	TLS                 TLS
 	MaxReqBodySizeBytes int
@@ -89,7 +89,7 @@ func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
 
 	// Set default config values
 	conf := &Config{
-		Ingress: IngressServerConfig{
+		Proxy: ProxyServerConfig{
 			MaxReqBodySizeBytes: DefaultMaxReqBodySize,
 		},
 		API: &APIServerConfig{},
@@ -289,14 +289,14 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 }
 
 type serverConfig struct {
-	Ingress struct {
+	Proxy struct {
 		Host string `yaml:"host"`
 		TLS  *struct {
 			CertFile string `yaml:"cert-file"`
 			KeyFile  string `yaml:"key-file"`
 		} `yaml:"tls"`
 		MaxRequestBodySizeBytes *int `yaml:"max-request-body-size"`
-	} `yaml:"ingress"`
+	} `yaml:"proxy"`
 	API *struct {
 		Host string `yaml:"host"`
 		TLS  *struct {
@@ -508,38 +508,38 @@ func setConfig(conf *Config, c serverConfig, filePath string) (err error) {
 		conf.API = nil
 	}
 
-	if c.Ingress.Host == "" {
+	if c.Proxy.Host == "" {
 		return &ErrorMissing{
 			FilePath: filePath,
-			Feature:  "ingress.host",
+			Feature:  "proxy.host",
 		}
 	}
-	conf.Ingress.Host = c.Ingress.Host
+	conf.Proxy.Host = c.Proxy.Host
 
-	if c.Ingress.TLS != nil {
-		c := c.Ingress.TLS
-		// If either of ingress.cert-file and ingress.key-file are
+	if c.Proxy.TLS != nil {
+		c := c.Proxy.TLS
+		// If either of proxy.cert-file and proxy.key-file are
 		// present then both must be defined, otherwise TLS must be nil.
 		switch {
 		case c.CertFile != "" && c.KeyFile == "":
 			return &ErrorMissing{
 				FilePath: filePath,
-				Feature:  "ingress.tls.key-file",
+				Feature:  "proxy.tls.key-file",
 			}
 		case (c.KeyFile != "" && c.CertFile == "") ||
 			(c.KeyFile == "" && c.CertFile == ""):
 			return &ErrorMissing{
 				FilePath: filePath,
-				Feature:  "ingress.tls.cert-file",
+				Feature:  "proxy.tls.cert-file",
 			}
 		}
-		conf.Ingress.TLS.CertFile = c.CertFile
-		conf.Ingress.TLS.KeyFile = c.KeyFile
+		conf.Proxy.TLS.CertFile = c.CertFile
+		conf.Proxy.TLS.KeyFile = c.KeyFile
 	}
 
-	if conf.Ingress.MaxReqBodySizeBytes, err = getReqBodySize(
-		c.Ingress.MaxRequestBodySizeBytes,
-		filePath, "ingress.max-request-body-size",
+	if conf.Proxy.MaxReqBodySizeBytes, err = getReqBodySize(
+		c.Proxy.MaxRequestBodySizeBytes,
+		filePath, "proxy.max-request-body-size",
 	); err != nil {
 		return err
 	}

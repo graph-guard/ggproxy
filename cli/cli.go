@@ -142,6 +142,7 @@ func Parse(
 
 	default:
 		flags.Usage()
+		fmt.Printf("\nunknown command: %#v\n", args[1])
 		return nil
 	}
 	return cmd

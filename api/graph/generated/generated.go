@@ -65,7 +65,7 @@ type ComplexityRoot struct {
 		ForwardReduced    func(childComplexity int) int
 		ForwardURL        func(childComplexity int) int
 		ID                func(childComplexity int) int
-		IngressURL        func(childComplexity int) int
+		ProxyURL        func(childComplexity int) int
 		Match             func(childComplexity int, query string, operationName *string, variablesJSON *string) int
 		MatchAll          func(childComplexity int, query string, operationName *string, variablesJSON *string) int
 		Statistics        func(childComplexity int) int
@@ -223,12 +223,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Service.ID(childComplexity), true
 
-	case "Service.ingressURL":
-		if e.complexity.Service.IngressURL == nil {
+	case "Service.proxyURL":
+		if e.complexity.Service.ProxyURL == nil {
 			break
 		}
 
-		return e.complexity.Service.IngressURL(childComplexity), true
+		return e.complexity.Service.ProxyURL(childComplexity), true
 
 	case "Service.match":
 		if e.complexity.Service.Match == nil {
@@ -496,8 +496,8 @@ type Service {
 	# templatesDisabled provides a list of all disabled templates.
 	templatesDisabled: [Template!]!
 
-	# ingressURL provides the front-facing ingress URL of the service.
-	ingressURL: String!
+	# proxyURL provides the front-facing proxy URL of the service.
+	proxyURL: String!
 
 	# forwardURL provides the active forward endpoint URL
 	# that's targeted by the proxy.
@@ -1080,8 +1080,8 @@ func (ec *executionContext) fieldContext_Query_service(ctx context.Context, fiel
 				return ec.fieldContext_Service_templatesEnabled(ctx, field)
 			case "templatesDisabled":
 				return ec.fieldContext_Service_templatesDisabled(ctx, field)
-			case "ingressURL":
-				return ec.fieldContext_Service_ingressURL(ctx, field)
+			case "proxyURL":
+				return ec.fieldContext_Service_proxyURL(ctx, field)
 			case "forwardURL":
 				return ec.fieldContext_Service_forwardURL(ctx, field)
 			case "forwardReduced":
@@ -1157,8 +1157,8 @@ func (ec *executionContext) fieldContext_Query_services(ctx context.Context, fie
 				return ec.fieldContext_Service_templatesEnabled(ctx, field)
 			case "templatesDisabled":
 				return ec.fieldContext_Service_templatesDisabled(ctx, field)
-			case "ingressURL":
-				return ec.fieldContext_Service_ingressURL(ctx, field)
+			case "proxyURL":
+				return ec.fieldContext_Service_proxyURL(ctx, field)
 			case "forwardURL":
 				return ec.fieldContext_Service_forwardURL(ctx, field)
 			case "forwardReduced":
@@ -1467,8 +1467,8 @@ func (ec *executionContext) fieldContext_Service_templatesDisabled(ctx context.C
 	return fc, nil
 }
 
-func (ec *executionContext) _Service_ingressURL(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_Service_ingressURL(ctx, field)
+func (ec *executionContext) _Service_proxyURL(ctx context.Context, field graphql.CollectedField, obj *model.Service) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Service_proxyURL(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -1481,7 +1481,7 @@ func (ec *executionContext) _Service_ingressURL(ctx context.Context, field graph
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.IngressURL, nil
+		return obj.ProxyURL, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -1498,7 +1498,7 @@ func (ec *executionContext) _Service_ingressURL(ctx context.Context, field graph
 	return ec.marshalNString2string(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_Service_ingressURL(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_Service_proxyURL(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "Service",
 		Field:      field,
@@ -2422,8 +2422,8 @@ func (ec *executionContext) fieldContext_Template_service(ctx context.Context, f
 				return ec.fieldContext_Service_templatesEnabled(ctx, field)
 			case "templatesDisabled":
 				return ec.fieldContext_Service_templatesDisabled(ctx, field)
-			case "ingressURL":
-				return ec.fieldContext_Service_ingressURL(ctx, field)
+			case "proxyURL":
+				return ec.fieldContext_Service_proxyURL(ctx, field)
 			case "forwardURL":
 				return ec.fieldContext_Service_forwardURL(ctx, field)
 			case "forwardReduced":
@@ -4740,9 +4740,9 @@ func (ec *executionContext) _Service(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&invalids, 1)
 			}
-		case "ingressURL":
+		case "proxyURL":
 
-			out.Values[i] = ec._Service_ingressURL(ctx, field, obj)
+			out.Values[i] = ec._Service_proxyURL(ctx, field, obj)
 
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&invalids, 1)

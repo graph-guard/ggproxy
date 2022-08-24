@@ -25,6 +25,8 @@ func main() {
 	case cli.CommandStop:
 		stop(w, c)
 	default:
-		panic(fmt.Errorf("unexpected command: %#v", c))
+		if c != nil {
+			panic(fmt.Errorf("unexpected command: %#v", c))
+		}
 	}
 }

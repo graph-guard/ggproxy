@@ -65,7 +65,7 @@ func TestCommandServe(t *testing.T) {
 			func(s string) bool { return true },
 		)
 		require.Equal(t, cli.CommandServe{
-			ConfigDirPath: "./config",
+			ConfigDirPath: "/etc/ggproxy",
 			LicenseToken:  "TESTLICENSETOKEN",
 			APIUsername:   "testusername",
 			APIPassword:   "testpassword",
@@ -112,7 +112,7 @@ func TestCommandServe(t *testing.T) {
 				"flags:",
 				"-config <path>: "+
 					"defines the configuration directory path "+
-					"(default: ./config)",
+					"(default: /etc/ggproxy)",
 				"",
 				"environment variables:",
 				"GGPROXY_API_USERNAME: API basic auth username "+
@@ -148,7 +148,7 @@ func TestAPIPasswordNotSet(t *testing.T) {
 			"flags:",
 			"-config <path>: "+
 				"defines the configuration directory path "+
-				"(default: ./config)",
+				"(default: /etc/ggproxy)",
 			"",
 			"environment variables:",
 			"GGPROXY_API_USERNAME: API basic auth username "+
@@ -185,7 +185,7 @@ func TestLicenseTokenNotSet(t *testing.T) {
 			"flags:",
 			"-config <path>: "+
 				"defines the configuration directory path "+
-				"(default: ./config)",
+				"(default: /etc/ggproxy)",
 			"",
 			"environment variables:",
 			"GGPROXY_API_USERNAME: API basic auth username "+
@@ -222,7 +222,7 @@ func TestLicenseTokenInvalid(t *testing.T) {
 			"flags:",
 			"-config <path>: "+
 				"defines the configuration directory path "+
-				"(default: ./config)",
+				"(default: /etc/ggproxy)",
 			"",
 			"environment variables:",
 			"GGPROXY_API_USERNAME: API basic auth username "+
