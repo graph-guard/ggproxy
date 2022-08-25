@@ -3,9 +3,10 @@ package qmap
 import (
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/stack"
 	"github.com/graph-guard/ggproxy/utilities/unsafe"
@@ -48,7 +49,11 @@ func NewMaker(seed uint64) *Maker {
 // ParseQuery parses query into QueryMap.
 // Accepts a token list.
 // QueryMap is accessible through the fn function.
-func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
+func (m *Maker) ParseQuery(
+	variableValues [][]gqlparse.Token,
+	query []gqlparse.Token,
+	fn func(qm QueryMap),
+) {
 	m.mstack.Reset()
 	m.pstack.Reset()
 
@@ -57,7 +62,150 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 	var insideArray int
 	var lastObjField string
 	for _, token := range query {
-		switch token.Type {
+		fmt.Println("T: ", token.ID, string(token.Value))
+
+		if ix := token.VariableIndex(); ix > -1 {
+			value := variableValues[ix]
+			fmt.Println("VAL:", value)
+			for _, token := range value {
+				fmt.Println("VTOK: ", token, token.ID)
+				switch token.ID {
+				case gqlscan.TokenArr:
+					insideArray++
+					var arr *[]any
+					if m.arrayPool.Len() > 0 {
+						arr = m.arrayPool.Pop()
+					} else {
+						arr = &[]any{}
+					}
+					m.usedStack.Push(arr)
+
+					switch t := m.mstack.Top(); t := t.(type) {
+					case *[]any:
+						*t = append(*t, arr)
+					case *hamap.Map[string, any]:
+						t.Set(lastObjField, arr)
+					}
+					m.mstack.Push(arr)
+				case gqlscan.TokenObj:
+					if insideArray == 0 {
+						path := m.pstack.Top()
+						xxhash.Write(&path, ".")
+						m.pstack.Push(path)
+						m.mstack.Push(objectTerminal{})
+					} else {
+						var obj *hamap.Map[string, any]
+						if m.mapPool.Len() > 0 {
+							obj = m.mapPool.Pop()
+						} else {
+							obj = hamap.New[string, any](64, nil)
+						}
+						m.usedStack.Push(obj)
+
+						switch t := m.mstack.Top(); t := t.(type) {
+						case *[]any:
+							*t = append(*t, obj)
+						case *hamap.Map[string, any]:
+							t.Set(lastObjField, obj)
+						}
+						m.mstack.Push(obj)
+					}
+				case gqlscan.TokenObjField:
+					if insideArray == 0 {
+						t := m.pstack.Top()
+						xxhash.Write(&t, token.Value)
+						m.pstack.Push(t)
+						m.mstack.Push(pathTerminal{})
+					} else {
+						lastObjField = unsafe.B2S(token.Value)
+					}
+				case gqlscan.TokenStr, gqlscan.TokenInt, gqlscan.TokenFloat,
+					gqlscan.TokenTrue, gqlscan.TokenFalse, gqlscan.TokenNull:
+					var val any
+					var err error
+					switch token.ID {
+					case gqlscan.TokenStr:
+						val = token.Value
+					case gqlscan.TokenInt:
+						val, err = strconv.ParseInt(unsafe.B2S(token.Value), 10, 64)
+						if err != nil {
+							panic(err)
+						}
+					case gqlscan.TokenFloat:
+						val, err = strconv.ParseFloat(unsafe.B2S(token.Value), 64)
+						if err != nil {
+							panic(err)
+						}
+					case gqlscan.TokenTrue:
+						val = true
+					case gqlscan.TokenFalse:
+						val = false
+					}
+					if insideArray == 0 {
+						switch t := m.mstack.Top(); t.(type) {
+						case pathTerminal:
+							m.mstack.Pop()
+							path := m.pstack.Pop()
+							pathHash = path.Sum64()
+							qm[pathHash] = val
+						}
+					} else {
+						switch t := m.mstack.Top(); t := t.(type) {
+						case *[]any:
+							*t = append(*t, val)
+						case *hamap.Map[string, any]:
+							t.Set(lastObjField, val)
+						}
+					}
+				case gqlscan.TokenArrEnd,
+					gqlscan.TokenObjEnd:
+					if token.ID == gqlscan.TokenArrEnd {
+						insideArray--
+					}
+					for {
+						switch t := m.mstack.Top(); t.(type) {
+						case pathTerminal:
+							m.mstack.Pop()
+							path := m.pstack.Pop()
+							pathHash = path.Sum64()
+							qm[pathHash] = nil
+							continue
+						case argumentPathTerminal:
+							m.mstack.Pop()
+							m.pstack.Pop()
+							continue
+						case argumentsTerminal:
+							m.mstack.Pop()
+							m.pstack.Pop()
+						case selectTerminal, objectTerminal:
+							m.mstack.Pop()
+							m.pstack.Pop()
+							m.mstack.Pop()
+							m.pstack.Pop()
+						case *[]any, *hamap.Map[string, any]:
+							el := m.mstack.Pop()
+							path := m.pstack.Top()
+							if insideArray == 0 {
+								pathHash = path.Sum64()
+								switch elt := el.(type) {
+								case *[]any:
+									qm[pathHash] = elt
+								case *hamap.Map[string, any]:
+									qm[pathHash] = elt
+								}
+								m.mstack.Pop()
+								m.pstack.Pop()
+							}
+						}
+						break
+					}
+				}
+			}
+			continue
+		}
+		fmt.Println("SWITCH ON ", token.ID)
+
+		switch token.ID {
 		case gqlscan.TokenDefQry:
 			path := xxhash.New(m.seed)
 			xxhash.Write(&path, "query")
@@ -152,7 +300,7 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 			gqlscan.TokenFalse, gqlscan.TokenNull:
 			var val any
 			var err error
-			switch token.Type {
+			switch token.ID {
 			case gqlscan.TokenStr:
 				val = token.Value
 			case gqlscan.TokenInt:
@@ -190,7 +338,7 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 			gqlscan.TokenSetEnd,
 			gqlscan.TokenArgListEnd,
 			gqlscan.TokenObjEnd:
-			if token.Type == gqlscan.TokenArrEnd {
+			if token.ID == gqlscan.TokenArrEnd {
 				insideArray--
 			}
 			for {
@@ -232,6 +380,10 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 			}
 		}
 	}
+
+	fmt.Println("########")
+	qm.Print(os.Stdout)
+	fmt.Println("########")
 
 	fn(qm)
 	for m.usedStack.Len() > 0 {

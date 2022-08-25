@@ -6,19 +6,21 @@ import (
 	"testing"
 
 	"github.com/graph-guard/ggproxy/engines/qmap"
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/xxhash"
-	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewQueryMap(t *testing.T) {
 	for _, td := range []struct {
-		query  string
-		expect qmap.QueryMap
+		query         string
+		operationName string
+		variablesJSON string
+		expect        qmap.QueryMap
 	}{
 		{
+			operationName: "X",
 			query: `
 			query X {
 				a {
@@ -120,6 +122,7 @@ func TestNewQueryMap(t *testing.T) {
 			},
 		},
 		{
+			operationName: "X",
 			query: `
 			mutation X {
 				a {
@@ -140,28 +143,39 @@ func TestNewQueryMap(t *testing.T) {
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			var tokens []gqlreduce.Token
-			err := gqlscan.ScanAll([]byte(td.query), func(i *gqlscan.Iterator) {
-				tokens = append(tokens, gqlreduce.Token{
-					Type:  i.Token(),
-					Value: i.Value(),
-				})
-			})
-			require.Equal(t, false, err.IsErr())
-
-			qmap.NewMaker(0).ParseQuery(tokens, func(qm qmap.QueryMap) {
-				require.Equal(t, td.expect, qm)
-			})
+			gqlparse.NewParser().Parse(
+				[]byte(td.query),
+				[]byte(td.operationName),
+				[]byte(td.variablesJSON),
+				func(
+					varValues [][]gqlparse.Token,
+					operation []gqlparse.Token,
+				) {
+					qmap.NewMaker(0).ParseQuery(
+						varValues,
+						operation,
+						func(qm qmap.QueryMap) {
+							require.Equal(t, td.expect, qm)
+						},
+					)
+				},
+				func(err error) {
+					t.Fatalf("unexpected parser error: %v", err)
+				},
+			)
 		})
 	}
 }
 
 func TestPrint(t *testing.T) {
 	for _, td := range []struct {
-		query  string
-		expect string
+		query         string
+		operationName string
+		variablesJSON string
+		expect        string
 	}{
 		{
+			operationName: "X",
 			query: `
 			query X {
 				a {
@@ -220,21 +234,28 @@ func TestPrint(t *testing.T) {
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			var tokens []gqlreduce.Token
-			err := gqlscan.ScanAll([]byte(td.query), func(i *gqlscan.Iterator) {
-				tokens = append(tokens, gqlreduce.Token{
-					Type:  i.Token(),
-					Value: i.Value(),
-				})
-			})
-			require.Equal(t, false, err.IsErr())
-
-			b := new(bytes.Buffer)
-			qmap.NewMaker(0).ParseQuery(tokens, func(qm qmap.QueryMap) {
-				qm.Print(b)
-			})
-
-			require.Equal(t, td.expect, b.String())
+			gqlparse.NewParser().Parse(
+				[]byte(td.query),
+				[]byte(td.operationName),
+				[]byte(td.variablesJSON),
+				func(
+					varValues [][]gqlparse.Token,
+					operation []gqlparse.Token,
+				) {
+					b := new(bytes.Buffer)
+					qmap.NewMaker(0).ParseQuery(
+						varValues,
+						operation,
+						func(qm qmap.QueryMap) {
+							qm.Print(b)
+						},
+					)
+					require.Equal(t, td.expect, b.String())
+				},
+				func(err error) {
+					t.Fatalf("unexpected parser error: %v", err)
+				},
+			)
 		})
 	}
 }

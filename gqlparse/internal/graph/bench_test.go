@@ -3,7 +3,7 @@ package graph_test
 import (
 	"testing"
 
-	"github.com/graph-guard/ggproxy/gqlreduce/internal/graph"
+	"github.com/graph-guard/ggproxy/gqlparse/internal/graph"
 )
 
 var GL bool

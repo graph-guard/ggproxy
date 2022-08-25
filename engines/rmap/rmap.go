@@ -8,7 +8,7 @@ import (
 	"math/rand"
 
 	"github.com/graph-guard/ggproxy/engines/qmap"
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/bitmask"
 	"github.com/graph-guard/ggproxy/utilities/container/amap"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
@@ -18,11 +18,11 @@ import (
 
 var ErrHashCollision = errors.New("hash collsision")
 
-type ErrReducer struct {
+type ErrParser struct {
 	msg string
 }
 
-func (er *ErrReducer) Error() string {
+func (er *ErrParser) Error() string {
 	return er.msg
 }
 
@@ -499,8 +499,11 @@ func ConstraintIdAndValue(c gqt.Constraint) (Constraint, any) {
 }
 
 // Match returns the ID of the matching template or "" if none was matched.
-func (rm *RulesMap) Match(operation []gqlreduce.Token) (id string) {
-	rm.FindMatch(operation, func(mask *bitmask.Set) {
+func (rm *RulesMap) Match(
+	variableValues [][]gqlparse.Token,
+	operation []gqlparse.Token,
+) (id string) {
+	rm.FindMatch(variableValues, operation, func(mask *bitmask.Set) {
 		if mask.Size() > 0 {
 			mask.Visit(func(n int) (skip bool) {
 				id = rm.templateIDs[n]
@@ -513,10 +516,11 @@ func (rm *RulesMap) Match(operation []gqlreduce.Token) (id string) {
 
 // MatchAll calls fn for every matching template.
 func (rm *RulesMap) MatchAll(
-	operation []gqlreduce.Token,
+	variableValues [][]gqlparse.Token,
+	operation []gqlparse.Token,
 	fn func(id string),
 ) {
-	rm.FindMatch(operation, func(mask *bitmask.Set) {
+	rm.FindMatch(variableValues, operation, func(mask *bitmask.Set) {
 		mask.VisitAll(func(n int) {
 			fn(rm.templateIDs[n])
 		})
@@ -525,10 +529,11 @@ func (rm *RulesMap) MatchAll(
 
 // FindMatch matches query to the rules.
 func (rm *RulesMap) FindMatch(
-	operation []gqlreduce.Token,
+	variableValues [][]gqlparse.Token,
+	operation []gqlparse.Token,
 	fn func(mask *bitmask.Set),
 ) {
-	rm.qmake.ParseQuery(operation, func(qm qmap.QueryMap) {
+	rm.qmake.ParseQuery(variableValues, operation, func(qm qmap.QueryMap) {
 		rm.matchCounter.Reset()
 		rm.mask.Reset()
 

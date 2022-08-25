@@ -9,7 +9,7 @@ import (
 
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engines/rmap"
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/statistics"
 	"github.com/graph-guard/ggproxy/utilities/tokenwriter"
 	"github.com/graph-guard/gqt"
@@ -38,8 +38,8 @@ type service struct {
 }
 
 type matcher struct {
-	Reducer *gqlreduce.Reducer
-	Engine  *rmap.RulesMap
+	Parser *gqlparse.Parser
+	Engine *rmap.RulesMap
 }
 
 func NewProxy(
@@ -107,10 +107,10 @@ func NewProxy(
 							s.ID, err,
 						))
 					}
-					reducer := gqlreduce.NewReducer()
+					parser := gqlparse.NewParser()
 					return &matcher{
-						Reducer: reducer,
-						Engine:  engine,
+						Parser: parser,
+						Engine: engine,
 					}
 				},
 			},
@@ -190,10 +190,13 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 	m := service.matcherpool.Get().(*matcher)
 	defer service.matcherpool.Put(m)
 
-	m.Reducer.Reduce(
+	m.Parser.Parse(
 		query, operationName, variablesJSON,
-		func(operation []gqlreduce.Token) {
-			templateID := m.Engine.Match(operation)
+		func(
+			varVals [][]gqlparse.Token,
+			operation []gqlparse.Token,
+		) {
+			templateID := m.Engine.Match(varVals, operation)
 			if templateID == "" {
 				timeProcessing := time.Since(start)
 				service.statistics.Update(
@@ -229,7 +232,7 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 				); err != nil {
 					s.log.Error().
 						Err(err).
-						Msg("writing reduced to forward request body")
+						Msg("writing parsed to forward request body")
 					ctx.Error(fasthttp.StatusMessage(
 						fasthttp.StatusInternalServerError,
 					), fasthttp.StatusInternalServerError)
@@ -269,7 +272,7 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 			)
 		},
 		func(err error) {
-			s.log.Error().Err(err).Msg("reducer error")
+			s.log.Error().Err(err).Msg("parser error")
 
 			timeProcessing := time.Since(start)
 			service.statistics.Update(

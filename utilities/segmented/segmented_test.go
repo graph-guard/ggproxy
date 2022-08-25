@@ -13,25 +13,29 @@ func TestCutGet(t *testing.T) {
 
 	s1 := s.Cut("foo")
 	require.Equal(t, 1, s.Len())
-	require.Equal(t, segmented.Segment{Start: 0, End: 0}, s1)
+	require.Equal(t, segmented.Segment{Index: 0, Start: 0, End: 0}, s1)
 
 	s.Append("b1", "bar2", "bar_3")
 	s2 := s.Cut("bar")
 	require.Equal(t, 2, s.Len())
-	require.Equal(t, segmented.Segment{Start: 0, End: 3}, s2)
+	require.Equal(t, segmented.Segment{Index: 1, Start: 0, End: 3}, s2)
 
 	s.Append("bz")
 	s3 := s.Cut("baz")
 	require.Equal(t, 3, s.Len())
-	require.Equal(t, segmented.Segment{Start: 3, End: 4}, s3)
+	require.Equal(t, segmented.Segment{Index: 2, Start: 3, End: 4}, s3)
 
-	require.Equal(t, []string{}, s.Get("foo"))
-	require.Equal(t, []string{"b1", "bar2", "bar_3"}, s.Get("bar"))
-	require.Equal(t, []string{"bz"}, s.Get("baz"))
+	require.Equal(t, s1, s.Get("foo"))
+	require.Equal(t, s2, s.Get("bar"))
+	require.Equal(t, s3, s.Get("baz"))
 
 	require.Equal(t, []string{}, s.GetSegment(s1))
 	require.Equal(t, []string{"b1", "bar2", "bar_3"}, s.GetSegment(s2))
 	require.Equal(t, []string{"bz"}, s.GetSegment(s3))
+
+	require.Equal(t, []string{}, s.GetItems("foo"))
+	require.Equal(t, []string{"b1", "bar2", "bar_3"}, s.GetItems("bar"))
+	require.Equal(t, []string{"bz"}, s.GetItems("baz"))
 }
 
 func TestCutExists(t *testing.T) {
@@ -46,20 +50,20 @@ func TestCutExists(t *testing.T) {
 	require.Equal(t, 3, s.Len())
 	x := s.Cut("foo")
 	require.Equal(t, 3, s.Len())
-	require.Equal(t, segmented.Segment{Start: -1, End: 0}, x)
+	require.Equal(t, segmented.Segment{Index: -1, Start: 0, End: 0}, x)
 }
 
 func TestGetNotFound(t *testing.T) {
 	s := segmented.New[string, string]()
 	{
 		r := s.Get("non-existent")
-		require.Nil(t, r)
+		require.Equal(t, segmented.Segment{Index: -1}, r)
 	}
 	s.Append("bar", "baz", "taz")
 	s.Cut("foo")
 	{
 		r := s.Get("non-existent")
-		require.Nil(t, r)
+		require.Equal(t, segmented.Segment{Index: -1}, r)
 	}
 }
 
@@ -74,9 +78,10 @@ func TestVisitAll(t *testing.T) {
 
 	visitedKeys := []string{}
 	visitedVals := [][]string{}
-	s.VisitAll(func(key string, s []string) {
+	s.VisitAll(func(key string, seg segmented.Segment) {
 		visitedKeys = append(visitedKeys, key)
-		visitedVals = append(visitedVals, s)
+		v := s.GetSegment(seg)
+		visitedVals = append(visitedVals, v)
 	})
 
 	require.Len(t, visitedKeys, 3)
@@ -108,15 +113,21 @@ func TestReset(t *testing.T) {
 	s.Reset()
 	require.Equal(t, 0, s.Len())
 	{
-		r := s.Get("foo")
-		require.Nil(t, r)
+		const key = "foo"
+		require.Nil(t, s.GetItems(key))
+		r := s.Get(key)
+		require.Equal(t, segmented.Segment{Index: -1}, r)
 	}
 	{
-		r := s.Get("bar")
-		require.Nil(t, r)
+		const key = "bar"
+		require.Nil(t, s.GetItems(key))
+		r := s.Get(key)
+		require.Equal(t, segmented.Segment{Index: -1}, r)
 	}
 	{
-		r := s.Get("baz")
-		require.Nil(t, r)
+		const key = "baz"
+		require.Nil(t, s.GetItems(key))
+		r := s.Get(key)
+		require.Equal(t, segmented.Segment{Index: -1}, r)
 	}
 }

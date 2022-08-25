@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/graph-guard/ggproxy/engines/rmap"
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqt"
 )
 
@@ -107,14 +107,19 @@ func BenchmarkRQmap(b *testing.B) {
 			query := []byte(td.query)
 			operationName := []byte(td.operationName)
 			variablesJSON := []byte(td.variablesJSON)
-			r := gqlreduce.NewReducer()
+			r := gqlparse.NewParser()
 			b.ResetTimer()
 
 			for n := 0; n < b.N; n++ {
-				r.Reduce(
+				r.Parse(
 					query, operationName, variablesJSON,
-					func(operation []gqlreduce.Token) {
+					func(
+						varVals [][]gqlparse.Token,
+						operation []gqlparse.Token,
+					) {
+						//TODO: use varVals
 						rm.MatchAll(
+							varVals,
 							operation,
 							func(id string) { GS = id },
 						)

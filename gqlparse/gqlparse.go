@@ -1,13 +1,14 @@
-// Package gqlreduce provides a GraphQL reducer that validates queries,
-// ignores irrelevant operations and inlines variables and fragments.
-package gqlreduce
+// Package gqlparse provides a GraphQL parser that validates queries,
+// ignores irrelevant operations inlines fragments and
+// references variable values.
+package gqlparse
 
 import (
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/graph-guard/ggproxy/gqlreduce/internal/graph"
+	"github.com/graph-guard/ggproxy/gqlparse/internal/graph"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/segmented"
 	"github.com/graph-guard/ggproxy/utilities/stack"
@@ -17,9 +18,32 @@ import (
 )
 
 type Token struct {
-	Type  gqlscan.Token
+	// IDs below 100 are reserved gqlscan type identifiers.
+	// IDs above 99 are variable value indexes.
+	ID    gqlscan.Token
 	Value []byte
 }
+
+// VariableIndex returns the index of the varible value if
+// its a variable index token, otherwise returns -1.
+func (t Token) VariableIndex() (index int) {
+	if t.ID >= TokenTypeValIndexOffset {
+		return int(t.ID - TokenTypeValIndexOffset)
+	}
+	return -1
+}
+
+// MakeVariableIndexToken creates a variable index token.
+func MakeVariableIndexToken(index int, name string) Token {
+	return Token{
+		ID:    gqlscan.Token(TokenTypeValIndexOffset + index),
+		Value: []byte(name),
+	}
+}
+
+// TokenTypeValIndexOffset defines the offset that needs to be subtracted
+// from Token.ID in order to get the index of the value when Token.ID is > 99
+const TokenTypeValIndexOffset = 100
 
 type indexRange struct {
 	IndexStart int
@@ -48,11 +72,11 @@ type typeUnion struct {
 	TypeName []byte
 }
 
-// NewReducer creates a new reducer instance.
-// It's adviced to create only one reducer per goroutine
-// as calling (*Reducer).Reduce will reset it.
-func NewReducer() *Reducer {
-	return &Reducer{
+// NewParser creates a new parser instance.
+// It's adviced to create only one parser per goroutine
+// as calling (*Parser).Parse will reset it.
+func NewParser() *Parser {
+	return &Parser{
 		gi:        graph.NewInspector(),
 		buffer:    make([]Token, 0),
 		bufferOpr: make([]Token, 0),
@@ -62,7 +86,9 @@ func NewReducer() *Reducer {
 		),
 		fragsConstructed:   segmented.New[[]byte, Token](),
 		entryFrags:         hamap.New[[]byte, struct{}](0, nil),
-		vars:               hamap.New[[]byte, varDecl](0, nil),
+		varOrder:           make([][]byte, 0),
+		varsDecls:          hamap.New[[]byte, varDecl](0, nil),
+		varValues:          make([][]Token, 0),
 		varsConstructed:    segmented.New[[]byte, Token](),
 		typeStack:          stack.New[typeUnion](0),
 		operations:         make([]indexRange, 0),
@@ -73,7 +99,7 @@ func NewReducer() *Reducer {
 	}
 }
 
-type Reducer struct {
+type Parser struct {
 	// buffer holds the original source tokens
 	buffer []Token
 
@@ -99,8 +125,14 @@ type Reducer struct {
 	// fragsConstructed stores all constructed structs
 	fragsConstructed *segmented.Array[[]byte, Token]
 
-	// vars indexes all variable declarations
-	vars *hamap.Map[[]byte, varDecl]
+	// varOrder defines the order of variable declarations
+	varOrder [][]byte
+
+	// varsDecls indexes all variable declarations
+	varsDecls *hamap.Map[[]byte, varDecl]
+
+	// varValues stores all constructed variable values
+	varValues [][]Token
 
 	// varsConstructed stores all constructed variable values
 	varsConstructed *segmented.Array[[]byte, Token]
@@ -131,28 +163,30 @@ type Reducer struct {
 	errVarJSONNotObj     ErrorVarJSONNotObj
 }
 
-func (r *Reducer) reset() {
+func (r *Parser) reset() {
 	r.buffer = r.buffer[:0]
 	r.bufferOpr = r.bufferOpr[:0]
 	r.ordered = r.ordered[:0]
 	r.fragDefs.Reset()
 	r.entryFrags.Reset()
-	r.vars.Reset()
+	r.varOrder = r.varOrder[:0]
+	r.varValues = r.varValues[:0]
+	r.varsDecls.Reset()
 	r.varsConstructed.Reset()
 	r.fragsConstructed.Reset()
 	r.operations = r.operations[:0]
 	r.fragmentGraphEdges = r.fragmentGraphEdges[:0]
 }
 
-// Reduce calls onSuccess in case of successful reduction where operation
+// Parse calls onSuccess in case of success where operation
 // only contains the relevant set of tokens.
 // onError is called in case of an error.
 //
 // WARNING: Data (including errors) provided to callbacks must not be
-// aliased and used after Reduce returns!
-func (r *Reducer) Reduce(
+// aliased and used after Parse returns!
+func (r *Parser) Parse(
 	src, operationName, varsJSON []byte,
-	onSuccess func(operation []Token),
+	onSuccess func(varValues [][]Token, operation []Token),
 	onError func(err error),
 ) {
 	r.reset()
@@ -164,7 +198,7 @@ func (r *Reducer) Reduce(
 
 	if serr := gqlscan.Scan(src, func(i *gqlscan.Iterator) bool {
 		r.buffer = append(r.buffer, Token{
-			Type:  i.Token(),
+			ID:    i.Token(),
 			Value: i.Value(),
 		})
 		switch i.Token() {
@@ -268,7 +302,7 @@ func (r *Reducer) Reduce(
 	oprIndex := -1
 	for i := 0; i < len(r.operations); i++ {
 		x := r.buffer[r.operations[i].IndexStart+1]
-		if x.Type != gqlscan.TokenOprName {
+		if x.ID != gqlscan.TokenOprName {
 			// Make sure this anonymous operation is
 			// the only operation in the request
 			if len(r.operations) > 1 {
@@ -290,7 +324,7 @@ func (r *Reducer) Reduce(
 		}
 		for j := i + 1; j < len(r.operations); j++ {
 			x2 := r.buffer[r.operations[j].IndexStart+1]
-			if x2.Type != gqlscan.TokenOprName {
+			if x2.ID != gqlscan.TokenOprName {
 				continue
 			}
 			if string(x.Value) == string(x2.Value) {
@@ -314,9 +348,9 @@ func (r *Reducer) Reduce(
 	opr := r.operations[oprIndex]
 	o := r.buffer[opr.IndexStart:opr.IndexEnd]
 	r.bufferOpr = append(r.bufferOpr, o[0])
-	if o[1].Type == gqlscan.TokenVarList ||
-		o[1].Type == gqlscan.TokenOprName &&
-			o[2].Type == gqlscan.TokenVarList {
+	if o[1].ID == gqlscan.TokenVarList ||
+		o[1].ID == gqlscan.TokenOprName &&
+			o[2].ID == gqlscan.TokenVarList {
 		// Has variable list
 		if endOfVarBlock, ok := r.validateAndIndexVars(
 			o, varsJSON, onError,
@@ -326,7 +360,7 @@ func (r *Reducer) Reduce(
 			i = endOfVarBlock + 1
 		}
 
-		if o[1].Type == gqlscan.TokenOprName {
+		if o[1].ID == gqlscan.TokenOprName {
 			// Include operation name
 			r.bufferOpr = append(r.bufferOpr, o[1])
 		}
@@ -348,7 +382,8 @@ func (r *Reducer) Reduce(
 	}
 
 	// Construct variable values
-	r.vars.VisitAll(func(varName []byte, vr varDecl) {
+	for _, varName := range r.varOrder {
+		vr, _ := r.varsDecls.Get(varName)
 		if res := gjson.Get(
 			unsafe.B2S(varsJSON), unsafe.B2S(vr.Name),
 		); res.Exists() {
@@ -381,8 +416,10 @@ func (r *Reducer) Reduce(
 			onError(&r.errVarUndefined)
 			return
 		}
-		r.varsConstructed.Cut(varName)
-	})
+		seg := r.varsConstructed.Cut(varName)
+		val := r.varsConstructed.GetSegment(seg)
+		r.varValues = append(r.varValues, val)
+	}
 	if isErr {
 		return
 	}
@@ -423,7 +460,7 @@ func (r *Reducer) Reduce(
 	r.entryFrags.VisitAll(func(fragName []byte, value struct{}) {
 		ok := r.fragDefs.GetFn(fragName, func(v *fragDef) {
 			v.Used = true
-			if c := r.fragsConstructed.Get(fragName); c != nil {
+			if c := r.fragsConstructed.GetItems(fragName); c != nil {
 				return
 			}
 			if r.constructFrag(fragName, v.indexRange, onError) {
@@ -442,9 +479,34 @@ func (r *Reducer) Reduce(
 		return
 	}
 
-	// Reduce tokens
+	// Define variable list if necessary
+	if len(r.varOrder) > 0 {
+		r.bufferOpr = append(r.bufferOpr, Token{
+			ID: gqlscan.TokenVarList,
+		})
+		for _, name := range r.varOrder {
+			// Write variable name
+			r.bufferOpr = append(r.bufferOpr, Token{
+				ID:    gqlscan.TokenVarName,
+				Value: name,
+			})
+			// Write variable type
+			r.varsDecls.GetFn(name, func(v *varDecl) {
+				typeDef := r.buffer[v.Type.IndexStart:v.Type.IndexEnd]
+				r.bufferOpr = append(r.bufferOpr, typeDef...)
+			})
+			// Write variable value
+			val := r.varsConstructed.GetItems(name)
+			r.bufferOpr = append(r.bufferOpr, val...)
+		}
+		r.bufferOpr = append(r.bufferOpr, Token{
+			ID: gqlscan.TokenVarListEnd,
+		})
+	}
+
+	// Fill operation buffer
 	for ; i < len(o); i++ {
-		switch o[i].Type {
+		switch o[i].ID {
 		default:
 			r.bufferOpr = append(r.bufferOpr, o[i])
 
@@ -456,21 +518,24 @@ func (r *Reducer) Reduce(
 				v.Used = true
 			})
 
-			if v := r.fragsConstructed.Get(o[i].Value); v != nil {
+			if v := r.fragsConstructed.GetItems(o[i].Value); v != nil {
 				r.bufferOpr = append(r.bufferOpr, v...)
 			} else {
 				r.bufferOpr = append(r.bufferOpr, fragContents...)
 			}
 
 		case gqlscan.TokenVarRef:
-			// Inline variable reference, replace them with the actual value
+			// Append variable value index
 			value := r.varsConstructed.Get(o[i].Value)
-			if value == nil {
+			if value.Index == -1 {
 				r.errVarUndeclared.VariableName = o[i].Value
 				onError(&r.errVarUndeclared)
 				return
 			}
-			r.bufferOpr = append(r.bufferOpr, value...)
+			r.bufferOpr = append(
+				r.bufferOpr,
+				makeVarValueRefTok(value.Index, o[i].Value),
+			)
 		}
 	}
 
@@ -488,7 +553,7 @@ func (r *Reducer) Reduce(
 		return
 	}
 
-	onSuccess(r.bufferOpr)
+	onSuccess(r.varValues, r.bufferOpr)
 }
 
 type ErrorSyntax struct {
@@ -646,16 +711,16 @@ func (e *ErrorVarJSONNotObj) Error() string {
 	)
 }
 
-func (r *Reducer) validateAndIndexVars(
+func (r *Parser) validateAndIndexVars(
 	t []Token, varsJSON []byte, onError func(error),
 ) (indexEndVarList int, ok bool) {
 	// Validate and index all variable declarations
 	i := 2
-	if t[1].Type == gqlscan.TokenOprName {
+	if t[1].ID == gqlscan.TokenOprName {
 		i = 3
 	}
 	for {
-		if t[i].Type == gqlscan.TokenVarListEnd {
+		if t[i].ID == gqlscan.TokenVarListEnd {
 			indexEndVarList = i
 			break
 		}
@@ -669,15 +734,15 @@ func (r *Reducer) validateAndIndexVars(
 		// Check optional default value
 		defVal := indexRange{IndexStart: -1}
 		isErr := false
-		if t[i].Type != gqlscan.TokenVarName &&
-			t[i].Type != gqlscan.TokenVarListEnd {
+		if t[i].ID != gqlscan.TokenVarName &&
+			t[i].ID != gqlscan.TokenVarListEnd {
 			defVal.IndexStart = i
 			// Parse default value
 			arrayLevel := 0
 			expect := r.typeStack.Get(0)
 		LOOP:
 			for {
-				switch t[i].Type {
+				switch t[i].ID {
 				case gqlscan.TokenArr:
 					i++
 					if !expect.Array {
@@ -722,10 +787,20 @@ func (r *Reducer) validateAndIndexVars(
 						isErr = true
 					}
 				case gqlscan.TokenObj:
-					for ; t[i].Type != gqlscan.TokenObjEnd; i++ {
-						// Skip over input object internals
-					}
 					i++
+				SKIP_OBJ_INTERNALS:
+					for lvl := 0; ; i++ {
+						switch t[i].ID {
+						case gqlscan.TokenObj:
+							lvl++
+						case gqlscan.TokenObjEnd:
+							lvl--
+							if lvl < 0 {
+								i++
+								break SKIP_OBJ_INTERNALS
+							}
+						}
+					}
 					if string(expect.TypeName) == "Int" ||
 						string(expect.TypeName) == "Float" ||
 						string(expect.TypeName) == "Boolean" ||
@@ -751,7 +826,8 @@ func (r *Reducer) validateAndIndexVars(
 			return
 		}
 
-		r.vars.SetFn(name, func(v *varDecl) varDecl {
+		r.varOrder = append(r.varOrder, name)
+		r.varsDecls.SetFn(name, func(v *varDecl) varDecl {
 			if v != nil {
 				isErr = true
 				r.errRedeclVar.VariableName = name
@@ -775,7 +851,7 @@ func (r *Reducer) validateAndIndexVars(
 // expecting definition to be valid.
 func WriteTypeDesignation(w io.Writer, definition []Token) {
 	for i := 0; i < len(definition); i++ {
-		switch definition[i].Type {
+		switch definition[i].ID {
 		case gqlscan.TokenVarTypeName:
 			_, _ = w.Write(definition[i].Value)
 		case gqlscan.TokenVarTypeArr:
@@ -792,7 +868,7 @@ func WriteTypeDesignation(w io.Writer, definition []Token) {
 func WriteValue(w io.Writer, definition []Token) {
 	level := 0
 	for i := 0; i < len(definition); {
-		switch definition[i].Type {
+		switch definition[i].ID {
 		case gqlscan.TokenInt, gqlscan.TokenFloat:
 			_, _ = w.Write(definition[i].Value)
 		case gqlscan.TokenStr:
@@ -823,10 +899,10 @@ func WriteValue(w io.Writer, definition []Token) {
 		}
 		i++
 		if i < len(definition) &&
-			definition[i-1].Type != gqlscan.TokenObj &&
-			definition[i-1].Type != gqlscan.TokenArr &&
-			definition[i].Type != gqlscan.TokenObjEnd &&
-			definition[i].Type != gqlscan.TokenArrEnd {
+			definition[i-1].ID != gqlscan.TokenObj &&
+			definition[i-1].ID != gqlscan.TokenArr &&
+			definition[i].ID != gqlscan.TokenObjEnd &&
+			definition[i].ID != gqlscan.TokenArrEnd {
 			_, _ = w.Write(strComSp)
 		}
 	}
@@ -843,12 +919,12 @@ var strTrue = []byte("true")
 var strFalse = []byte("false")
 var strNull = []byte("null")
 
-func (r *Reducer) writeTypeToStack(t []Token, i int) (typeIndex indexRange) {
+func (r *Parser) writeTypeToStack(t []Token, i int) (typeIndex indexRange) {
 	r.typeStack.Reset()
 	typeIndex.IndexStart = i
 LOOP:
 	for offset := 0; ; i++ {
-		switch t[i].Type {
+		switch t[i].ID {
 		case gqlscan.TokenVarTypeArr:
 			r.typeStack.Push(typeUnion{
 				Nullable: true,
@@ -873,7 +949,7 @@ LOOP:
 	return typeIndex
 }
 
-func (r *Reducer) writeValueToBuffer(
+func (r *Parser) writeValueToBuffer(
 	arrayLevel int,
 	isErr bool,
 	v gjson.Result,
@@ -887,7 +963,7 @@ func (r *Reducer) writeValueToBuffer(
 		if arrayLevel > -1 && !expect.Nullable {
 			isErr = true
 		}
-		r.buffer2 = append(r.buffer2, Token{Type: gqlscan.TokenNull})
+		r.buffer2 = append(r.buffer2, Token{ID: gqlscan.TokenNull})
 
 	case v.Type == gjson.Number:
 		if strings.IndexByte(v.Raw, '.') > -1 {
@@ -896,7 +972,7 @@ func (r *Reducer) writeValueToBuffer(
 				isErr = true
 			}
 			r.buffer2 = append(r.buffer2, Token{
-				Type:  gqlscan.TokenFloat,
+				ID:    gqlscan.TokenFloat,
 				Value: unsafe.S2B(v.Raw),
 			})
 		} else {
@@ -907,7 +983,7 @@ func (r *Reducer) writeValueToBuffer(
 				isErr = true
 			}
 			r.buffer2 = append(r.buffer2, Token{
-				Type:  gqlscan.TokenInt,
+				ID:    gqlscan.TokenInt,
 				Value: unsafe.S2B(v.Raw),
 			})
 		}
@@ -916,13 +992,13 @@ func (r *Reducer) writeValueToBuffer(
 		if arrayLevel > -1 && string(expect.TypeName) != "Boolean" {
 			isErr = true
 		}
-		r.buffer2 = append(r.buffer2, Token{Type: gqlscan.TokenTrue})
+		r.buffer2 = append(r.buffer2, Token{ID: gqlscan.TokenTrue})
 
 	case v.Type == gjson.False:
 		if arrayLevel > -1 && string(expect.TypeName) != "Boolean" {
 			isErr = true
 		}
-		r.buffer2 = append(r.buffer2, Token{Type: gqlscan.TokenFalse})
+		r.buffer2 = append(r.buffer2, Token{ID: gqlscan.TokenFalse})
 
 	case v.Type == gjson.String:
 		if arrayLevel > -1 &&
@@ -931,7 +1007,7 @@ func (r *Reducer) writeValueToBuffer(
 			isErr = true
 		}
 		r.buffer2 = append(r.buffer2, Token{
-			Type:  gqlscan.TokenStr,
+			ID:    gqlscan.TokenStr,
 			Value: unsafe.S2B(v.Raw[1 : len(v.Raw)-1]),
 		})
 
@@ -939,7 +1015,7 @@ func (r *Reducer) writeValueToBuffer(
 		if arrayLevel > -1 && !expect.Array {
 			isErr = true
 		}
-		r.buffer2 = append(r.buffer2, Token{Type: gqlscan.TokenArr})
+		r.buffer2 = append(r.buffer2, Token{ID: gqlscan.TokenArr})
 		al := arrayLevel
 		if al > -1 {
 			al++
@@ -948,7 +1024,7 @@ func (r *Reducer) writeValueToBuffer(
 			isErr = r.writeValueToBuffer(al, isErr, value)
 			return true
 		})
-		r.buffer2 = append(r.buffer2, Token{Type: gqlscan.TokenArrEnd})
+		r.buffer2 = append(r.buffer2, Token{ID: gqlscan.TokenArrEnd})
 
 	case v.IsObject():
 		if arrayLevel > -1 && (string(expect.TypeName) == "Int" ||
@@ -958,44 +1034,54 @@ func (r *Reducer) writeValueToBuffer(
 			string(expect.TypeName) == "ID") {
 			isErr = true
 		}
-		r.buffer2 = append(r.buffer2, Token{Type: gqlscan.TokenObj})
+		r.buffer2 = append(r.buffer2, Token{ID: gqlscan.TokenObj})
 		v.ForEach(func(key, value gjson.Result) bool {
 			r.buffer2 = append(r.buffer2, Token{
-				Type:  gqlscan.TokenObjField,
+				ID:    gqlscan.TokenObjField,
 				Value: unsafe.S2B(key.Raw[1 : len(key.Raw)-1]),
 			})
 			isErr = r.writeValueToBuffer(-1, isErr, value)
 			return true
 		})
-		r.buffer2 = append(r.buffer2, Token{Type: gqlscan.TokenObjEnd})
+		r.buffer2 = append(r.buffer2, Token{ID: gqlscan.TokenObjEnd})
 	}
 	return isErr
 }
 
-func (r *Reducer) constructFrag(
+func (r *Parser) constructFrag(
 	fragName []byte,
 	rn indexRange,
 	onError func(err error),
 ) (err bool) {
 	fragSelections := r.buffer[rn.IndexStart+3 : rn.IndexEnd-1]
 	for _, t := range fragSelections {
-		switch t.Type {
+		switch t.ID {
 		case gqlscan.TokenNamedSpread:
 			// Inline fragment spread
-			fragContents := r.fragsConstructed.Get(t.Value)
+			fragContents := r.fragsConstructed.GetItems(t.Value)
 			r.fragsConstructed.Append(fragContents...)
 		case gqlscan.TokenVarRef:
-			value := r.varsConstructed.Get(t.Value)
-			if value == nil {
+			valueSeg := r.varsConstructed.Get(t.Value)
+			if valueSeg.Index == -1 {
 				r.errVarUndefined.VariableName = t.Value
 				onError(&r.errVarUndefined)
 				return true
 			}
-			r.fragsConstructed.Append(value...)
+			// value := r.varsConstructed.GetSegment(valueSeg)
+			r.fragsConstructed.Append(
+				makeVarValueRefTok(valueSeg.Index, t.Value),
+			)
 		default:
 			r.fragsConstructed.Append(t)
 		}
 	}
 	r.fragsConstructed.Cut(fragName)
 	return false
+}
+
+func makeVarValueRefTok(index int, variableName []byte) Token {
+	return Token{
+		ID:    gqlscan.Token(TokenTypeValIndexOffset + index),
+		Value: variableName,
+	}
 }
