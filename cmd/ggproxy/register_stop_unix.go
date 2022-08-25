@@ -17,7 +17,6 @@ func RegisterStop(
 	signal.Notify(interrupt, syscall.SIGINT)
 	signal.Notify(interrupt, syscall.SIGQUIT)
 	signal.Notify(interrupt, syscall.SIGABRT)
-	signal.Notify(interrupt, syscall.SIGKILL)
 	signal.Notify(interrupt, syscall.SIGTERM)
 	go func() {
 		select {

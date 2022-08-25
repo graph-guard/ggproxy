@@ -1,3 +1,4 @@
 name: "Service A"
+path: "/service_a"
 forward_url: "http://localhost:8081/service_a"
 forward_reduced: false

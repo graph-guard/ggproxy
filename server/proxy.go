@@ -28,8 +28,8 @@ type Proxy struct {
 }
 
 type service struct {
-	source             string
-	destination        string
+	id                 string
+	forwardURL         string
 	forwardReduced     bool
 	log                plog.Logger
 	matcherpool        sync.Pool
@@ -89,9 +89,9 @@ func NewProxy(
 			templateStatistics[t.ID] = statistics.NewTemplateSync()
 		}
 
-		services[s.ID] = &service{
-			source:         s.ID,
-			destination:    s.ForwardURL,
+		services[s.Path] = &service{
+			id:             s.ID,
+			forwardURL:     s.ForwardURL,
 			forwardReduced: s.ForwardReduced,
 			log:            log,
 			matcherpool: sync.Pool{
@@ -124,10 +124,10 @@ func NewProxy(
 			n := 1
 			m := make([]*matcher, n)
 			for i := 0; i < n; i++ {
-				m[i] = services[s.ID].matcherpool.Get().(*matcher)
+				m[i] = services[s.Path].matcherpool.Get().(*matcher)
 			}
 			for i := 0; i < n; i++ {
-				services[s.ID].matcherpool.Put(m[i])
+				services[s.Path].matcherpool.Put(m[i])
 			}
 		}()
 	}
@@ -136,8 +136,10 @@ func NewProxy(
 }
 
 func (s *Proxy) GetServiceStatistics(id string) *statistics.ServiceSync {
-	if s, ok := s.services[id]; ok {
-		return s.statistics
+	for _, s := range s.services {
+		if s.id == id {
+			return s.statistics
+		}
 	}
 	return nil
 }
@@ -165,9 +167,7 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	id := getIDFromPath(ctx)
-
-	service, ok := s.services[string(id)]
+	service, ok := s.services[string(ctx.Path())]
 	if !ok {
 		s.log.Debug().
 			Bytes("path", ctx.Path()).
@@ -243,7 +243,13 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 			ctx.Request.Header.VisitAll(func(key, value []byte) {
 				freq.Header.SetBytesKV(key, value)
 			})
-			freq.SetHost(service.destination)
+
+			// Setting proxy headers and the forward URL
+			freq.Header.Add("X-Forwarded-Host", string(ctx.Host()))
+			freq.Header.Add("X-Forwarded-For", ctx.RemoteIP().String())
+			freq.Header.Add("X-Forwarded-Proto", string(ctx.Request.Header.Protocol()))
+			freq.SetRequestURI(service.forwardURL)
+
 			if err := s.client.Do(freq, fresp); err != nil {
 				s.log.Error().Err(err).Msg("forwarding")
 				ctx.Error(fasthttp.StatusMessage(
@@ -362,11 +368,4 @@ func extractData(ctx *fasthttp.RequestCtx) (
 		variablesJSON = b[v.Index : v.Index+len(v.Raw)]
 	}
 	return
-}
-
-func getIDFromPath(ctx *fasthttp.RequestCtx) []byte {
-	if p := ctx.Path(); len(p) > 0 && p[0] == '/' {
-		return p[1:]
-	}
-	return nil
 }

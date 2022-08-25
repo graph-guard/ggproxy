@@ -1,10 +1,11 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
-	"net/url"
+	neturl "net/url"
 	"path/filepath"
 	"strings"
 
@@ -62,10 +63,10 @@ type TLS struct {
 
 type Service struct {
 	ID                string
-	Name              string
+	Path              string
+	ForwardURL        string
 	TemplatesEnabled  []*Template
 	TemplatesDisabled []*Template
-	ForwardURL        string
 	ForwardReduced    bool
 }
 
@@ -259,7 +260,7 @@ func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
 			if err != nil {
 				return nil, err
 			}
-			s.Name = c.Name
+			s.Path = c.Path
 			s.ForwardURL = c.ForwardURL
 			s.ForwardReduced = c.ForwardReduced
 			configFile = true
@@ -308,6 +309,7 @@ type serverConfig struct {
 
 type serviceConfig struct {
 	Name           string `yaml:"name"`
+	Path           string `yaml:"path"`
 	ForwardURL     string `yaml:"forward_url"`
 	ForwardReduced bool   `yaml:"forward_reduced"`
 }
@@ -330,13 +332,26 @@ func readServiceConfigFile(
 			Message:  err.Error(),
 		}
 	}
+	if c.Path == "" {
+		return nil, &ErrorMissing{
+			FilePath: path,
+			Feature:  "path",
+		}
+	}
+	if err := validatePath(c.Path); err != nil {
+		return nil, &ErrorIllegal{
+			FilePath: path,
+			Feature:  "path",
+			Message:  err.Error(),
+		}
+	}
 	if c.ForwardURL == "" {
 		return nil, &ErrorMissing{
 			FilePath: path,
 			Feature:  "forward_url",
 		}
 	}
-	if _, err := url.ParseRequestURI(c.ForwardURL); err != nil {
+	if err := validateURL(c.ForwardURL); err != nil {
 		return nil, &ErrorIllegal{
 			FilePath: path,
 			Feature:  "forward_url",
@@ -596,4 +611,44 @@ func getReqBodySize(
 		}
 	}
 	return *reqBodySize, nil
+}
+
+var ErrPathNotAbsolute = errors.New("path is not starting with /")
+var ErrURLProtocolProblem = errors.New("protocol is not supported or undefined")
+var ErrURLNoHost = errors.New("host is not defined")
+
+var ValidProtocolSchemes = []string{"http", "https"}
+
+func validateURL(url string) error {
+	u, err := neturl.Parse(url)
+	if err != nil {
+		return err
+	}
+
+	if !contains(ValidProtocolSchemes, u.Scheme) {
+		return ErrURLProtocolProblem
+	}
+	if u.Host == "" {
+		return ErrURLNoHost
+	}
+
+	return nil
+}
+
+func validatePath(path string) error {
+	if !filepath.IsAbs(path) {
+		return ErrPathNotAbsolute
+	}
+
+	return nil
+}
+
+func contains[T comparable](arr []T, x T) bool {
+	for _, el := range arr {
+		if el == x {
+			return true
+		}
+	}
+
+	return false
 }
