@@ -20,8 +20,9 @@ func BenchmarkParse(b *testing.B) {
 				r.Parse(src, opr, varJSON, func(
 					varVals [][]gqlparse.Token,
 					opr []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
-					GI += len(opr) + len(varVals)
+					GI += len(opr) + len(varVals) + len(selectionSet)
 				}, func(err error) {
 					b.Fatal("unexpected error: ", err)
 				})
@@ -42,6 +43,7 @@ func BenchmarkParseErr(b *testing.B) {
 				r.Parse(src, opr, varJSON, func(
 					varVals [][]gqlparse.Token,
 					opr []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
 					b.Fatal("unexpected success")
 				}, func(err error) {

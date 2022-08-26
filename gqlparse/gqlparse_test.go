@@ -875,6 +875,7 @@ func TestOK(t *testing.T) {
 				func(
 					varValue [][]gqlparse.Token,
 					operation []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
 					// fmt.Printf("expected: (%d)\n", len(td.Data.ExpectOpr))
 					// for i, x := range td.Data.ExpectOpr {
@@ -962,6 +963,15 @@ func TestOK(t *testing.T) {
 						func(value []gqlparse.Token) string {
 							return fmt.Sprintf("%v", value)
 						},
+					)
+
+					require.Equal(t,
+						operation[len(operation)-len(selectionSet):],
+						selectionSet,
+					)
+					require.Equal(t,
+						gqlscan.TokenSet.String(),
+						selectionSet[0].ID.String(),
 					)
 				},
 				func(err error) {
@@ -1745,6 +1755,7 @@ func TestErr(t *testing.T) {
 				func(
 					varVals [][]gqlparse.Token,
 					operation []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
 					t.Fatal("this function is expected not to be called!")
 				},

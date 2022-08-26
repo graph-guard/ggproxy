@@ -20,6 +20,7 @@ func BenchmarkWrite(b *testing.B) {
 				func(
 					variableValues [][]gqlparse.Token,
 					operation []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
 					opr = make([]gqlparse.Token, len(operation))
 					copy(opr, operation)

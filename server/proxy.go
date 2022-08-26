@@ -196,8 +196,9 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 		func(
 			varVals [][]gqlparse.Token,
 			operation []gqlparse.Token,
+			selectionSet []gqlparse.Token,
 		) {
-			templateID := m.Engine.Match(varVals, operation)
+			templateID := m.Engine.Match(varVals, operation[0].ID, selectionSet)
 			if templateID == "" {
 				timeProcessing := time.Since(start)
 				service.statistics.Update(

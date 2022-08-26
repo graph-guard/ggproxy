@@ -188,6 +188,7 @@ func TestWrite(t *testing.T) {
 				func(
 					varValues [][]gqlparse.Token,
 					operation []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
 					var b bytes.Buffer
 					require.NoError(t, tokenwriter.Write(&b, operation))

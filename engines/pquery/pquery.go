@@ -1,12 +1,12 @@
-package qmap
+package pquery
 
 import (
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 
 	"github.com/graph-guard/ggproxy/gqlparse"
+	"github.com/graph-guard/ggproxy/utilities/container/amap"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/stack"
 	"github.com/graph-guard/ggproxy/utilities/unsafe"
@@ -14,19 +14,25 @@ import (
 	"github.com/graph-guard/gqlscan"
 )
 
-// QueryMap is an auxiliary structure for a graphql query to a template fast search.
-type QueryMap map[uint64]any
-
 type pathTerminal struct{}
 type selectTerminal struct{}
 type argumentsTerminal struct{}
 type argumentPathTerminal struct{}
 type objectTerminal struct{}
 
+// QueryPart is a structure of query pash hash and value,
+// when united represents a parted query.
+// Used for a template fast search by rmap.
+type QueryPart struct {
+	Hash  uint64
+	Value any
+}
+
 // Maker is a meta structure for QueryMap to store the runtime data and the hash seed.
 type Maker struct {
 	mstack    *stack.Stack[any]
 	pstack    *stack.Stack[xxhash.Hash]
+	qmap      *amap.Map[uint64, bool]
 	usedStack *stack.Stack[any]
 	arrayPool *stack.Stack[*[]any]
 	mapPool   *stack.Stack[*hamap.Map[string, any]]
@@ -39,6 +45,7 @@ func NewMaker(seed uint64) *Maker {
 	return &Maker{
 		mstack:    stack.New[any](256),
 		pstack:    stack.New[xxhash.Hash](256),
+		qmap:      amap.New[uint64, bool](256),
 		mapPool:   stack.New[*hamap.Map[string, any]](128),
 		arrayPool: stack.New[*[]any](128),
 		usedStack: stack.New[any](128),
@@ -51,24 +58,35 @@ func NewMaker(seed uint64) *Maker {
 // QueryMap is accessible through the fn function.
 func (m *Maker) ParseQuery(
 	variableValues [][]gqlparse.Token,
-	query []gqlparse.Token,
-	fn func(qm QueryMap),
+	queryType gqlscan.Token,
+	selectionSet []gqlparse.Token,
+	fn func(qp QueryPart) (stop bool),
 ) {
 	m.mstack.Reset()
 	m.pstack.Reset()
+	m.qmap.Reset()
 
-	qm := QueryMap{}
 	var pathHash uint64
 	var insideArray int
 	var lastObjField string
-	for _, token := range query {
-		fmt.Println("T: ", token.ID, string(token.Value))
 
+	switch queryType {
+	case gqlscan.TokenDefQry:
+		path := xxhash.New(m.seed)
+		xxhash.Write(&path, "query")
+		m.pstack.Push(path)
+	case gqlscan.TokenDefMut:
+		path := xxhash.New(m.seed)
+		xxhash.Write(&path, "mutation")
+		m.pstack.Push(path)
+	default:
+		panic(fmt.Errorf("unsupported query type: %v", queryType))
+	}
+
+	for _, token := range selectionSet {
 		if ix := token.VariableIndex(); ix > -1 {
 			value := variableValues[ix]
-			fmt.Println("VAL:", value)
 			for _, token := range value {
-				fmt.Println("VTOK: ", token, token.ID)
 				switch token.ID {
 				case gqlscan.TokenArr:
 					insideArray++
@@ -119,12 +137,12 @@ func (m *Maker) ParseQuery(
 					} else {
 						lastObjField = unsafe.B2S(token.Value)
 					}
-				case gqlscan.TokenStr, gqlscan.TokenInt, gqlscan.TokenFloat,
-					gqlscan.TokenTrue, gqlscan.TokenFalse, gqlscan.TokenNull:
+				case gqlscan.TokenStr, gqlscan.TokenEnumVal, gqlscan.TokenInt,
+					gqlscan.TokenFloat, gqlscan.TokenTrue, gqlscan.TokenFalse, gqlscan.TokenNull:
 					var val any
 					var err error
 					switch token.ID {
-					case gqlscan.TokenStr:
+					case gqlscan.TokenStr, gqlscan.TokenEnumVal:
 						val = token.Value
 					case gqlscan.TokenInt:
 						val, err = strconv.ParseInt(unsafe.B2S(token.Value), 10, 64)
@@ -147,7 +165,12 @@ func (m *Maker) ParseQuery(
 							m.mstack.Pop()
 							path := m.pstack.Pop()
 							pathHash = path.Sum64()
-							qm[pathHash] = val
+							if _, ok := m.qmap.Get(pathHash); !ok {
+								m.qmap.Set(pathHash, true)
+								if fn(QueryPart{Hash: pathHash, Value: val}) {
+									return
+								}
+							}
 						}
 					} else {
 						switch t := m.mstack.Top(); t := t.(type) {
@@ -168,7 +191,12 @@ func (m *Maker) ParseQuery(
 							m.mstack.Pop()
 							path := m.pstack.Pop()
 							pathHash = path.Sum64()
-							qm[pathHash] = nil
+							if _, ok := m.qmap.Get(pathHash); !ok {
+								m.qmap.Set(pathHash, true)
+								if fn(QueryPart{Hash: pathHash, Value: nil}) {
+									return
+								}
+							}
 							continue
 						case argumentPathTerminal:
 							m.mstack.Pop()
@@ -188,10 +216,13 @@ func (m *Maker) ParseQuery(
 							if insideArray == 0 {
 								pathHash = path.Sum64()
 								switch elt := el.(type) {
-								case *[]any:
-									qm[pathHash] = elt
-								case *hamap.Map[string, any]:
-									qm[pathHash] = elt
+								case *[]any, *hamap.Map[string, any]:
+									if _, ok := m.qmap.Get(pathHash); !ok {
+										m.qmap.Set(pathHash, true)
+										if fn(QueryPart{Hash: pathHash, Value: elt}) {
+											return
+										}
+									}
 								}
 								m.mstack.Pop()
 								m.pstack.Pop()
@@ -203,17 +234,8 @@ func (m *Maker) ParseQuery(
 			}
 			continue
 		}
-		fmt.Println("SWITCH ON ", token.ID)
 
 		switch token.ID {
-		case gqlscan.TokenDefQry:
-			path := xxhash.New(m.seed)
-			xxhash.Write(&path, "query")
-			m.pstack.Push(path)
-		case gqlscan.TokenDefMut:
-			path := xxhash.New(m.seed)
-			xxhash.Write(&path, "mutation")
-			m.pstack.Push(path)
 		case gqlscan.TokenField:
 			switch t := m.mstack.Top(); t.(type) {
 			case argumentPathTerminal:
@@ -225,7 +247,12 @@ func (m *Maker) ParseQuery(
 				m.mstack.Pop()
 				path := m.pstack.Pop()
 				pathHash = path.Sum64()
-				qm[pathHash] = nil
+				if _, ok := m.qmap.Get(pathHash); !ok {
+					m.qmap.Set(pathHash, true)
+					if fn(QueryPart{Hash: pathHash, Value: nil}) {
+						return
+					}
+				}
 			}
 			path := m.pstack.Top()
 			xxhash.Write(&path, token.Value)
@@ -324,7 +351,12 @@ func (m *Maker) ParseQuery(
 					m.mstack.Pop()
 					path := m.pstack.Pop()
 					pathHash = path.Sum64()
-					qm[pathHash] = val
+					if _, ok := m.qmap.Get(pathHash); !ok {
+						m.qmap.Set(pathHash, true)
+						if fn(QueryPart{Hash: pathHash, Value: val}) {
+							return
+						}
+					}
 				}
 			} else {
 				switch t := m.mstack.Top(); t := t.(type) {
@@ -347,7 +379,12 @@ func (m *Maker) ParseQuery(
 					m.mstack.Pop()
 					path := m.pstack.Pop()
 					pathHash = path.Sum64()
-					qm[pathHash] = nil
+					if _, ok := m.qmap.Get(pathHash); !ok {
+						m.qmap.Set(pathHash, true)
+						if fn(QueryPart{Hash: pathHash, Value: nil}) {
+							return
+						}
+					}
 					continue
 				case argumentPathTerminal:
 					m.mstack.Pop()
@@ -367,10 +404,13 @@ func (m *Maker) ParseQuery(
 					if insideArray == 0 {
 						pathHash = path.Sum64()
 						switch elt := el.(type) {
-						case *[]any:
-							qm[pathHash] = elt
-						case *hamap.Map[string, any]:
-							qm[pathHash] = elt
+						case *[]any, *hamap.Map[string, any]:
+							if _, ok := m.qmap.Get(pathHash); !ok {
+								m.qmap.Set(pathHash, true)
+								if fn(QueryPart{Hash: pathHash, Value: elt}) {
+									return
+								}
+							}
 						}
 						m.mstack.Pop()
 						m.pstack.Pop()
@@ -381,11 +421,6 @@ func (m *Maker) ParseQuery(
 		}
 	}
 
-	fmt.Println("########")
-	qm.Print(os.Stdout)
-	fmt.Println("########")
-
-	fn(qm)
 	for m.usedStack.Len() > 0 {
 		switch el := m.usedStack.Pop().(type) {
 		case *[]any:
@@ -406,32 +441,30 @@ func PrintNSpaces(w io.Writer, n uint) {
 }
 
 // Print prints out the QueryMap hamap.Map[string, any].
-func (qm QueryMap) Print(w io.Writer) {
-	qm.print(w, 0)
+func (qp QueryPart) Print(w io.Writer) {
+	qp.print(w, 0)
 }
 
-func (qm QueryMap) print(w io.Writer, indent uint) {
-	for k, v := range qm {
-		PrintNSpaces(w, indent)
-		fmt.Fprintf(w, "%d:", k)
-		switch vt := v.(type) {
-		case *[]any:
-			_, _ = w.Write([]byte("\n"))
-			printArr(*vt, w, indent+2)
-		case *hamap.Map[string, any]:
-			_, _ = w.Write([]byte("\n"))
-			printObj(*vt, w, indent+2)
-		default:
-			if v != nil {
-				_, _ = w.Write([]byte(" "))
-				if s, ok := v.([]byte); ok {
-					fmt.Fprintln(w, string(s))
-				} else {
-					fmt.Fprintln(w, v)
-				}
+func (qp QueryPart) print(w io.Writer, indent uint) {
+	PrintNSpaces(w, indent)
+	fmt.Fprintf(w, "%d:", qp.Hash)
+	switch vt := qp.Value.(type) {
+	case *[]any:
+		_, _ = w.Write([]byte("\n"))
+		printArr(*vt, w, indent+2)
+	case *hamap.Map[string, any]:
+		_, _ = w.Write([]byte("\n"))
+		printObj(*vt, w, indent+2)
+	default:
+		if qp.Value != nil {
+			_, _ = w.Write([]byte(" "))
+			if s, ok := qp.Value.([]byte); ok {
+				fmt.Fprintln(w, string(s))
 			} else {
-				_, _ = w.Write([]byte("\n"))
+				fmt.Fprintln(w, qp.Value)
 			}
+		} else {
+			_, _ = w.Write([]byte("\n"))
 		}
 	}
 }

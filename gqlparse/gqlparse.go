@@ -186,7 +186,11 @@ func (r *Parser) reset() {
 // aliased and used after Parse returns!
 func (r *Parser) Parse(
 	src, operationName, varsJSON []byte,
-	onSuccess func(varValues [][]Token, operation []Token),
+	onSuccess func(
+		varValues [][]Token,
+		operation []Token,
+		selectionSet []Token,
+	),
 	onError func(err error),
 ) {
 	r.reset()
@@ -505,6 +509,7 @@ func (r *Parser) Parse(
 	}
 
 	// Fill operation buffer
+	selectionSetIndex := len(r.bufferOpr)
 	for ; i < len(o); i++ {
 		switch o[i].ID {
 		default:
@@ -553,7 +558,7 @@ func (r *Parser) Parse(
 		return
 	}
 
-	onSuccess(r.varValues, r.bufferOpr)
+	onSuccess(r.varValues, r.bufferOpr, r.bufferOpr[selectionSetIndex:])
 }
 
 type ErrorSyntax struct {

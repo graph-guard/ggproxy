@@ -1,11 +1,11 @@
-package qmap_test
+package pquery_test
 
 import (
 	"bytes"
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/ggproxy/engines/qmap"
+	"github.com/graph-guard/ggproxy/engines/pquery"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/xxhash"
@@ -17,7 +17,7 @@ func TestNewQueryMap(t *testing.T) {
 		query         string
 		operationName string
 		variablesJSON string
-		expect        qmap.QueryMap
+		expect        []pquery.QueryPart
 	}{
 		{
 			operationName: "X",
@@ -72,53 +72,59 @@ func TestNewQueryMap(t *testing.T) {
 				}
 			}
 			`,
-			expect: qmap.QueryMap{
-				Hash("query.c.c0.c00"):        nil,
-				Hash("query.a.a0.a00"):        nil,
-				Hash("query.b.b0"):            nil,
-				Hash("query.c.c0.c0_0"):       0.0,
-				Hash("query.a.a0.a0_0.a0_00"): 1.0,
-				Hash("query.a.a0.a0_1"):       []byte("no"),
-				Hash("query.b.b_0.b_00"):      []byte("go"),
-				Hash("query.b.b_1"):           &[]any{0.0, 1.0},
-				Hash("query.c.c_0"): &[]any{
-					MakeMap(
-						hamap.Pair[string, any]{
-							Key: "c_000",
-							Value: &[]any{
-								[]byte("hohoho"),
+			expect: []pquery.QueryPart{
+				{Hash("query.a.a0.a0_0.a0_00"), 1.0},
+				{Hash("query.a.a0.a0_1"), []byte("no")},
+				{Hash("query.a.a0.a00"), nil},
+				{Hash("query.b.b_0.b_00"), []byte("go")},
+				{Hash("query.b.b_1"), &[]any{0.0, 1.0}},
+				{Hash("query.b.b0"), nil},
+				{
+					Hash("query.c.c_0"),
+					&[]any{
+						MakeMap(
+							hamap.Pair[string, any]{
+								Key: "c_000",
+								Value: &[]any{
+									[]byte("hohoho"),
+								},
 							},
+						),
+					},
+				},
+				{
+					Hash("query.c.c_1"),
+					&[]any{
+						&[]any{
+							MakeMap(
+								hamap.Pair[string, any]{
+									Key:   "c_1000",
+									Value: -1.0,
+								},
+								hamap.Pair[string, any]{
+									Key:   "c_1001",
+									Value: &[]any{1.0, 0.0},
+								},
+							),
 						},
-					),
-				},
-				Hash("query.c.c_1"): &[]any{
-					&[]any{
-						MakeMap(
-							hamap.Pair[string, any]{
-								Key:   "c_1000",
-								Value: -1.0,
-							},
-							hamap.Pair[string, any]{
-								Key:   "c_1001",
-								Value: &[]any{1.0, 0.0},
-							},
-						),
-					},
-					&[]any{
-						MakeMap(
-							hamap.Pair[string, any]{
-								Key:   "c_1100",
-								Value: []byte("hawk"),
-							},
-						),
-						MakeMap(
-							hamap.Pair[string, any]{
-								Key:   "c_1110",
-								Value: []byte("falcon"),
-							},
-						),
+						&[]any{
+							MakeMap(
+								hamap.Pair[string, any]{
+									Key:   "c_1100",
+									Value: []byte("hawk"),
+								},
+							),
+							MakeMap(
+								hamap.Pair[string, any]{
+									Key:   "c_1110",
+									Value: []byte("falcon"),
+								},
+							),
+						},
 					},
 				},
+				{Hash("query.c.c0.c0_0"), 0.0},
+				{Hash("query.c.c0.c00"), nil},
 			},
 		},
 		{
@@ -135,14 +141,16 @@ func TestNewQueryMap(t *testing.T) {
 				}
 			}
 			`,
-			expect: qmap.QueryMap{
-				Hash("mutation.a.a0"):  nil,
-				Hash("mutation.b.b0"):  nil,
-				Hash("mutation.b.b_0"): 0.0,
+			expect: []pquery.QueryPart{
+				{Hash("mutation.a.a0"), nil},
+				{Hash("mutation.b.b_0"), 0.0},
+				{Hash("mutation.b.b0"), nil},
 			},
 		},
 	} {
 		t.Run("", func(t *testing.T) {
+			var i int
+
 			gqlparse.NewParser().Parse(
 				[]byte(td.query),
 				[]byte(td.operationName),
@@ -150,12 +158,16 @@ func TestNewQueryMap(t *testing.T) {
 				func(
 					varValues [][]gqlparse.Token,
 					operation []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
-					qmap.NewMaker(0).ParseQuery(
+					pquery.NewMaker(0).ParseQuery(
 						varValues,
-						operation,
-						func(qm qmap.QueryMap) {
-							require.Equal(t, td.expect, qm)
+						operation[0].ID,
+						selectionSet,
+						func(qp pquery.QueryPart) (stop bool) {
+							require.Equal(t, td.expect[i], qp)
+							i++
+							return false
 						},
 					)
 				},
@@ -241,13 +253,16 @@ func TestPrint(t *testing.T) {
 				func(
 					varValues [][]gqlparse.Token,
 					operation []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
 					b := new(bytes.Buffer)
-					qmap.NewMaker(0).ParseQuery(
+					pquery.NewMaker(0).ParseQuery(
 						varValues,
-						operation,
-						func(qm qmap.QueryMap) {
-							qm.Print(b)
+						operation[0].ID,
+						selectionSet,
+						func(qp pquery.QueryPart) (stop bool) {
+							qp.Print(b)
+							return false
 						},
 					)
 					require.Equal(t, td.expect, b.String())

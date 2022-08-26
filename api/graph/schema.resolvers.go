@@ -68,11 +68,14 @@ func (r *serviceResolver) MatchAll(ctx context.Context, obj *model.Service, quer
 		func(
 			varVals [][]gqlparse.Token,
 			operation []gqlparse.Token,
+			selectionSet []gqlparse.Token,
 		) {
 			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
 			startMatching := time.Now()
 			obj.Matcher.MatchAll(
-				varVals, operation,
+				varVals,
+				operation[0].ID,
+				selectionSet,
 				func(id string) {
 					t := obj.TemplatesByID[id]
 					m.Templates = append(m.Templates, t)
@@ -120,10 +123,11 @@ func (r *serviceResolver) Match(ctx context.Context, obj *model.Service, query s
 		func(
 			varVals [][]gqlparse.Token,
 			operation []gqlparse.Token,
+			selectionSet []gqlparse.Token,
 		) {
 			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
 			startMatching := time.Now()
-			if id := obj.Matcher.Match(varVals, operation); id != "" {
+			if id := obj.Matcher.Match(varVals, operation[0].ID, selectionSet); id != "" {
 				m.Templates = []*model.Template{obj.TemplatesByID[id]}
 			}
 			m.TimeMatchingNs = nsToF64(time.Since(startMatching).Nanoseconds())

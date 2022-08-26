@@ -325,6 +325,12 @@ var query_15 string
 //go:embed assets/testassets/test_15/rule_00.txt
 var rule_15_00 string
 
+//go:embed assets/testassets/test_16/query.gql
+var query_16 string
+
+//go:embed assets/testassets/test_16/rule_00.txt
+var rule_16_00 string
+
 func TestMatchAllRQmap(t *testing.T) {
 	for _, td := range []struct {
 		query         string
@@ -346,144 +352,152 @@ func TestMatchAllRQmap(t *testing.T) {
 			},
 			expect: []string{"rule_00_00", "rule_00_04"},
 		},
-		// {
-		// 	query:         query_00b,
-		// 	operationName: "X",
-		// 	variables:     variables_00b,
-		// 	rules: map[string]string{
-		// 		"rule_00b_00": rule_00b_00,
-		// 		"rule_00b_01": rule_00b_01,
-		// 		"rule_00b_02": rule_00b_02,
-		// 		"rule_00b_03": rule_00b_03,
-		// 		"rule_00b_04": rule_00b_04,
-		// 		"rule_00b_05": rule_00b_05,
-		// 	},
-		// 	expect: []string{"rule_00b_00", "rule_00b_04"},
-		// },
-		// {
-		// 	query:         query_01,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_01_00": rule_01_00,
-		// 	},
-		// 	expect: []string{},
-		// },
-		// {
-		// 	query:         query_02,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_02_00": rule_02_00,
-		// 	},
-		// 	expect: []string{},
-		// },
-		// {
-		// 	query:         query_03,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_03_00": rule_03_00,
-		// 	},
-		// 	expect: []string{},
-		// },
-		// {
-		// 	query:         query_04,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_04_00": rule_04_00,
-		// 	},
-		// 	expect: []string{},
-		// },
-		// {
-		// 	query:         query_05,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_05_00": rule_05_00,
-		// 		"rule_05_01": rule_05_01,
-		// 	},
-		// 	expect: []string{"rule_05_01"},
-		// },
-		// {
-		// 	query:         query_06,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_06_00": rule_06_00,
-		// 		"rule_06_01": rule_06_01,
-		// 	},
-		// 	expect: []string{"rule_06_01"},
-		// },
-		// {
-		// 	query:         query_07,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_07_00": rule_07_00,
-		// 	},
-		// 	expect: []string{"rule_07_00"},
-		// },
-		// {
-		// 	query:         query_08,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_08_00": rule_08_00,
-		// 	},
-		// 	expect: []string{"rule_08_00"},
-		// },
-		// {
-		// 	query:         query_09,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_09_00": rule_09_00,
-		// 	},
-		// 	expect: []string{"rule_09_00"},
-		// },
-		// {
-		// 	query:         query_10,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_10_00": rule_10_00,
-		// 	},
-		// 	expect: []string{"rule_10_00"},
-		// },
-		// {
-		// 	query:         query_11,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_11_00": rule_11_00,
-		// 		"rule_11_01": rule_11_01,
-		// 		"rule_11_02": rule_11_02,
-		// 	},
-		// 	expect: []string{"rule_11_02"},
-		// },
-		// {
-		// 	query:         query_12,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_12_00": rule_12_00,
-		// 	},
-		// 	expect: []string{},
-		// },
-		// {
-		// 	query:         query_13,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_13_00": rule_13_00,
-		// 	},
-		// 	expect: []string{"rule_13_00"},
-		// },
-		// {
-		// 	query:         query_14,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_14_00": rule_14_00,
-		// 	},
-		// 	expect: []string{},
-		// },
-		// {
-		// 	query:         query_15,
-		// 	operationName: "X",
-		// 	rules: map[string]string{
-		// 		"rule_15_00": rule_15_00,
-		// 	},
-		// 	expect: []string{"rule_15_00"},
-		// },
+		{
+			query:         query_00b,
+			operationName: "X",
+			variables:     variables_00b,
+			rules: map[string]string{
+				"rule_00b_00": rule_00b_00,
+				"rule_00b_01": rule_00b_01,
+				"rule_00b_02": rule_00b_02,
+				"rule_00b_03": rule_00b_03,
+				"rule_00b_04": rule_00b_04,
+				"rule_00b_05": rule_00b_05,
+			},
+			expect: []string{"rule_00b_00", "rule_00b_04"},
+		},
+		{
+			query:         query_01,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_01_00": rule_01_00,
+			},
+			expect: []string{},
+		},
+		{
+			query:         query_02,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_02_00": rule_02_00,
+			},
+			expect: []string{},
+		},
+		{
+			query:         query_03,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_03_00": rule_03_00,
+			},
+			expect: []string{},
+		},
+		{
+			query:         query_04,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_04_00": rule_04_00,
+			},
+			expect: []string{},
+		},
+		{
+			query:         query_05,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_05_00": rule_05_00,
+				"rule_05_01": rule_05_01,
+			},
+			expect: []string{"rule_05_01"},
+		},
+		{
+			query:         query_06,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_06_00": rule_06_00,
+				"rule_06_01": rule_06_01,
+			},
+			expect: []string{"rule_06_01"},
+		},
+		{
+			query:         query_07,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_07_00": rule_07_00,
+			},
+			expect: []string{"rule_07_00"},
+		},
+		{
+			query:         query_08,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_08_00": rule_08_00,
+			},
+			expect: []string{"rule_08_00"},
+		},
+		{
+			query:         query_09,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_09_00": rule_09_00,
+			},
+			expect: []string{"rule_09_00"},
+		},
+		{
+			query:         query_10,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_10_00": rule_10_00,
+			},
+			expect: []string{"rule_10_00"},
+		},
+		{
+			query:         query_11,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_11_00": rule_11_00,
+				"rule_11_01": rule_11_01,
+				"rule_11_02": rule_11_02,
+			},
+			expect: []string{"rule_11_02"},
+		},
+		{
+			query:         query_12,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_12_00": rule_12_00,
+			},
+			expect: []string{},
+		},
+		{
+			query:         query_13,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_13_00": rule_13_00,
+			},
+			expect: []string{"rule_13_00"},
+		},
+		{
+			query:         query_14,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_14_00": rule_14_00,
+			},
+			expect: []string{},
+		},
+		{
+			query:         query_15,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_15_00": rule_15_00,
+			},
+			expect: []string{"rule_15_00"},
+		},
+		{
+			query:         query_16,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_16_00": rule_16_00,
+			},
+			expect: []string{"rule_16_00"},
+		},
 	} {
 		t.Run("", func(t *testing.T) {
 			rules := make(map[string]gqt.Doc, len(td.rules))
@@ -503,11 +517,13 @@ func TestMatchAllRQmap(t *testing.T) {
 				func(
 					varVals [][]gqlparse.Token,
 					operation []gqlparse.Token,
+					selectionSet []gqlparse.Token,
 				) {
 					actual := []string{}
 					rm.MatchAll(
 						varVals,
-						operation,
+						operation[0].ID,
+						selectionSet,
 						func(id string) {
 							actual = append(actual, id)
 						},

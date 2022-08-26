@@ -116,11 +116,13 @@ func BenchmarkRQmap(b *testing.B) {
 					func(
 						varVals [][]gqlparse.Token,
 						operation []gqlparse.Token,
+						selectionSet []gqlparse.Token,
 					) {
 						//TODO: use varVals
 						rm.MatchAll(
 							varVals,
-							operation,
+							operation[0].ID,
+							selectionSet,
 							func(id string) { GS = id },
 						)
 					}, func(err error) {
