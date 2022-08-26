@@ -1,0 +1,4 @@
+query X {
+    a(a_0: null)
+    b(b_0: 0)
+}

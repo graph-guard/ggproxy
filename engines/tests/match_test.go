@@ -331,6 +331,12 @@ var query_16 string
 //go:embed assets/testassets/test_16/rule_00.txt
 var rule_16_00 string
 
+//go:embed assets/testassets/test_17/query.gql
+var query_17 string
+
+//go:embed assets/testassets/test_17/rule_00.txt
+var rule_17_00 string
+
 func TestMatchAllRQmap(t *testing.T) {
 	for _, td := range []struct {
 		query         string
@@ -497,6 +503,14 @@ func TestMatchAllRQmap(t *testing.T) {
 				"rule_16_00": rule_16_00,
 			},
 			expect: []string{"rule_16_00"},
+		},
+		{
+			query:         query_17,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_17_00": rule_17_00,
+			},
+			expect: []string{"rule_17_00"},
 		},
 	} {
 		t.Run("", func(t *testing.T) {

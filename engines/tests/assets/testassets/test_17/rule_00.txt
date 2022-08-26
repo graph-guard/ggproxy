@@ -1,0 +1,4 @@
+query {
+    a(a_0: val = null)
+    b(b_0: val != null)
+}

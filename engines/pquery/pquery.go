@@ -330,6 +330,8 @@ func (m *Maker) ParseQuery(
 			switch token.ID {
 			case gqlscan.TokenStr, gqlscan.TokenEnumVal:
 				val = token.Value
+			case gqlscan.TokenNull:
+				val = nil
 			case gqlscan.TokenInt:
 				val, err = strconv.ParseInt(unsafe.B2S(token.Value), 10, 64)
 				if err != nil {

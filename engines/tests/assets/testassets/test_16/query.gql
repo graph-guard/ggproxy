@@ -1,4 +1,4 @@
 query X {
-    foo
-    foo
+    a
+    a
 }
