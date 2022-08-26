@@ -577,7 +577,13 @@ func CompareValues(constraint Constraint, a any, b any) bool {
 		return true
 	case ConstraintValEqual:
 		if b, ok := b.([]byte); ok {
-			return bytes.Equal(b, a.([]byte))
+			var ba []byte
+			if ea, ok := a.(gqt.EnumValue); ok {
+				ba = []byte(ea)
+			} else {
+				ba = a.([]byte)
+			}
+			return bytes.Equal(b, ba)
 		}
 		return b == a
 	case ConstraintValNotEqual:

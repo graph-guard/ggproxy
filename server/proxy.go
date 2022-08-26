@@ -156,6 +156,7 @@ func (s *Proxy) GetTemplateStatistics(
 }
 
 func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
+	defer s.crashRecover()
 	start := time.Now()
 	s.log.Info().
 		Bytes("path", ctx.Path()).
@@ -368,4 +369,11 @@ func extractData(ctx *fasthttp.RequestCtx) (
 		variablesJSON = b[v.Index : v.Index+len(v.Raw)]
 	}
 	return
+}
+
+// crashRecover executes in case of panic during request handling
+func (s *Proxy) crashRecover() {
+	if r := recover(); r != nil {
+		s.log.Error().Msg(r.(error).Error())
+	}
 }
