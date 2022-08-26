@@ -5,14 +5,16 @@ import (
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 )
 
-// Segment defines the start and end indexes of a segment.
-type Segment struct{ Start, End int }
+// Segment defines the logical index and
+// the start and end indexes of a segment.
+type Segment struct{ Index, Start, End int }
 
 // Array is a 2D indexed append-only array
 // where each segment is indexed by a key.
 type Array[K hamap.KeyInterface, T any] struct {
 	index        *hamap.Map[K, Segment]
 	lastSegStart int
+	indexCounter int
 	data         []T
 }
 
@@ -51,13 +53,15 @@ func (i *Array[K, T]) Cut(key K) (s Segment) {
 	i.index.SetFn(key, func(x *Segment) Segment {
 		if x != nil {
 			// Already exists
-			s.Start = -1
+			s.Index = -1
 			return Segment{}
 		}
 		// Add new
+		s.Index = i.indexCounter
 		s.Start = i.lastSegStart
 		s.End = len(i.data)
 		i.lastSegStart = s.End
+		i.indexCounter++
 		return s
 	})
 	return
@@ -65,7 +69,17 @@ func (i *Array[K, T]) Cut(key K) (s Segment) {
 
 // Get returns the segment by key.
 // Returns nil if key doesn't exist.
-func (i *Array[K, T]) Get(key K) []T {
+func (i *Array[K, T]) Get(key K) Segment {
+	s, ok := i.index.Get(key)
+	if !ok {
+		return Segment{Index: -1}
+	}
+	return s
+}
+
+// GetItems returns the segment items by key.
+// Returns nil if key doesn't exist.
+func (i *Array[K, T]) GetItems(key K) []T {
 	s, ok := i.index.Get(key)
 	if !ok {
 		return nil
@@ -74,8 +88,8 @@ func (i *Array[K, T]) Get(key K) []T {
 }
 
 // VisitAll calls fn for every stored segment.
-func (i *Array[K, T]) VisitAll(fn func(key K, s []T)) {
+func (i *Array[K, T]) VisitAll(fn func(key K, s Segment)) {
 	i.index.VisitAll(func(k K, s Segment) {
-		fn(k, i.data[s.Start:s.End])
+		fn(k, s)
 	})
 }

@@ -116,7 +116,7 @@ fragment f2 on Query {
 	b {
 		... {
 			...f3
-			...f3
+			# ...f3
 		}
 	}
 }

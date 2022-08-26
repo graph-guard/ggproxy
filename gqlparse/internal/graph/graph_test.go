@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/graph-guard/ggproxy/gqlreduce/internal/graph"
+	"github.com/graph-guard/ggproxy/gqlparse/internal/graph"
 	"github.com/graph-guard/ggproxy/utilities/decl"
 	"github.com/stretchr/testify/require"
 )

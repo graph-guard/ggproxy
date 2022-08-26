@@ -7,22 +7,23 @@ import (
 	"io"
 	"math/rand"
 
-	"github.com/graph-guard/ggproxy/engines/qmap"
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/engines/pquery"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/bitmask"
 	"github.com/graph-guard/ggproxy/utilities/container/amap"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/xxhash"
+	"github.com/graph-guard/gqlscan"
 	"github.com/graph-guard/gqt"
 )
 
 var ErrHashCollision = errors.New("hash collsision")
 
-type ErrReducer struct {
+type ErrParser struct {
 	msg string
 }
 
-func (er *ErrReducer) Error() string {
+func (er *ErrParser) Error() string {
 	return er.msg
 }
 
@@ -35,7 +36,7 @@ const (
 type RulesMap struct {
 	seed         uint64
 	mask         *bitmask.Set
-	qmake        qmap.Maker
+	qmake        pquery.Maker
 	templateIDs  []string
 	matchCounter *amap.Map[uint16, uint16]
 	rules        map[uint64]*RulesNode
@@ -143,7 +144,7 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 	rm := &RulesMap{
 		seed:         seed,
 		mask:         bitmask.New(),
-		qmake:        *qmap.NewMaker(seed),
+		qmake:        *pquery.NewMaker(seed),
 		matchCounter: amap.New[uint16, uint16](0),
 		rules:        map[uint64]*RulesNode{},
 		ruleCounter:  map[uint16]uint16{},
@@ -179,7 +180,7 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 					mask:         bitmask.New(),
 					hashedPaths:  map[uint64]string{},
 					matchCounter: amap.New[uint16, uint16](0),
-					qmake:        *qmap.NewMaker(rm.seed),
+					qmake:        *pquery.NewMaker(rm.seed),
 				}
 				attempt++
 				break
@@ -499,8 +500,12 @@ func ConstraintIdAndValue(c gqt.Constraint) (Constraint, any) {
 }
 
 // Match returns the ID of the matching template or "" if none was matched.
-func (rm *RulesMap) Match(operation []gqlreduce.Token) (id string) {
-	rm.FindMatch(operation, func(mask *bitmask.Set) {
+func (rm *RulesMap) Match(
+	variableValues [][]gqlparse.Token,
+	queryType gqlscan.Token,
+	selectionSet []gqlparse.Token,
+) (id string) {
+	rm.FindMatch(variableValues, queryType, selectionSet, func(mask *bitmask.Set) {
 		if mask.Size() > 0 {
 			mask.Visit(func(n int) (skip bool) {
 				id = rm.templateIDs[n]
@@ -513,10 +518,12 @@ func (rm *RulesMap) Match(operation []gqlreduce.Token) (id string) {
 
 // MatchAll calls fn for every matching template.
 func (rm *RulesMap) MatchAll(
-	operation []gqlreduce.Token,
+	variableValues [][]gqlparse.Token,
+	queryType gqlscan.Token,
+	selectionSet []gqlparse.Token,
 	fn func(id string),
 ) {
-	rm.FindMatch(operation, func(mask *bitmask.Set) {
+	rm.FindMatch(variableValues, queryType, selectionSet, func(mask *bitmask.Set) {
 		mask.VisitAll(func(n int) {
 			fn(rm.templateIDs[n])
 		})
@@ -525,49 +532,52 @@ func (rm *RulesMap) MatchAll(
 
 // FindMatch matches query to the rules.
 func (rm *RulesMap) FindMatch(
-	operation []gqlreduce.Token,
+	variableValues [][]gqlparse.Token,
+	queryType gqlscan.Token,
+	selectionSet []gqlparse.Token,
 	fn func(mask *bitmask.Set),
 ) {
-	rm.qmake.ParseQuery(operation, func(qm qmap.QueryMap) {
-		rm.matchCounter.Reset()
-		rm.mask.Reset()
-
-		for hash, value := range qm {
-			if rn, ok := rm.rules[hash]; ok {
-				if len(rn.Variants) > 0 {
-					for _, v := range rn.Variants {
-						if v.Compare(value) {
-							rm.mask.SetOr(rm.mask, v.Mask)
-							v.Mask.Visit(func(x int) (skip bool) {
-								rm.matchCounter.SetFn(uint16(x), 1, func(value *uint16) { *value++ })
-								return false
-							})
-						}
+	var qpCount uint16
+	rm.matchCounter.Reset()
+	rm.mask.Reset()
+	rm.qmake.ParseQuery(variableValues, queryType, selectionSet, func(qp pquery.QueryPart) (stop bool) {
+		qpCount++
+		if rn, ok := rm.rules[qp.Hash]; ok {
+			if len(rn.Variants) > 0 {
+				for _, v := range rn.Variants {
+					if v.Compare(qp.Value) {
+						rm.mask.SetOr(rm.mask, v.Mask)
+						v.Mask.Visit(func(x int) (skip bool) {
+							rm.matchCounter.SetFn(uint16(x), 1, func(value *uint16) { *value++ })
+							return false
+						})
 					}
-				} else {
-					rm.mask.SetOr(rm.mask, rn.Mask)
-					rn.Mask.Visit(func(x int) (skip bool) {
-						rm.matchCounter.SetFn(uint16(x), 1, func(value *uint16) { *value++ })
-						return false
-					})
 				}
 			} else {
-				rm.mask.Reset()
-				break
+				rm.mask.SetOr(rm.mask, rn.Mask)
+				rn.Mask.Visit(func(x int) (skip bool) {
+					rm.matchCounter.SetFn(uint16(x), 1, func(value *uint16) { *value++ })
+					return false
+				})
 			}
-		}
-		for _, el := range rm.matchCounter.A {
-			if el.Value < uint16(len(qm)) || el.Value != rm.ruleCounter[el.Key] {
-				rm.mask = rm.mask.Delete(int(el.Key))
-			}
-		}
-
-		if rm.mask.Empty() {
+		} else {
 			rm.mask.Reset()
+			return true
 		}
 
-		fn(rm.mask)
+		return false
 	})
+	for _, el := range rm.matchCounter.A {
+		if el.Value < qpCount || el.Value != rm.ruleCounter[el.Key] {
+			rm.mask = rm.mask.Delete(int(el.Key))
+		}
+	}
+
+	if rm.mask.Empty() {
+		rm.mask.Reset()
+	}
+
+	fn(rm.mask)
 }
 
 // CompareValues compares two values according to the provided constraint.

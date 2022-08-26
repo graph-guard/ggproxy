@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/graph-guard/ggproxy/engines/rmap"
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/xxhash"
 	"github.com/graph-guard/gqt"
 	"github.com/stretchr/testify/require"
@@ -325,6 +325,12 @@ var query_15 string
 //go:embed assets/testassets/test_15/rule_00.txt
 var rule_15_00 string
 
+//go:embed assets/testassets/test_16/query.gql
+var query_16 string
+
+//go:embed assets/testassets/test_16/rule_00.txt
+var rule_16_00 string
+
 func TestMatchAllRQmap(t *testing.T) {
 	for _, td := range []struct {
 		query         string
@@ -484,6 +490,14 @@ func TestMatchAllRQmap(t *testing.T) {
 			},
 			expect: []string{"rule_15_00"},
 		},
+		{
+			query:         query_16,
+			operationName: "X",
+			rules: map[string]string{
+				"rule_16_00": rule_16_00,
+			},
+			expect: []string{"rule_16_00"},
+		},
 	} {
 		t.Run("", func(t *testing.T) {
 			rules := make(map[string]gqt.Doc, len(td.rules))
@@ -493,17 +507,23 @@ func TestMatchAllRQmap(t *testing.T) {
 				rules[i] = rd
 			}
 
-			r := gqlreduce.NewReducer()
+			r := gqlparse.NewParser()
 			rm, _ := rmap.New(rules, 0)
 
-			r.Reduce(
+			r.Parse(
 				[]byte(td.query),
 				[]byte(td.operationName),
 				[]byte(td.variables),
-				func(operation []gqlreduce.Token) {
+				func(
+					varVals [][]gqlparse.Token,
+					operation []gqlparse.Token,
+					selectionSet []gqlparse.Token,
+				) {
 					actual := []string{}
 					rm.MatchAll(
-						operation,
+						varVals,
+						operation[0].ID,
+						selectionSet,
 						func(id string) {
 							actual = append(actual, id)
 						},

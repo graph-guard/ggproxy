@@ -1,15 +1,15 @@
-package gqlreduce_test
+package gqlparse_test
 
 import (
 	"testing"
 
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 )
 
 var GI int
 
-func BenchmarkReduce(b *testing.B) {
-	r := gqlreduce.NewReducer()
+func BenchmarkParse(b *testing.B) {
+	r := gqlparse.NewParser()
 	for _, td := range testdata {
 		b.Run(td.Decl, func(b *testing.B) {
 			src := []byte(td.Data.Src)
@@ -17,8 +17,12 @@ func BenchmarkReduce(b *testing.B) {
 			varJSON := []byte(td.Data.VarsJSON)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
-				r.Reduce(src, opr, varJSON, func(opr []gqlreduce.Token) {
-					GI += len(opr)
+				r.Parse(src, opr, varJSON, func(
+					varVals [][]gqlparse.Token,
+					opr []gqlparse.Token,
+					selectionSet []gqlparse.Token,
+				) {
+					GI += len(opr) + len(varVals) + len(selectionSet)
 				}, func(err error) {
 					b.Fatal("unexpected error: ", err)
 				})
@@ -27,8 +31,8 @@ func BenchmarkReduce(b *testing.B) {
 	}
 }
 
-func BenchmarkReduceErr(b *testing.B) {
-	r := gqlreduce.NewReducer()
+func BenchmarkParseErr(b *testing.B) {
+	r := gqlparse.NewParser()
 	for _, td := range testdataErr {
 		b.Run(td.Decl, func(b *testing.B) {
 			src := []byte(td.Data.Src)
@@ -36,7 +40,11 @@ func BenchmarkReduceErr(b *testing.B) {
 			varJSON := []byte(td.Data.VarsJSON)
 			b.ResetTimer()
 			for n := 0; n < b.N; n++ {
-				r.Reduce(src, opr, varJSON, func(opr []gqlreduce.Token) {
+				r.Parse(src, opr, varJSON, func(
+					varVals [][]gqlparse.Token,
+					opr []gqlparse.Token,
+					selectionSet []gqlparse.Token,
+				) {
 					b.Fatal("unexpected success")
 				}, func(err error) {
 					GI++

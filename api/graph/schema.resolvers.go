@@ -10,7 +10,7 @@ import (
 
 	"github.com/graph-guard/ggproxy/api/graph/generated"
 	"github.com/graph-guard/ggproxy/api/graph/model"
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/tokenwriter"
 )
 
@@ -63,13 +63,19 @@ func (r *serviceResolver) MatchAll(ctx context.Context, obj *model.Service, quer
 	}
 
 	startParsing := time.Now()
-	r.Resolver.Reducer.Reduce(
+	r.Resolver.Parser.Parse(
 		[]byte(query), oprName, varsJSON,
-		func(operation []gqlreduce.Token) {
+		func(
+			varVals [][]gqlparse.Token,
+			operation []gqlparse.Token,
+			selectionSet []gqlparse.Token,
+		) {
 			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
 			startMatching := time.Now()
 			obj.Matcher.MatchAll(
-				operation,
+				varVals,
+				operation[0].ID,
+				selectionSet,
 				func(id string) {
 					t := obj.TemplatesByID[id]
 					m.Templates = append(m.Templates, t)
@@ -80,15 +86,15 @@ func (r *serviceResolver) MatchAll(ctx context.Context, obj *model.Service, quer
 			if err = tokenwriter.Write(&forwarded, operation); err != nil {
 				r.Log.Error().
 					Err(err).
-					Msg("writing reduced")
+					Msg("writing parsed")
 				return
 			}
 			forwardStr := forwarded.String()
 			m.Forwarded = &forwardStr
 		},
-		func(errReducer error) {
+		func(errParser error) {
 			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
-			err = errReducer
+			err = errParser
 		},
 	)
 	return m, err
@@ -112,12 +118,16 @@ func (r *serviceResolver) Match(ctx context.Context, obj *model.Service, query s
 	}
 
 	startParsing := time.Now()
-	r.Resolver.Reducer.Reduce(
+	r.Resolver.Parser.Parse(
 		[]byte(query), oprName, varsJSON,
-		func(operation []gqlreduce.Token) {
+		func(
+			varVals [][]gqlparse.Token,
+			operation []gqlparse.Token,
+			selectionSet []gqlparse.Token,
+		) {
 			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
 			startMatching := time.Now()
-			if id := obj.Matcher.Match(operation); id != "" {
+			if id := obj.Matcher.Match(varVals, operation[0].ID, selectionSet); id != "" {
 				m.Templates = []*model.Template{obj.TemplatesByID[id]}
 			}
 			m.TimeMatchingNs = nsToF64(time.Since(startMatching).Nanoseconds())
@@ -125,15 +135,15 @@ func (r *serviceResolver) Match(ctx context.Context, obj *model.Service, query s
 			if err = tokenwriter.Write(&forwarded, operation); err != nil {
 				r.Log.Error().
 					Err(err).
-					Msg("writing reduced")
+					Msg("writing parsed")
 				return
 			}
 			forwardStr := forwarded.String()
 			m.Forwarded = &forwardStr
 		},
-		func(errReducer error) {
+		func(errParser error) {
 			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
-			err = errReducer
+			err = errParser
 		},
 	)
 	return m, err

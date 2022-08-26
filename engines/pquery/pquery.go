@@ -1,11 +1,12 @@
-package qmap
+package pquery
 
 import (
 	"fmt"
 	"io"
 	"strconv"
 
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
+	"github.com/graph-guard/ggproxy/utilities/container/amap"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/stack"
 	"github.com/graph-guard/ggproxy/utilities/unsafe"
@@ -13,19 +14,25 @@ import (
 	"github.com/graph-guard/gqlscan"
 )
 
-// QueryMap is an auxiliary structure for a graphql query to a template fast search.
-type QueryMap map[uint64]any
-
 type pathTerminal struct{}
 type selectTerminal struct{}
 type argumentsTerminal struct{}
 type argumentPathTerminal struct{}
 type objectTerminal struct{}
 
+// QueryPart is a structure of query pash hash and value,
+// when united represents a parted query.
+// Used for a template fast search by rmap.
+type QueryPart struct {
+	Hash  uint64
+	Value any
+}
+
 // Maker is a meta structure for QueryMap to store the runtime data and the hash seed.
 type Maker struct {
 	mstack    *stack.Stack[any]
 	pstack    *stack.Stack[xxhash.Hash]
+	qmap      *amap.Map[uint64, bool]
 	usedStack *stack.Stack[any]
 	arrayPool *stack.Stack[*[]any]
 	mapPool   *stack.Stack[*hamap.Map[string, any]]
@@ -38,6 +45,7 @@ func NewMaker(seed uint64) *Maker {
 	return &Maker{
 		mstack:    stack.New[any](256),
 		pstack:    stack.New[xxhash.Hash](256),
+		qmap:      amap.New[uint64, bool](256),
 		mapPool:   stack.New[*hamap.Map[string, any]](128),
 		arrayPool: stack.New[*[]any](128),
 		usedStack: stack.New[any](128),
@@ -48,24 +56,186 @@ func NewMaker(seed uint64) *Maker {
 // ParseQuery parses query into QueryMap.
 // Accepts a token list.
 // QueryMap is accessible through the fn function.
-func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
+func (m *Maker) ParseQuery(
+	variableValues [][]gqlparse.Token,
+	queryType gqlscan.Token,
+	selectionSet []gqlparse.Token,
+	fn func(qp QueryPart) (stop bool),
+) {
 	m.mstack.Reset()
 	m.pstack.Reset()
+	m.qmap.Reset()
 
-	qm := QueryMap{}
 	var pathHash uint64
 	var insideArray int
 	var lastObjField string
-	for _, token := range query {
-		switch token.Type {
-		case gqlscan.TokenDefQry:
-			path := xxhash.New(m.seed)
-			xxhash.Write(&path, "query")
-			m.pstack.Push(path)
-		case gqlscan.TokenDefMut:
-			path := xxhash.New(m.seed)
-			xxhash.Write(&path, "mutation")
-			m.pstack.Push(path)
+
+	switch queryType {
+	case gqlscan.TokenDefQry:
+		path := xxhash.New(m.seed)
+		xxhash.Write(&path, "query")
+		m.pstack.Push(path)
+	case gqlscan.TokenDefMut:
+		path := xxhash.New(m.seed)
+		xxhash.Write(&path, "mutation")
+		m.pstack.Push(path)
+	default:
+		panic(fmt.Errorf("unsupported query type: %v", queryType))
+	}
+
+	for _, token := range selectionSet {
+		if ix := token.VariableIndex(); ix > -1 {
+			value := variableValues[ix]
+			for _, token := range value {
+				switch token.ID {
+				case gqlscan.TokenArr:
+					insideArray++
+					var arr *[]any
+					if m.arrayPool.Len() > 0 {
+						arr = m.arrayPool.Pop()
+					} else {
+						arr = &[]any{}
+					}
+					m.usedStack.Push(arr)
+
+					switch t := m.mstack.Top(); t := t.(type) {
+					case *[]any:
+						*t = append(*t, arr)
+					case *hamap.Map[string, any]:
+						t.Set(lastObjField, arr)
+					}
+					m.mstack.Push(arr)
+				case gqlscan.TokenObj:
+					if insideArray == 0 {
+						path := m.pstack.Top()
+						xxhash.Write(&path, ".")
+						m.pstack.Push(path)
+						m.mstack.Push(objectTerminal{})
+					} else {
+						var obj *hamap.Map[string, any]
+						if m.mapPool.Len() > 0 {
+							obj = m.mapPool.Pop()
+						} else {
+							obj = hamap.New[string, any](64, nil)
+						}
+						m.usedStack.Push(obj)
+
+						switch t := m.mstack.Top(); t := t.(type) {
+						case *[]any:
+							*t = append(*t, obj)
+						case *hamap.Map[string, any]:
+							t.Set(lastObjField, obj)
+						}
+						m.mstack.Push(obj)
+					}
+				case gqlscan.TokenObjField:
+					if insideArray == 0 {
+						t := m.pstack.Top()
+						xxhash.Write(&t, token.Value)
+						m.pstack.Push(t)
+						m.mstack.Push(pathTerminal{})
+					} else {
+						lastObjField = unsafe.B2S(token.Value)
+					}
+				case gqlscan.TokenStr, gqlscan.TokenEnumVal, gqlscan.TokenInt,
+					gqlscan.TokenFloat, gqlscan.TokenTrue, gqlscan.TokenFalse, gqlscan.TokenNull:
+					var val any
+					var err error
+					switch token.ID {
+					case gqlscan.TokenStr, gqlscan.TokenEnumVal:
+						val = token.Value
+					case gqlscan.TokenInt:
+						val, err = strconv.ParseInt(unsafe.B2S(token.Value), 10, 64)
+						if err != nil {
+							panic(err)
+						}
+					case gqlscan.TokenFloat:
+						val, err = strconv.ParseFloat(unsafe.B2S(token.Value), 64)
+						if err != nil {
+							panic(err)
+						}
+					case gqlscan.TokenTrue:
+						val = true
+					case gqlscan.TokenFalse:
+						val = false
+					}
+					if insideArray == 0 {
+						switch t := m.mstack.Top(); t.(type) {
+						case pathTerminal:
+							m.mstack.Pop()
+							path := m.pstack.Pop()
+							pathHash = path.Sum64()
+							if _, ok := m.qmap.Get(pathHash); !ok {
+								m.qmap.Set(pathHash, true)
+								if fn(QueryPart{Hash: pathHash, Value: val}) {
+									return
+								}
+							}
+						}
+					} else {
+						switch t := m.mstack.Top(); t := t.(type) {
+						case *[]any:
+							*t = append(*t, val)
+						case *hamap.Map[string, any]:
+							t.Set(lastObjField, val)
+						}
+					}
+				case gqlscan.TokenArrEnd,
+					gqlscan.TokenObjEnd:
+					if token.ID == gqlscan.TokenArrEnd {
+						insideArray--
+					}
+					for {
+						switch t := m.mstack.Top(); t.(type) {
+						case pathTerminal:
+							m.mstack.Pop()
+							path := m.pstack.Pop()
+							pathHash = path.Sum64()
+							if _, ok := m.qmap.Get(pathHash); !ok {
+								m.qmap.Set(pathHash, true)
+								if fn(QueryPart{Hash: pathHash, Value: nil}) {
+									return
+								}
+							}
+							continue
+						case argumentPathTerminal:
+							m.mstack.Pop()
+							m.pstack.Pop()
+							continue
+						case argumentsTerminal:
+							m.mstack.Pop()
+							m.pstack.Pop()
+						case selectTerminal, objectTerminal:
+							m.mstack.Pop()
+							m.pstack.Pop()
+							m.mstack.Pop()
+							m.pstack.Pop()
+						case *[]any, *hamap.Map[string, any]:
+							el := m.mstack.Pop()
+							path := m.pstack.Top()
+							if insideArray == 0 {
+								pathHash = path.Sum64()
+								switch elt := el.(type) {
+								case *[]any, *hamap.Map[string, any]:
+									if _, ok := m.qmap.Get(pathHash); !ok {
+										m.qmap.Set(pathHash, true)
+										if fn(QueryPart{Hash: pathHash, Value: elt}) {
+											return
+										}
+									}
+								}
+								m.mstack.Pop()
+								m.pstack.Pop()
+							}
+						}
+						break
+					}
+				}
+			}
+			continue
+		}
+
+		switch token.ID {
 		case gqlscan.TokenField:
 			switch t := m.mstack.Top(); t.(type) {
 			case argumentPathTerminal:
@@ -77,7 +247,12 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 				m.mstack.Pop()
 				path := m.pstack.Pop()
 				pathHash = path.Sum64()
-				qm[pathHash] = nil
+				if _, ok := m.qmap.Get(pathHash); !ok {
+					m.qmap.Set(pathHash, true)
+					if fn(QueryPart{Hash: pathHash, Value: nil}) {
+						return
+					}
+				}
 			}
 			path := m.pstack.Top()
 			xxhash.Write(&path, token.Value)
@@ -152,7 +327,7 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 			gqlscan.TokenFloat, gqlscan.TokenTrue, gqlscan.TokenFalse, gqlscan.TokenNull:
 			var val any
 			var err error
-			switch token.Type {
+			switch token.ID {
 			case gqlscan.TokenStr, gqlscan.TokenEnumVal:
 				val = token.Value
 			case gqlscan.TokenInt:
@@ -176,7 +351,12 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 					m.mstack.Pop()
 					path := m.pstack.Pop()
 					pathHash = path.Sum64()
-					qm[pathHash] = val
+					if _, ok := m.qmap.Get(pathHash); !ok {
+						m.qmap.Set(pathHash, true)
+						if fn(QueryPart{Hash: pathHash, Value: val}) {
+							return
+						}
+					}
 				}
 			} else {
 				switch t := m.mstack.Top(); t := t.(type) {
@@ -190,7 +370,7 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 			gqlscan.TokenSetEnd,
 			gqlscan.TokenArgListEnd,
 			gqlscan.TokenObjEnd:
-			if token.Type == gqlscan.TokenArrEnd {
+			if token.ID == gqlscan.TokenArrEnd {
 				insideArray--
 			}
 			for {
@@ -199,7 +379,12 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 					m.mstack.Pop()
 					path := m.pstack.Pop()
 					pathHash = path.Sum64()
-					qm[pathHash] = nil
+					if _, ok := m.qmap.Get(pathHash); !ok {
+						m.qmap.Set(pathHash, true)
+						if fn(QueryPart{Hash: pathHash, Value: nil}) {
+							return
+						}
+					}
 					continue
 				case argumentPathTerminal:
 					m.mstack.Pop()
@@ -219,10 +404,13 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 					if insideArray == 0 {
 						pathHash = path.Sum64()
 						switch elt := el.(type) {
-						case *[]any:
-							qm[pathHash] = elt
-						case *hamap.Map[string, any]:
-							qm[pathHash] = elt
+						case *[]any, *hamap.Map[string, any]:
+							if _, ok := m.qmap.Get(pathHash); !ok {
+								m.qmap.Set(pathHash, true)
+								if fn(QueryPart{Hash: pathHash, Value: elt}) {
+									return
+								}
+							}
 						}
 						m.mstack.Pop()
 						m.pstack.Pop()
@@ -233,7 +421,6 @@ func (m *Maker) ParseQuery(query []gqlreduce.Token, fn func(qm QueryMap)) {
 		}
 	}
 
-	fn(qm)
 	for m.usedStack.Len() > 0 {
 		switch el := m.usedStack.Pop().(type) {
 		case *[]any:
@@ -254,32 +441,30 @@ func PrintNSpaces(w io.Writer, n uint) {
 }
 
 // Print prints out the QueryMap hamap.Map[string, any].
-func (qm QueryMap) Print(w io.Writer) {
-	qm.print(w, 0)
+func (qp QueryPart) Print(w io.Writer) {
+	qp.print(w, 0)
 }
 
-func (qm QueryMap) print(w io.Writer, indent uint) {
-	for k, v := range qm {
-		PrintNSpaces(w, indent)
-		fmt.Fprintf(w, "%d:", k)
-		switch vt := v.(type) {
-		case *[]any:
-			_, _ = w.Write([]byte("\n"))
-			printArr(*vt, w, indent+2)
-		case *hamap.Map[string, any]:
-			_, _ = w.Write([]byte("\n"))
-			printObj(*vt, w, indent+2)
-		default:
-			if v != nil {
-				_, _ = w.Write([]byte(" "))
-				if s, ok := v.([]byte); ok {
-					fmt.Fprintln(w, string(s))
-				} else {
-					fmt.Fprintln(w, v)
-				}
+func (qp QueryPart) print(w io.Writer, indent uint) {
+	PrintNSpaces(w, indent)
+	fmt.Fprintf(w, "%d:", qp.Hash)
+	switch vt := qp.Value.(type) {
+	case *[]any:
+		_, _ = w.Write([]byte("\n"))
+		printArr(*vt, w, indent+2)
+	case *hamap.Map[string, any]:
+		_, _ = w.Write([]byte("\n"))
+		printObj(*vt, w, indent+2)
+	default:
+		if qp.Value != nil {
+			_, _ = w.Write([]byte(" "))
+			if s, ok := qp.Value.([]byte); ok {
+				fmt.Fprintln(w, string(s))
 			} else {
-				_, _ = w.Write([]byte("\n"))
+				fmt.Fprintln(w, qp.Value)
 			}
+		} else {
+			_, _ = w.Write([]byte("\n"))
 		}
 	}
 }

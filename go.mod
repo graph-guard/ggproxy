@@ -18,6 +18,7 @@ require (
 	github.com/vektah/gqlparser/v2 v2.4.6
 	github.com/yourbasic/bit v0.0.0-20180313074424-45a4409f4082
 	github.com/zeebo/xxh3 v1.0.2
+	golang.org/x/exp v0.0.0-20220823124025-807a23277127
 	gopkg.in/yaml.v3 v3.0.1
 )
 

@@ -21,7 +21,7 @@ import (
 	"github.com/graph-guard/ggproxy/api/graph/model"
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engines/rmap"
-	"github.com/graph-guard/ggproxy/gqlreduce"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqt"
 	plog "github.com/phuslu/log"
 	"github.com/valyala/fasthttp"
@@ -205,14 +205,14 @@ func makeGraphServer(
 	conf *config.Config,
 	proxyServer *Proxy,
 ) *handler.Server {
-	reducer := gqlreduce.NewReducer()
+	parser := gqlparse.NewParser()
 	services := makeServices(conf, proxyServer)
 	s := handler.NewDefaultServer(
 		generated.NewExecutableSchema(
 			generated.Config{Resolvers: &graph.Resolver{
 				Start:    start,
 				Conf:     conf,
-				Reducer:  reducer,
+				Parser:   parser,
 				Services: services,
 				Log:      proxyServer.log,
 			}},
