@@ -1,7 +1,7 @@
 # /etc/ggproxy/services_enabled/example_service/config.yaml
 
-# The service's display name
-name: "Example Service"
+# Source URL path
+path: "/path"
 
 # Destination URL (where to proxy requests to)
 forward_url: "http://localhost:8080/path"

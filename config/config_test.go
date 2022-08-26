@@ -390,7 +390,10 @@ func TestReadConfigErrorDuplicateService(t *testing.T) {
 		"service_a",
 		config.ServiceConfigFile1,
 	)] = &fstest.MapFile{
-		Data: []byte(`forward_url: localhost:8080/`),
+		Data: lines(
+			`path: /`,
+			`forward_url: http://localhost:8080/`,
+		),
 	}
 	fs[filepath.Join(
 		path,
@@ -398,7 +401,10 @@ func TestReadConfigErrorDuplicateService(t *testing.T) {
 		"service_a",
 		config.ServiceConfigFile1,
 	)] = &fstest.MapFile{
-		Data: []byte(`forward_url: localhost:8080/`),
+		Data: lines(
+			`path: /`,
+			`forward_url: http://localhost:8080/`,
+		),
 	}
 	err := testError(t, fs, path)
 	require.Equal(t, &config.ErrorConflict{Items: []string{
@@ -419,7 +425,10 @@ func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
 				"service_a",
 				config.ServiceConfigFile1,
 			)] = &fstest.MapFile{
-				Data: []byte(`forward_url: localhost:8080`),
+				Data: lines(
+					`path: /`,
+					`forward_url: http://localhost:8080/`,
+				),
 			}
 			fs[filepath.Join(
 				path,
@@ -427,7 +436,10 @@ func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
 				"service_a",
 				config.ServiceConfigFile2,
 			)] = &fstest.MapFile{
-				Data: []byte(`forward_url: localhost:9090`),
+				Data: lines(
+					`path: /`,
+					`forward_url: http://localhost:9090/`,
+				),
 			}
 			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorConflict{Items: []string{
@@ -438,7 +450,7 @@ func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
 	}
 }
 
-func TestReadConfigErrorMissingForwardURL(t *testing.T) {
+func TestReadConfigErrorMissingPath(t *testing.T) {
 	for _, m := range [2]string{
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
@@ -457,13 +469,38 @@ func TestReadConfigErrorMissingForwardURL(t *testing.T) {
 				FilePath: filepath.Join(
 					path, m, "service_a", config.ServiceConfigFile1,
 				),
+				Feature: "path",
+			}, err)
+		})
+	}
+}
+
+func TestReadConfigErrorMissingForwardURL(t *testing.T) {
+	for _, m := range [2]string{
+		config.ServicesDisabledDir, config.ServicesEnabledDir,
+	} {
+		t.Run(m, func(t *testing.T) {
+			fs, path := minValidFS()
+			fs[filepath.Join(
+				path,
+				m,
+				"service_a",
+				config.ServiceConfigFile1,
+			)] = &fstest.MapFile{
+				Data: []byte(`path: /`),
+			}
+			err := testError(t, fs, path)
+			require.Equal(t, &config.ErrorMissing{
+				FilePath: filepath.Join(
+					path, m, "service_a", config.ServiceConfigFile1,
+				),
 				Feature: "forward_url",
 			}, err)
 		})
 	}
 }
 
-func TestReadConfigErrorInvalidForwardURL(t *testing.T) {
+func TestReadConfigErrorInvalidPath(t *testing.T) {
 	for _, m := range [2]string{
 		config.ServicesDisabledDir, config.ServicesEnabledDir,
 	} {
@@ -476,13 +513,44 @@ func TestReadConfigErrorInvalidForwardURL(t *testing.T) {
 				config.ServiceConfigFile1,
 			)
 			fs[p] = &fstest.MapFile{
-				Data: []byte(`forward_url: not_a_url.`),
+				Data: lines(
+					`path: invalid_path`,
+					`forward_url: http://localhost:8080/`,
+				),
+			}
+			err := testError(t, fs, path)
+			require.Equal(t, &config.ErrorIllegal{
+				FilePath: p,
+				Feature:  "path",
+				Message:  `path is not starting with /`,
+			}, err)
+		})
+	}
+}
+
+func TestReadConfigErrorInvalidForwardURLInvalidScheme(t *testing.T) {
+	for _, m := range [2]string{
+		config.ServicesDisabledDir, config.ServicesEnabledDir,
+	} {
+		t.Run(m, func(t *testing.T) {
+			fs, path := minValidFS()
+			p := filepath.Join(
+				path,
+				m,
+				"service_a",
+				config.ServiceConfigFile1,
+			)
+			fs[p] = &fstest.MapFile{
+				Data: lines(
+					`path: /`,
+					`forward_url: localhost:8080`,
+				),
 			}
 			err := testError(t, fs, path)
 			require.Equal(t, &config.ErrorIllegal{
 				FilePath: p,
 				Feature:  "forward_url",
-				Message:  `parse "not_a_url.": invalid URI for request`,
+				Message:  `protocol is not supported or undefined`,
 			}, err)
 		})
 	}
@@ -662,7 +730,7 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 			config.ServiceConfigFile1,
 		): &fstest.MapFile{
 			Data: lines(
-				`name: "Service A"`,
+				`path: "/path"`,
 				`forward_url: "http://localhost:8080/path"`,
 				`forward_reduced: true`,
 			),
@@ -707,6 +775,7 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 			config.ServiceConfigFile1,
 		): &fstest.MapFile{
 			Data: lines(
+				`path: /`,
 				`forward_url: "http://localhost:9090/"`,
 			),
 		},
@@ -787,7 +856,7 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 		ServicesEnabled: []*config.Service{
 			{
 				ID:             "service_a",
-				Name:           "Service A",
+				Path:           "/path",
 				ForwardURL:     "http://localhost:8080/path",
 				ForwardReduced: true,
 				TemplatesEnabled: []*config.Template{
@@ -822,6 +891,7 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 		ServicesDisabled: []*config.Service{
 			{
 				ID:             "service_b",
+				Path:           "/",
 				ForwardURL:     "http://localhost:9090/",
 				ForwardReduced: false,
 				TemplatesDisabled: []*config.Template{

@@ -22,7 +22,10 @@ client:
 destination:
   expect-forwarded:
     headers:
-      Host: ^http://localhost:8081/service_a$
+      X-Forwarded-Host: ^localhost:8000$
+      X-Forwarded-For: 0.0.0.0
+      X-Forwarded-Proto: ^HTTP/1.1$
+      Host: ^localhost:8081$
       Content-Length: ^68$
       Content-Type: ^application/json$
       User-Agent: ^fasthttp$

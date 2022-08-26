@@ -296,12 +296,12 @@ func (m *Maker) ParseQuery(
 			} else {
 				lastObjField = unsafe.B2S(token.Value)
 			}
-		case gqlscan.TokenStr, gqlscan.TokenInt, gqlscan.TokenFloat, gqlscan.TokenTrue,
-			gqlscan.TokenFalse, gqlscan.TokenNull:
+		case gqlscan.TokenStr, gqlscan.TokenEnumVal, gqlscan.TokenInt,
+			gqlscan.TokenFloat, gqlscan.TokenTrue, gqlscan.TokenFalse, gqlscan.TokenNull:
 			var val any
 			var err error
 			switch token.ID {
-			case gqlscan.TokenStr:
+			case gqlscan.TokenStr, gqlscan.TokenEnumVal:
 				val = token.Value
 			case gqlscan.TokenInt:
 				val, err = strconv.ParseInt(unsafe.B2S(token.Value), 10, 64)
