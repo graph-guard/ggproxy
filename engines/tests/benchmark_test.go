@@ -50,7 +50,7 @@ var benchQueryAverage string
 
 var GS string
 
-func BenchmarkRQmap(b *testing.B) {
+func BenchmarkPartedQuery(b *testing.B) {
 	rules := map[string]gqt.Doc{
 		"benchRule00": nil,
 		"benchRule01": nil,

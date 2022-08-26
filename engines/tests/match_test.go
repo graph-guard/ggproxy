@@ -337,7 +337,7 @@ var query_17 string
 //go:embed assets/testassets/test_17/rule_00.txt
 var rule_17_00 string
 
-func TestMatchAllRQmap(t *testing.T) {
+func TestMatchAllPartedQuery(t *testing.T) {
 	for _, td := range []struct {
 		query         string
 		operationName string
@@ -555,7 +555,7 @@ func TestMatchAllRQmap(t *testing.T) {
 	}
 }
 
-func TestPrintRQmap(t *testing.T) {
+func TestPrintPartedQuery(t *testing.T) {
 	for _, td := range []struct {
 		rule   string
 		expect string
