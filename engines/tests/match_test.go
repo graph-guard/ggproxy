@@ -197,17 +197,20 @@ type QueryModel struct {
 }
 
 type MatchTest struct {
+	ID string
 	*QueryModel
 	Templates []*config.Template
 }
 
 func readTestAsset(
-	t *testing.T, filesystem fs.FS, path string,
+	filesystem fs.FS, path string,
 ) (
 	query *QueryModel, templates []*config.Template,
 ) {
 	test, err := fs.ReadDir(filesystem, path)
-	require.NoError(t, err)
+	if err != nil {
+		panic(err)
+	}
 
 	for _, f := range test {
 		if f.IsDir() {
@@ -218,14 +221,22 @@ func readTestAsset(
 		if strings.HasSuffix(fn, ".gqt") {
 			id := strings.ToLower(fn[:len(fn)-len(filepath.Ext(fn))])
 			src, err := filesystem.Open(fp)
-			require.NoError(t, err)
+			if err != nil {
+				panic(err)
+			}
 			b, err := io.ReadAll(src)
-			require.NoError(t, err)
+			if err != nil {
+				panic(err)
+			}
 
 			meta, template, err := metadata.Parse(b)
-			require.NoError(t, err)
+			if err != nil {
+				panic(err)
+			}
 			doc, errParser := gqt.Parse(template)
-			require.False(t, errParser.IsErr(), errParser.Msg)
+			if errParser.IsErr() {
+				panic(errParser)
+			}
 
 			templates = append(templates, &config.Template{
 				ID:       id,
@@ -237,33 +248,39 @@ func readTestAsset(
 		}
 		if strings.HasSuffix(fn, ".yml") || strings.HasSuffix(fn, ".yaml") {
 			src, err := filesystem.Open(fp)
-			require.NoError(t, err)
+			if err != nil {
+				panic(err)
+			}
 			d := yaml.NewDecoder(src)
 			d.KnownFields(true)
 			err = d.Decode(&query)
-			require.NoError(t, err)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 
 	return
 }
 
-func readTestAssets(t *testing.T, path string) (assets []*MatchTest) {
-	root, err := fs.ReadDir(testassets, path)
-	require.NoError(t, err)
+func readTestAssets(filesystem fs.FS, path, prefix string) (assets []*MatchTest) {
+	root, err := fs.ReadDir(filesystem, path)
+	if err != nil {
+		panic(err)
+	}
 	for _, testDir := range root {
 		if !testDir.IsDir() {
 			continue
 		}
 		testDirName := testDir.Name()
 		testDirPath := filepath.Join(path, testDirName)
-		if !strings.HasPrefix(testDirName, "test_") {
-			t.Logf("ignoring %q", testDirPath)
+		if !strings.HasPrefix(testDirName, prefix) {
 			continue
 		}
 
-		query, templates := readTestAsset(t, testassets, testDirPath)
+		query, templates := readTestAsset(filesystem, testDirPath)
 		assets = append(assets, &MatchTest{
+			ID:         testDirName,
 			QueryModel: query,
 			Templates:  templates,
 		})
@@ -273,9 +290,8 @@ func readTestAssets(t *testing.T, path string) (assets []*MatchTest) {
 }
 
 func TestMatchAllPartedQuery(t *testing.T) {
-	for _, td := range readTestAssets(t, "assets/testassets") {
-		t.Run("", func(t *testing.T) {
-
+	for _, td := range readTestAssets(testassets, "assets/testassets", "test_") {
+		t.Run(td.ID, func(t *testing.T) {
 			rules := make(map[string]gqt.Doc, len(td.Templates))
 			for _, r := range td.Templates {
 				rules[r.ID] = r.Document

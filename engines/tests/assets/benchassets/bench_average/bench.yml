@@ -1,0 +1,16 @@
+query: |
+    query X {
+        a {
+            a0(
+                a0_0: {
+                    a0_01: 1
+                    a0_00: [1, 2]
+                }
+                a0_1: "never"
+            ) {
+                a01
+                a00
+            }
+        }
+    }
+operationName: X
