@@ -2,8 +2,8 @@ mutation {
 	a {
 		a0(
 			a0_0: val > 0 && val <= 9 || val < 0 && val >= -9
-            a0_1: val = [ ... bytelen > 0 && bytelen != 3 ]
-            a0_2: val = [ val < 0 && val > -9, val > 0 ]
+			a0_1: val = [ ... bytelen > 0 && bytelen != 3 ]
+			a0_2: val = [ val < 0 && val > -9, val > 0 ]
 			a0_3: val = [ val <= 0 ] && val != [ val = -1 ]
 		)
 	}

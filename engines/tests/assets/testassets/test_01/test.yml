@@ -1,0 +1,9 @@
+query: |
+    query X {
+        a
+        a
+    }
+operationName: X
+variables:
+expect:
+    - 0

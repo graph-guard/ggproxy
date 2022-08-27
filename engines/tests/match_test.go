@@ -2,15 +2,23 @@ package engines_test
 
 import (
 	"bytes"
+	"embed"
 	_ "embed"
 	"fmt"
+	"io"
+	"io/fs"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/graph-guard/ggproxy/config"
+	"github.com/graph-guard/ggproxy/config/metadata"
 	"github.com/graph-guard/ggproxy/engines/rmap"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/xxhash"
 	"github.com/graph-guard/gqt"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
 )
 
 func TestConstraintIdAndValue(t *testing.T) {
@@ -178,356 +186,108 @@ func TestConstraintIdAndValue(t *testing.T) {
 	}
 }
 
-//go:embed assets/testassets/test_00/query.gql
-var query_00 string
+//go:embed assets/testassets
+var testassets embed.FS
 
-//go:embed assets/testassets/test_00/rule_00.txt
-var rule_00_00 string
+type QueryModel struct {
+	Query         string   `yaml:"query"`
+	OperationName string   `yaml:"operationName"`
+	Variables     string   `yaml:"variables"`
+	Expect        []string `yaml:"expect"`
+}
 
-//go:embed assets/testassets/test_00/rule_01.txt
-var rule_00_01 string
+type MatchTest struct {
+	*QueryModel
+	Templates []*config.Template
+}
 
-//go:embed assets/testassets/test_00/rule_02.txt
-var rule_00_02 string
+func readTestAsset(
+	t *testing.T, filesystem fs.FS, path string,
+) (
+	query *QueryModel, templates []*config.Template,
+) {
+	test, err := fs.ReadDir(filesystem, path)
+	require.NoError(t, err)
 
-//go:embed assets/testassets/test_00/rule_03.txt
-var rule_00_03 string
+	for _, f := range test {
+		if f.IsDir() {
+			continue
+		}
+		fn := f.Name()
+		fp := filepath.Join(path, f.Name())
+		if strings.HasSuffix(fn, ".gqt") {
+			id := strings.ToLower(fn[:len(fn)-len(filepath.Ext(fn))])
+			src, err := filesystem.Open(fp)
+			require.NoError(t, err)
+			b, err := io.ReadAll(src)
+			require.NoError(t, err)
 
-//go:embed assets/testassets/test_00/rule_04.txt
-var rule_00_04 string
+			meta, template, err := metadata.Parse(b)
+			require.NoError(t, err)
+			doc, errParser := gqt.Parse(template)
+			require.False(t, errParser.IsErr(), errParser.Msg)
 
-//go:embed assets/testassets/test_00/rule_05.txt
-var rule_00_05 string
+			templates = append(templates, &config.Template{
+				ID:       id,
+				Source:   template,
+				Document: doc,
+				Name:     meta.Name,
+				Tags:     meta.Tags,
+			})
+		}
+		if strings.HasSuffix(fn, ".yml") || strings.HasSuffix(fn, ".yaml") {
+			src, err := filesystem.Open(fp)
+			require.NoError(t, err)
+			d := yaml.NewDecoder(src)
+			d.KnownFields(true)
+			err = d.Decode(&query)
+			require.NoError(t, err)
+		}
+	}
 
-//go:embed assets/testassets/test_00b/query.gql
-var query_00b string
+	return
+}
 
-//go:embed assets/testassets/test_00b/variables.json
-var variables_00b string
+func readTestAssets(t *testing.T, path string) (assets []*MatchTest) {
+	root, err := fs.ReadDir(testassets, path)
+	require.NoError(t, err)
+	for _, testDir := range root {
+		if !testDir.IsDir() {
+			continue
+		}
+		testDirName := testDir.Name()
+		testDirPath := filepath.Join(path, testDirName)
+		if !strings.HasPrefix(testDirName, "test_") {
+			t.Logf("ignoring %q", testDirPath)
+			continue
+		}
 
-//go:embed assets/testassets/test_00b/rule_00.txt
-var rule_00b_00 string
+		query, templates := readTestAsset(t, testassets, testDirPath)
+		assets = append(assets, &MatchTest{
+			QueryModel: query,
+			Templates:  templates,
+		})
+	}
 
-//go:embed assets/testassets/test_00b/rule_01.txt
-var rule_00b_01 string
-
-//go:embed assets/testassets/test_00b/rule_02.txt
-var rule_00b_02 string
-
-//go:embed assets/testassets/test_00b/rule_03.txt
-var rule_00b_03 string
-
-//go:embed assets/testassets/test_00b/rule_04.txt
-var rule_00b_04 string
-
-//go:embed assets/testassets/test_00b/rule_05.txt
-var rule_00b_05 string
-
-//go:embed assets/testassets/test_01/query.gql
-var query_01 string
-
-//go:embed assets/testassets/test_01/rule_00.txt
-var rule_01_00 string
-
-//go:embed assets/testassets/test_02/query.gql
-var query_02 string
-
-//go:embed assets/testassets/test_02/rule_00.txt
-var rule_02_00 string
-
-//go:embed assets/testassets/test_03/query.gql
-var query_03 string
-
-//go:embed assets/testassets/test_03/rule_00.txt
-var rule_03_00 string
-
-//go:embed assets/testassets/test_04/query.gql
-var query_04 string
-
-//go:embed assets/testassets/test_04/rule_00.txt
-var rule_04_00 string
-
-//go:embed assets/testassets/test_05/query.gql
-var query_05 string
-
-//go:embed assets/testassets/test_05/rule_00.txt
-var rule_05_00 string
-
-//go:embed assets/testassets/test_05/rule_01.txt
-var rule_05_01 string
-
-//go:embed assets/testassets/test_06/query.gql
-var query_06 string
-
-//go:embed assets/testassets/test_06/rule_00.txt
-var rule_06_00 string
-
-//go:embed assets/testassets/test_06/rule_01.txt
-var rule_06_01 string
-
-//go:embed assets/testassets/test_07/query.gql
-var query_07 string
-
-//go:embed assets/testassets/test_07/rule_00.txt
-var rule_07_00 string
-
-//go:embed assets/testassets/test_08/query.gql
-var query_08 string
-
-//go:embed assets/testassets/test_08/rule_00.txt
-var rule_08_00 string
-
-//go:embed assets/testassets/test_09/query.gql
-var query_09 string
-
-//go:embed assets/testassets/test_09/rule_00.txt
-var rule_09_00 string
-
-//go:embed assets/testassets/test_10/query.gql
-var query_10 string
-
-//go:embed assets/testassets/test_10/rule_00.txt
-var rule_10_00 string
-
-//go:embed assets/testassets/test_11/query.gql
-var query_11 string
-
-//go:embed assets/testassets/test_11/rule_00.txt
-var rule_11_00 string
-
-//go:embed assets/testassets/test_11/rule_01.txt
-var rule_11_01 string
-
-//go:embed assets/testassets/test_11/rule_02.txt
-var rule_11_02 string
-
-//go:embed assets/testassets/test_12/query.gql
-var query_12 string
-
-//go:embed assets/testassets/test_12/rule_00.txt
-var rule_12_00 string
-
-//go:embed assets/testassets/test_13/query.gql
-var query_13 string
-
-//go:embed assets/testassets/test_13/rule_00.txt
-var rule_13_00 string
-
-//go:embed assets/testassets/test_14/query.gql
-var query_14 string
-
-//go:embed assets/testassets/test_14/rule_00.txt
-var rule_14_00 string
-
-//go:embed assets/testassets/test_15/query.gql
-var query_15 string
-
-//go:embed assets/testassets/test_15/rule_00.txt
-var rule_15_00 string
-
-//go:embed assets/testassets/test_16/query.gql
-var query_16 string
-
-//go:embed assets/testassets/test_16/rule_00.txt
-var rule_16_00 string
-
-//go:embed assets/testassets/test_17/query.gql
-var query_17 string
-
-//go:embed assets/testassets/test_17/rule_00.txt
-var rule_17_00 string
+	return
+}
 
 func TestMatchAllPartedQuery(t *testing.T) {
-	for _, td := range []struct {
-		query         string
-		operationName string
-		variables     string
-		rules         map[string]string
-		expect        []string
-	}{
-		{
-			query:         query_00,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_00_00": rule_00_00,
-				"rule_00_01": rule_00_01,
-				"rule_00_02": rule_00_02,
-				"rule_00_03": rule_00_03,
-				"rule_00_04": rule_00_04,
-				"rule_00_05": rule_00_05,
-			},
-			expect: []string{"rule_00_00", "rule_00_04"},
-		},
-		{
-			query:         query_00b,
-			operationName: "X",
-			variables:     variables_00b,
-			rules: map[string]string{
-				"rule_00b_00": rule_00b_00,
-				"rule_00b_01": rule_00b_01,
-				"rule_00b_02": rule_00b_02,
-				"rule_00b_03": rule_00b_03,
-				"rule_00b_04": rule_00b_04,
-				"rule_00b_05": rule_00b_05,
-			},
-			expect: []string{"rule_00b_00", "rule_00b_04"},
-		},
-		{
-			query:         query_01,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_01_00": rule_01_00,
-			},
-			expect: []string{},
-		},
-		{
-			query:         query_02,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_02_00": rule_02_00,
-			},
-			expect: []string{},
-		},
-		{
-			query:         query_03,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_03_00": rule_03_00,
-			},
-			expect: []string{},
-		},
-		{
-			query:         query_04,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_04_00": rule_04_00,
-			},
-			expect: []string{},
-		},
-		{
-			query:         query_05,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_05_00": rule_05_00,
-				"rule_05_01": rule_05_01,
-			},
-			expect: []string{"rule_05_01"},
-		},
-		{
-			query:         query_06,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_06_00": rule_06_00,
-				"rule_06_01": rule_06_01,
-			},
-			expect: []string{"rule_06_01"},
-		},
-		{
-			query:         query_07,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_07_00": rule_07_00,
-			},
-			expect: []string{"rule_07_00"},
-		},
-		{
-			query:         query_08,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_08_00": rule_08_00,
-			},
-			expect: []string{"rule_08_00"},
-		},
-		{
-			query:         query_09,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_09_00": rule_09_00,
-			},
-			expect: []string{"rule_09_00"},
-		},
-		{
-			query:         query_10,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_10_00": rule_10_00,
-			},
-			expect: []string{"rule_10_00"},
-		},
-		{
-			query:         query_11,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_11_00": rule_11_00,
-				"rule_11_01": rule_11_01,
-				"rule_11_02": rule_11_02,
-			},
-			expect: []string{"rule_11_02"},
-		},
-		{
-			query:         query_12,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_12_00": rule_12_00,
-			},
-			expect: []string{},
-		},
-		{
-			query:         query_13,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_13_00": rule_13_00,
-			},
-			expect: []string{"rule_13_00"},
-		},
-		{
-			query:         query_14,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_14_00": rule_14_00,
-			},
-			expect: []string{},
-		},
-		{
-			query:         query_15,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_15_00": rule_15_00,
-			},
-			expect: []string{"rule_15_00"},
-		},
-		{
-			query:         query_16,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_16_00": rule_16_00,
-			},
-			expect: []string{"rule_16_00"},
-		},
-		{
-			query:         query_17,
-			operationName: "X",
-			rules: map[string]string{
-				"rule_17_00": rule_17_00,
-			},
-			expect: []string{"rule_17_00"},
-		},
-	} {
+	for _, td := range readTestAssets(t, "assets/testassets") {
 		t.Run("", func(t *testing.T) {
-			rules := make(map[string]gqt.Doc, len(td.rules))
-			for i, r := range td.rules {
-				rd, err := gqt.Parse([]byte(r))
-				require.False(t, err.IsErr())
-				rules[i] = rd
+
+			rules := make(map[string]gqt.Doc, len(td.Templates))
+			for _, r := range td.Templates {
+				rules[r.ID] = r.Document
 			}
 
-			r := gqlparse.NewParser()
+			p := gqlparse.NewParser()
 			rm, _ := rmap.New(rules, 0)
 
-			r.Parse(
-				[]byte(td.query),
-				[]byte(td.operationName),
-				[]byte(td.variables),
+			p.Parse(
+				[]byte(td.Query),
+				[]byte(td.OperationName),
+				[]byte(td.Variables),
 				func(
 					varVals [][]gqlparse.Token,
 					operation []gqlparse.Token,
@@ -542,8 +302,8 @@ func TestMatchAllPartedQuery(t *testing.T) {
 							actual = append(actual, id)
 						},
 					)
-					require.Len(t, actual, len(td.expect))
-					for _, e := range td.expect {
+					require.Len(t, actual, len(td.Expect))
+					for _, e := range td.Expect {
 						require.Contains(t, actual, e)
 					}
 				},
@@ -557,11 +317,11 @@ func TestMatchAllPartedQuery(t *testing.T) {
 
 func TestPrintPartedQuery(t *testing.T) {
 	for _, td := range []struct {
-		rule   string
-		expect string
+		template string
+		expect   string
 	}{
 		{
-			rule: `
+			template: `
 			query {
 				a(
 					a_0: val = {
@@ -582,7 +342,7 @@ func TestPrintPartedQuery(t *testing.T) {
 `, Hash("query.a.a_0.a_00")),
 		},
 		{
-			rule: `
+			template: `
 			query {
 				a(
 					a_0: val = [ ... val = [ ... val <= 0 ] ]
@@ -598,7 +358,7 @@ func TestPrintPartedQuery(t *testing.T) {
 `, Hash("query.a.a_0")),
 		},
 		{
-			rule: `
+			template: `
 			query {
 				a(
 					a_0: val = [
@@ -636,7 +396,7 @@ func TestPrintPartedQuery(t *testing.T) {
 		t.Run("", func(t *testing.T) {
 			b := new(bytes.Buffer)
 
-			rd, err := gqt.Parse([]byte(td.rule))
+			rd, err := gqt.Parse([]byte(td.template))
 			require.False(t, err.IsErr())
 			rm, _ := rmap.New(map[string]gqt.Doc{
 				"rd": rd,

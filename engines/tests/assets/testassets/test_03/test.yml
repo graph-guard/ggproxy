@@ -1,0 +1,11 @@
+query: |
+    query X {
+        a {
+            a0(
+                a0_0: [ 0 ]
+            )
+        }
+    }
+operationName: X
+variables:
+expect:
