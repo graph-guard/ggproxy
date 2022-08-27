@@ -1,0 +1,118 @@
+query {
+	a {
+		a0 {
+			a00(
+				a00_0: val = {
+					a00_00: val = {
+						a00_000: val = -273
+					}
+					a00_01: val = {
+						a00_010: val = "eagle"
+						a00_011: val = "hawk"
+						a00_012: val = "falcon"
+					}
+					a00_02: val = {
+						a00_020: val = [val = "eagle", val = "hawk", val = "falcon"]
+						a00_031: val = [val = -273, val = -273, val = -273]
+					}
+					a00_03: val = {
+						a00_030: val = [
+							val = {
+								a00_030x0: val = [val = 0, val = 1]
+								a00_030x1: val = "x"
+							},
+							val = {
+								a00_030x0: val = [val = 1, val = 0]
+								a00_030x1: val = "y"
+							}
+						]
+					}
+				}
+				a00_1: val = {
+					a00_10: val = {
+						a00_100: val = {
+							a00_1000: val = {
+								a00_10000: val = [val = -13, val = -88]
+								a00_10001: val = "deep"
+								a00_10002: val = "not shallow"
+							}
+						}
+						a00_101: val = {
+							a00_1010: val = "hohoho"
+							a00_1011: val = -1
+						}
+					}
+				}
+			) {
+				a000(
+					a000_0: val = {
+						a000_00: val = {
+							a000_000: val = "coffe?"
+							a000_001: val = [val = "yes", val = "please"]
+						}
+					}
+					a000_1: val = {
+						a000_10: val = 0
+					}
+				) {
+					a0000(
+						a0000_0: val = {
+							a0000_00: val = 65535
+							a0000_01: val = {
+								a0000_010: val = [
+									val = {
+										a0000_01000: val = "I need your clothes, boots and motorcycle"
+									}
+								]
+							}
+						}
+					)
+					a0001 {
+						a00000(
+							a00000_0: val = {
+								a00000_00: val = {
+									a00000_000: val = {
+										a00000_0000: val = "Not enought wood"
+										a00000_0001: val = "Milord"
+									}
+								}
+							}
+						)
+					}
+				}
+				a001(
+					a001_0: val = "surprise!"
+					a001_1: val = {
+						a001_10: val = {
+							a001_100: val = {
+								a001_1001: val = true
+								a001_1002: val = [val = false, val = true]
+							}
+							a001_101: val = {
+								a001_1010: val = {
+									a001_10100: val = "enough"
+								}
+							}
+						}
+					}
+				)
+			}
+		}
+		a1 {
+			a10 {
+				a100(
+					a100_0: val = {
+						a100_00: val = [val = 0, val = 1, val = 2, val = 3]
+					}
+				)
+				a101(
+					a101_0: val = {
+						a101_00: val = {
+							a101_000: val = "putin huilo"
+						}
+					}
+				)
+			}
+		}
+	}
+}
