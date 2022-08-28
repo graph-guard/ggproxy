@@ -41,6 +41,10 @@ var ErrLicenseExpired = errors.New("license expired")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims.
 func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
+	if PublicKey == "" {
+		panic("missing public key")
+	}
+
 	decodedPublicKey, err := decodePublicKey([]byte(PublicKey))
 	if err != nil {
 		return nil, err
