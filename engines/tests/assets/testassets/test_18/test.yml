@@ -1,0 +1,11 @@
+query: |
+    query X {
+        a
+        ... on Something {
+            b
+        }
+    }
+operationName: X
+variables:
+expect:
+    - 0

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -299,6 +300,8 @@ func TestMatchAllPartedQuery(t *testing.T) {
 
 			p := gqlparse.NewParser()
 			rm, _ := rmap.New(rules, 0)
+			rm.Print(os.Stdout)
+			fmt.Println("###############")
 
 			p.Parse(
 				[]byte(td.Query),
