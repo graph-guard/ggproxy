@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"math/rand"
-	"os"
 
 	"github.com/graph-guard/ggproxy/engines/pquery"
 	"github.com/graph-guard/ggproxy/gqlparse"
@@ -568,7 +567,6 @@ func (rm *RulesMap) FindMatch(
 	rm.matchCounter.Reset()
 	rm.mask.Reset()
 	rm.qmake.ParseQuery(variableValues, queryType, selectionSet, func(qp pquery.QueryPart) (stop bool) {
-		qp.Print(os.Stdout)
 		qpCount++
 		if rn, ok := rm.rules[qp.Hash]; ok {
 			if len(rn.Variants) > 0 {

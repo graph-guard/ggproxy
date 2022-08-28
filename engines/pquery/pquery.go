@@ -105,7 +105,7 @@ func (m *Maker) ParseQuery(
 						t.Set(lastObjField, arr)
 					}
 					m.mstack.Push(arr)
-				case gqlscan.TokenObj, gqlscan.TokenFragInline:
+				case gqlscan.TokenObj:
 					if insideArray == 0 {
 						path := m.pstack.Top()
 						xxhash.Write(&path, ".")
@@ -128,7 +128,7 @@ func (m *Maker) ParseQuery(
 						}
 						m.mstack.Push(obj)
 					}
-				case gqlscan.TokenObjField, gqlscan.TokenFragName:
+				case gqlscan.TokenObjField:
 					if insideArray == 0 {
 						t := m.pstack.Top()
 						xxhash.Write(&t, token.Value)
@@ -236,7 +236,7 @@ func (m *Maker) ParseQuery(
 		}
 
 		switch token.ID {
-		case gqlscan.TokenField:
+		case gqlscan.TokenField, gqlscan.TokenFragInline:
 			switch t := m.mstack.Top(); t.(type) {
 			case argumentPathTerminal:
 				m.mstack.Pop()
@@ -291,7 +291,7 @@ func (m *Maker) ParseQuery(
 				t.Set(lastObjField, arr)
 			}
 			m.mstack.Push(arr)
-		case gqlscan.TokenObj, gqlscan.TokenFragInline:
+		case gqlscan.TokenObj:
 			if insideArray == 0 {
 				path := m.pstack.Top()
 				xxhash.Write(&path, ".")
@@ -314,7 +314,7 @@ func (m *Maker) ParseQuery(
 				}
 				m.mstack.Push(obj)
 			}
-		case gqlscan.TokenObjField, gqlscan.TokenFragName:
+		case gqlscan.TokenObjField:
 			if insideArray == 0 {
 				t := m.pstack.Top()
 				xxhash.Write(&t, token.Value)
