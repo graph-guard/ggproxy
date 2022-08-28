@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewQueryMap(t *testing.T) {
+func TestNewQueryPart(t *testing.T) {
 	for _, td := range []struct {
 		query         string
 		operationName string

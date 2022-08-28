@@ -28,7 +28,7 @@ type QueryPart struct {
 	Value any
 }
 
-// Maker is a meta structure for QueryMap to store the runtime data and the hash seed.
+// Maker is a meta structure to store the runtime data and the hash seed.
 type Maker struct {
 	mstack    *stack.Stack[any]
 	pstack    *stack.Stack[xxhash.Hash]
@@ -53,9 +53,9 @@ func NewMaker(seed uint64) *Maker {
 	}
 }
 
-// ParseQuery parses query into QueryMap.
+// ParseQuery parses query into QueryParts.
 // Accepts a token list.
-// QueryMap is accessible through the fn function.
+// QueryParts are accessible through the fn function.
 func (m *Maker) ParseQuery(
 	variableValues [][]gqlparse.Token,
 	queryType gqlscan.Token,
@@ -442,7 +442,7 @@ func PrintNSpaces(w io.Writer, n uint) {
 	}
 }
 
-// Print prints out the QueryMap hamap.Map[string, any].
+// Print prints out the QueryPart
 func (qp QueryPart) Print(w io.Writer) {
 	qp.print(w, 0)
 }
