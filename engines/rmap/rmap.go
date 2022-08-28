@@ -7,7 +7,7 @@ import (
 	"io"
 	"math/rand"
 
-	"github.com/graph-guard/ggproxy/engines/pquery"
+	"github.com/graph-guard/ggproxy/engines/rmap/pquery"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/bitmask"
 	"github.com/graph-guard/ggproxy/utilities/container/amap"

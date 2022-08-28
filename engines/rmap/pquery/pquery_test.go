@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/ggproxy/engines/pquery"
+	"github.com/graph-guard/ggproxy/engines/rmap/pquery"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/xxhash"
