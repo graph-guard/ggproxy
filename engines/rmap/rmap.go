@@ -245,7 +245,33 @@ func buildRulesMapSelections(
 				}
 			}
 		case gqt.SelectionInlineFragment:
-			panic("can't work with fragments yet")
+			selPath := path + "." + selection.TypeName
+			if len(selection.Selections) == 0 {
+				h := xxhash.New(rm.seed)
+				xxhash.Write(&h, selPath)
+				pathHash := h.Sum64()
+				if v, ok := (*rm).rules[pathHash]; ok {
+					v.Mask = v.Mask.Or(mask)
+				} else {
+					if v, ok := rm.hashedPaths[pathHash]; !ok {
+						rm.hashedPaths[pathHash] = selPath
+					} else {
+						if v != selPath {
+							return ErrHashCollision
+						}
+					}
+					(*rm).rules[pathHash] = &RulesNode{
+						Mask: mask,
+					}
+				}
+				(*rm).ruleCounter[ruleIdx]++
+			} else {
+				if err := buildRulesMapSelections(
+					rm, selection.Selections, mask, selPath, ruleIdx,
+				); err != nil {
+					return err
+				}
+			}
 		}
 	}
 

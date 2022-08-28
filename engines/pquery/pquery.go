@@ -236,7 +236,7 @@ func (m *Maker) ParseQuery(
 		}
 
 		switch token.ID {
-		case gqlscan.TokenField:
+		case gqlscan.TokenField, gqlscan.TokenFragInline:
 			switch t := m.mstack.Top(); t.(type) {
 			case argumentPathTerminal:
 				m.mstack.Pop()
