@@ -9,7 +9,6 @@ query: |
         ... on Query {
         	... f1
         }
-        # ... f1
         a {
             a0(
                 a0_0: {

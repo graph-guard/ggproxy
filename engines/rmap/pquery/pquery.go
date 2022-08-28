@@ -255,6 +255,9 @@ func (m *Maker) ParseQuery(
 				}
 			}
 			path := m.pstack.Top()
+			if token.ID == gqlscan.TokenFragInline {
+				xxhash.Write(&path, "|")
+			}
 			xxhash.Write(&path, token.Value)
 			m.pstack.Push(path)
 			m.mstack.Push(pathTerminal{})

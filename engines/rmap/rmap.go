@@ -245,7 +245,7 @@ func buildRulesMapSelections(
 				}
 			}
 		case gqt.SelectionInlineFragment:
-			selPath := path + "." + selection.TypeName
+			selPath := path + ".|" + selection.TypeName
 			if len(selection.Selections) == 0 {
 				h := xxhash.New(rm.seed)
 				xxhash.Write(&h, selPath)

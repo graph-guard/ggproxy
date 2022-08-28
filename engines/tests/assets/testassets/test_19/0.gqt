@@ -1,0 +1,9 @@
+query {
+	a
+	... on Something {
+		b
+	}
+	Something {
+		b
+	}
+}
