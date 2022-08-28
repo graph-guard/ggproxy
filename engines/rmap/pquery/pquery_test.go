@@ -5,14 +5,14 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/graph-guard/ggproxy/engines/pquery"
+	"github.com/graph-guard/ggproxy/engines/rmap/pquery"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/ggproxy/utilities/xxhash"
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewQueryMap(t *testing.T) {
+func TestNewQueryPart(t *testing.T) {
 	for _, td := range []struct {
 		query         string
 		operationName string
