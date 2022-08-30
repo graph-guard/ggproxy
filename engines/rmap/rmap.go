@@ -39,10 +39,9 @@ type RulesMap struct {
 	qmake        pquery.Maker
 	templateIDs  []string
 	matchCounter *amap.Map[uint16, uint16]
-	rules        map[uint64]*RulesNode
-	leafCounter  map[uint16]uint16
-	hashedPaths  map[uint64]string
 	match        *amap.Map[uint64, bool]
+	rules        map[uint64]*RulesNode
+	hashedPaths  map[uint64]string
 }
 
 // RulesNode is an auxiliary RulesMap structure.
@@ -149,7 +148,6 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 		qmake:        *pquery.NewMaker(seed),
 		matchCounter: amap.New[uint16, uint16](0),
 		rules:        map[uint64]*RulesNode{},
-		leafCounter:  map[uint16]uint16{},
 		hashedPaths:  map[uint64]string{},
 		match:        amap.New[uint64, bool](0),
 	}
@@ -179,7 +177,6 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 				rm.seed = uint64(rand.Int31n(maxRand))
 				rm = &RulesMap{
 					rules:        map[uint64]*RulesNode{},
-					leafCounter:  map[uint16]uint16{},
 					mask:         bitmask.New(),
 					hashedPaths:  map[uint64]string{},
 					matchCounter: amap.New[uint16, uint16](0),
@@ -232,7 +229,6 @@ func buildRulesMapSelections(
 						Dependencies: dependencies,
 					}
 				}
-				(*rm).leafCounter[ruleIdx]++
 			} else {
 				var leafs []uint64
 				var err error
@@ -274,7 +270,6 @@ func buildRulesMapSelections(
 						Dependencies: dependencies,
 					}
 				}
-				(*rm).leafCounter[ruleIdx]++
 			} else {
 				if err := buildRulesMapSelections(
 					rm, selection.Selections, dependencies, mask, selPath, ruleIdx,
@@ -336,7 +331,6 @@ func buildRulesMapConstraints[T ConstraintInterface](
 					Dependencies: dependencies,
 				}
 			}
-			(*rm).leafCounter[ruleIdx]++
 			switch cid {
 			case ConstraintMap:
 				(*rm).rules[pathHash].Variants = mergeVariants((*rm).rules[pathHash].Variants, Variant{
@@ -625,7 +619,6 @@ func (rm *RulesMap) FindMatch(
 		return false
 	})
 	for _, el := range rm.matchCounter.A {
-		// if el.Value < qpCount || el.Value != rm.leafCounter[el.Key] {
 		if el.Value < qpCount {
 			rm.mask = rm.mask.Delete(int(el.Key))
 		}
