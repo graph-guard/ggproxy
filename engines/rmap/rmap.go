@@ -39,15 +39,16 @@ type RulesMap struct {
 	qmake        pquery.Maker
 	templateIDs  []string
 	matchCounter *amap.Map[uint16, uint16]
+	match        *amap.Map[uint64, bool]
 	rules        map[uint64]*RulesNode
-	ruleCounter  map[uint16]uint16
 	hashedPaths  map[uint64]string
 }
 
 // RulesNode is an auxiliary RulesMap structure.
 type RulesNode struct {
-	Mask     *bitmask.Set
-	Variants []Variant
+	Mask         *bitmask.Set
+	Variants     []Variant
+	Dependencies []uint64
 }
 
 // Variant is an auxiliary RulesNode structure.
@@ -147,8 +148,8 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 		qmake:        *pquery.NewMaker(seed),
 		matchCounter: amap.New[uint16, uint16](0),
 		rules:        map[uint64]*RulesNode{},
-		ruleCounter:  map[uint16]uint16{},
 		hashedPaths:  map[uint64]string{},
+		match:        amap.New[uint64, bool](0),
 	}
 	var attempt int
 	var err error
@@ -165,18 +166,17 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 			switch r := rule.(type) {
 			case gqt.DocQuery:
 				err = buildRulesMapSelections(
-					rm, r.Selections, m, "query", uint16(index),
+					rm, r.Selections, nil, m, "query", uint16(index),
 				)
 			case gqt.DocMutation:
 				err = buildRulesMapSelections(
-					rm, r.Selections, m, "mutation", uint16(index),
+					rm, r.Selections, nil, m, "mutation", uint16(index),
 				)
 			}
 			if err == ErrHashCollision {
 				rm.seed = uint64(rand.Int31n(maxRand))
 				rm = &RulesMap{
 					rules:        map[uint64]*RulesNode{},
-					ruleCounter:  map[uint16]uint16{},
 					mask:         bitmask.New(),
 					hashedPaths:  map[uint64]string{},
 					matchCounter: amap.New[uint16, uint16](0),
@@ -201,6 +201,7 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 func buildRulesMapSelections(
 	rm *RulesMap,
 	selections []gqt.Selection,
+	dependencies []uint64,
 	mask *bitmask.Set,
 	path string,
 	ruleIdx uint16,
@@ -224,22 +225,26 @@ func buildRulesMapSelections(
 						}
 					}
 					(*rm).rules[pathHash] = &RulesNode{
-						Mask: mask,
+						Mask:         mask,
+						Dependencies: dependencies,
 					}
 				}
-				(*rm).ruleCounter[ruleIdx]++
 			} else {
-				if len(selection.Selections) > 0 {
-					if err := buildRulesMapSelections(
-						rm, selection.Selections, mask, selPath, ruleIdx,
-					); err != nil {
+				var leafs []uint64
+				var err error
+				if len(selection.InputConstraints) > 0 {
+					leafs, err = buildRulesMapConstraints(
+						rm, selection.InputConstraints, dependencies, mask, selPath, true, ruleIdx,
+					)
+					if err != nil {
 						return err
 					}
 				}
-				if len(selection.InputConstraints) > 0 {
-					if err := buildRulesMapConstraints(
-						rm, selection.InputConstraints, mask, selPath, true, ruleIdx,
-					); err != nil {
+				if len(selection.Selections) > 0 {
+					err = buildRulesMapSelections(
+						rm, selection.Selections, append(leafs, dependencies...), mask, selPath, ruleIdx,
+					)
+					if err != nil {
 						return err
 					}
 				}
@@ -261,13 +266,13 @@ func buildRulesMapSelections(
 						}
 					}
 					(*rm).rules[pathHash] = &RulesNode{
-						Mask: mask,
+						Mask:         mask,
+						Dependencies: dependencies,
 					}
 				}
-				(*rm).ruleCounter[ruleIdx]++
 			} else {
 				if err := buildRulesMapSelections(
-					rm, selection.Selections, mask, selPath, ruleIdx,
+					rm, selection.Selections, dependencies, mask, selPath, ruleIdx,
 				); err != nil {
 					return err
 				}
@@ -281,11 +286,13 @@ func buildRulesMapSelections(
 func buildRulesMapConstraints[T ConstraintInterface](
 	rm *RulesMap,
 	constraints []T,
+	dependencies []uint64,
 	mask *bitmask.Set,
 	path string,
 	condition bool,
 	ruleIdx uint16,
-) error {
+) ([]uint64, error) {
+	var leafs []uint64
 	for _, constraint := range constraints {
 		var cv any
 		var cid Constraint
@@ -299,13 +306,16 @@ func buildRulesMapConstraints[T ConstraintInterface](
 		conPath := path + "." + constraint.Key()
 		switch cv := cv.(type) {
 		case gqt.ValueObject:
-			if err := buildRulesMapConstraints(rm, cv.Fields, mask, conPath, cond, ruleIdx); err != nil {
-				return err
+			l, err := buildRulesMapConstraints(rm, cv.Fields, dependencies, mask, conPath, cond, ruleIdx)
+			if err != nil {
+				return nil, err
 			}
+			leafs = append(leafs, l...)
 		default:
 			h := xxhash.New(rm.seed)
 			xxhash.Write(&h, conPath)
 			pathHash := h.Sum64()
+			leafs = append(leafs, pathHash)
 			if v, ok := (*rm).rules[pathHash]; ok {
 				v.Mask = v.Mask.Or(mask)
 			} else {
@@ -313,14 +323,14 @@ func buildRulesMapConstraints[T ConstraintInterface](
 					rm.hashedPaths[pathHash] = conPath
 				} else {
 					if v != conPath {
-						return ErrHashCollision
+						return nil, ErrHashCollision
 					}
 				}
 				(*rm).rules[pathHash] = &RulesNode{
-					Mask: mask,
+					Mask:         mask,
+					Dependencies: dependencies,
 				}
 			}
-			(*rm).ruleCounter[ruleIdx]++
 			switch cid {
 			case ConstraintMap:
 				(*rm).rules[pathHash].Variants = mergeVariants((*rm).rules[pathHash].Variants, Variant{
@@ -357,7 +367,7 @@ func buildRulesMapConstraints[T ConstraintInterface](
 		}
 	}
 
-	return nil
+	return leafs, nil
 }
 
 func buildRulesMapConstraintsElem(constraint gqt.Constraint) (el Elem) {
@@ -566,12 +576,22 @@ func (rm *RulesMap) FindMatch(
 	var qpCount uint16
 	rm.matchCounter.Reset()
 	rm.mask.Reset()
+	rm.match.Reset()
 	rm.qmake.ParseQuery(variableValues, queryType, selectionSet, func(qp pquery.QueryPart) (stop bool) {
 		qpCount++
 		if rn, ok := rm.rules[qp.Hash]; ok {
+			for _, dep := range rn.Dependencies {
+				if rm.match.Index(dep) == -1 {
+					rm.mask.Reset()
+					return true
+				}
+			}
 			if len(rn.Variants) > 0 {
+				var match bool
 				for _, v := range rn.Variants {
 					if v.Compare(qp.Value) {
+						match = true
+						rm.match.Set(qp.Hash, true)
 						rm.mask.SetOr(rm.mask, v.Mask)
 						v.Mask.Visit(func(x int) (skip bool) {
 							rm.matchCounter.SetFn(uint16(x), 1, func(value *uint16) { *value++ })
@@ -579,7 +599,12 @@ func (rm *RulesMap) FindMatch(
 						})
 					}
 				}
+				if !match {
+					rm.mask.Reset()
+					return true
+				}
 			} else {
+				rm.match.Set(qp.Hash, true)
 				rm.mask.SetOr(rm.mask, rn.Mask)
 				rn.Mask.Visit(func(x int) (skip bool) {
 					rm.matchCounter.SetFn(uint16(x), 1, func(value *uint16) { *value++ })
@@ -594,7 +619,7 @@ func (rm *RulesMap) FindMatch(
 		return false
 	})
 	for _, el := range rm.matchCounter.A {
-		if el.Value < qpCount || el.Value != rm.ruleCounter[el.Key] {
+		if el.Value < qpCount {
 			rm.mask = rm.mask.Delete(int(el.Key))
 		}
 	}

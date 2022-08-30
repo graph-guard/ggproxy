@@ -121,4 +121,5 @@ operationName: X
 variables:
 expect:
     - 0
+    - 1
     - 4
