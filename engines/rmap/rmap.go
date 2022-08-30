@@ -163,15 +163,18 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 		for index, id := range rm.templateIDs {
 			rule := rules[id]
 			m := bitmask.New(index)
-			switch r := rule.(type) {
-			case gqt.DocQuery:
+			if rule.Query != nil {
 				err = buildRulesMapSelections(
-					rm, r.Selections, nil, m, "query", uint16(index),
+					rm, rule.Query, nil, m, "query", uint16(index),
 				)
-			case gqt.DocMutation:
+			}
+			if rule.Mutation != nil {
 				err = buildRulesMapSelections(
-					rm, r.Selections, nil, m, "mutation", uint16(index),
+					rm, rule.Mutation, nil, m, "mutation", uint16(index),
 				)
+			}
+			if rule.Subscription != nil {
+				panic("subscriptions are not yet supported")
 			}
 			if err == ErrHashCollision {
 				rm.seed = uint64(rand.Int31n(maxRand))

@@ -864,8 +864,8 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 						ID:     "template_b",
 						Tags:   []string{"tag_b1", "tag_b2"},
 						Source: lines(`query { bar }`),
-						Document: gqt.DocQuery{
-							Selections: []gqt.Selection{
+						Document: gqt.Doc{
+							Query: []gqt.Selection{
 								gqt.SelectionField{
 									Name: "bar",
 								},
@@ -877,8 +877,8 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 						Name:   "Template A",
 						Tags:   []string{"tag_a"},
 						Source: lines(`query { foo }`),
-						Document: gqt.DocQuery{
-							Selections: []gqt.Selection{
+						Document: gqt.Doc{
+							Query: []gqt.Selection{
 								gqt.SelectionField{
 									Name: "foo",
 								},
@@ -898,8 +898,8 @@ func validFS() (filesystem fstest.MapFS, path string, conf *config.Config) {
 					{
 						ID:     "template_c",
 						Source: []byte(`query { maz }`),
-						Document: gqt.DocQuery{
-							Selections: []gqt.Selection{
+						Document: gqt.Doc{
+							Query: []gqt.Selection{
 								gqt.SelectionField{
 									Name: "maz",
 								},
