@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 
 	"github.com/graph-guard/ggproxy/engines/rmap/pquery"
 	"github.com/graph-guard/ggproxy/gqlparse"
@@ -32,16 +31,24 @@ const (
 	maxAttempts = 32
 )
 
+// Combination is a auxiliary "max" block structure.
+type Combination struct {
+	Direct int
+	Depth  int
+}
+
 // RulesMap is a graphql query to a template fast search structure.
 type RulesMap struct {
-	seed         uint64
-	mask         *bitmask.Set
-	qmake        pquery.Maker
-	templateIDs  []string
-	matchCounter *amap.Map[uint16, uint16]
-	match        *amap.Map[uint64, bool]
-	rules        map[uint64]*RulesNode
-	hashedPaths  map[uint64]string
+	seed                uint64
+	mask                *bitmask.Set
+	qmake               pquery.Maker
+	templateIDs         []string
+	matchCounter        *amap.Map[uint16, uint16]
+	match               *amap.Map[uint64, bool]
+	combinations        []uint16
+	combinationCounters []uint16
+	rules               map[uint64]*RulesNode
+	hashedPaths         map[uint64]string
 }
 
 // RulesNode is an auxiliary RulesMap structure.
@@ -49,6 +56,7 @@ type RulesNode struct {
 	Mask         *bitmask.Set
 	Variants     []Variant
 	Dependencies []uint64
+	Combination  Combination
 }
 
 // Variant is an auxiliary RulesNode structure.
@@ -143,13 +151,15 @@ func (obj Object) Equal(x Object) bool {
 // Accepts a rules list and a hash seed.
 func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 	rm := &RulesMap{
-		seed:         seed,
-		mask:         bitmask.New(),
-		qmake:        *pquery.NewMaker(seed),
-		matchCounter: amap.New[uint16, uint16](0),
-		rules:        map[uint64]*RulesNode{},
-		hashedPaths:  map[uint64]string{},
-		match:        amap.New[uint64, bool](0),
+		seed:                seed,
+		mask:                bitmask.New(),
+		qmake:               *pquery.NewMaker(seed),
+		matchCounter:        amap.New[uint16, uint16](0),
+		match:               amap.New[uint64, bool](0),
+		combinations:        []uint16{},
+		combinationCounters: []uint16{},
+		rules:               map[uint64]*RulesNode{},
+		hashedPaths:         map[uint64]string{},
 	}
 	var attempt int
 	var err error
@@ -163,24 +173,30 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 		for index, id := range rm.templateIDs {
 			rule := rules[id]
 			m := bitmask.New(index)
-			switch r := rule.(type) {
-			case gqt.DocQuery:
+			if rule.Query != nil {
 				err = buildRulesMapSelections(
-					rm, r.Selections, nil, m, "query", uint16(index),
-				)
-			case gqt.DocMutation:
-				err = buildRulesMapSelections(
-					rm, r.Selections, nil, m, "mutation", uint16(index),
+					rm, rule.Query, nil, m, "query", uint16(index), 0,
 				)
 			}
+			if rule.Mutation != nil {
+				err = buildRulesMapSelections(
+					rm, rule.Mutation, nil, m, "mutation", uint16(index), 0,
+				)
+			}
+			if rule.Subscription != nil {
+				panic("subscriptions are not yet supported")
+			}
 			if err == ErrHashCollision {
-				rm.seed = uint64(rand.Int31n(maxRand))
 				rm = &RulesMap{
-					rules:        map[uint64]*RulesNode{},
-					mask:         bitmask.New(),
-					hashedPaths:  map[uint64]string{},
-					matchCounter: amap.New[uint16, uint16](0),
-					qmake:        *pquery.NewMaker(rm.seed),
+					seed:                seed,
+					mask:                bitmask.New(),
+					qmake:               *pquery.NewMaker(seed),
+					matchCounter:        amap.New[uint16, uint16](0),
+					match:               amap.New[uint64, bool](0),
+					combinations:        []uint16{},
+					combinationCounters: []uint16{},
+					rules:               map[uint64]*RulesNode{},
+					hashedPaths:         map[uint64]string{},
 				}
 				attempt++
 				break
@@ -205,6 +221,7 @@ func buildRulesMapSelections(
 	mask *bitmask.Set,
 	path string,
 	ruleIdx uint16,
+	combinationDepth int,
 ) error {
 	for _, selection := range selections {
 		switch selection := selection.(type) {
@@ -227,6 +244,7 @@ func buildRulesMapSelections(
 					(*rm).rules[pathHash] = &RulesNode{
 						Mask:         mask,
 						Dependencies: dependencies,
+						Combination:  Combination{len(rm.combinations) - 1, combinationDepth - 1},
 					}
 				}
 			} else {
@@ -234,15 +252,18 @@ func buildRulesMapSelections(
 				var err error
 				if len(selection.InputConstraints) > 0 {
 					leafs, err = buildRulesMapConstraints(
-						rm, selection.InputConstraints, dependencies, mask, selPath, true, ruleIdx,
+						rm, selection.InputConstraints, dependencies, mask, selPath, true, ruleIdx, combinationDepth,
 					)
 					if err != nil {
 						return err
 					}
 				}
 				if len(selection.Selections) > 0 {
+					if len(selection.InputConstraints) > 0 {
+						combinationDepth = 0
+					}
 					err = buildRulesMapSelections(
-						rm, selection.Selections, append(leafs, dependencies...), mask, selPath, ruleIdx,
+						rm, selection.Selections, append(leafs, dependencies...), mask, selPath, ruleIdx, combinationDepth,
 					)
 					if err != nil {
 						return err
@@ -268,14 +289,23 @@ func buildRulesMapSelections(
 					(*rm).rules[pathHash] = &RulesNode{
 						Mask:         mask,
 						Dependencies: dependencies,
+						Combination:  Combination{len(rm.combinations) - 1, combinationDepth - 1},
 					}
 				}
 			} else {
 				if err := buildRulesMapSelections(
-					rm, selection.Selections, dependencies, mask, selPath, ruleIdx,
+					rm, selection.Selections, dependencies, mask, selPath, ruleIdx, combinationDepth,
 				); err != nil {
 					return err
 				}
+			}
+		case gqt.ConstraintCombine:
+			rm.combinations = append(rm.combinations, uint16(selection.MaxItems))
+			rm.combinationCounters = append(rm.combinationCounters, 0)
+			if err := buildRulesMapSelections(
+				rm, selection.Items, dependencies, mask, path, ruleIdx, combinationDepth+1,
+			); err != nil {
+				return err
 			}
 		}
 	}
@@ -291,6 +321,7 @@ func buildRulesMapConstraints[T ConstraintInterface](
 	path string,
 	condition bool,
 	ruleIdx uint16,
+	combinationDepth int,
 ) ([]uint64, error) {
 	var leafs []uint64
 	for _, constraint := range constraints {
@@ -306,7 +337,9 @@ func buildRulesMapConstraints[T ConstraintInterface](
 		conPath := path + "." + constraint.Key()
 		switch cv := cv.(type) {
 		case gqt.ValueObject:
-			l, err := buildRulesMapConstraints(rm, cv.Fields, dependencies, mask, conPath, cond, ruleIdx)
+			l, err := buildRulesMapConstraints(
+				rm, cv.Fields, dependencies, mask, conPath, cond, ruleIdx, combinationDepth,
+			)
 			if err != nil {
 				return nil, err
 			}
@@ -329,6 +362,7 @@ func buildRulesMapConstraints[T ConstraintInterface](
 				(*rm).rules[pathHash] = &RulesNode{
 					Mask:         mask,
 					Dependencies: dependencies,
+					Combination:  Combination{len(rm.combinations) - 1, combinationDepth - 1},
 				}
 			}
 			switch cid {
@@ -577,6 +611,7 @@ func (rm *RulesMap) FindMatch(
 	rm.matchCounter.Reset()
 	rm.mask.Reset()
 	rm.match.Reset()
+	memset(rm.combinationCounters, 0)
 	rm.qmake.ParseQuery(variableValues, queryType, selectionSet, func(qp pquery.QueryPart) (stop bool) {
 		qpCount++
 		if rn, ok := rm.rules[qp.Hash]; ok {
@@ -586,6 +621,21 @@ func (rm *RulesMap) FindMatch(
 					return true
 				}
 			}
+
+			if rn.Combination.Direct >= 0 {
+				var depth int
+				if rm.combinationCounters[rn.Combination.Direct] == 0 {
+					depth = rn.Combination.Depth
+				}
+				for i := rn.Combination.Direct - depth; i <= rn.Combination.Direct; i++ {
+					rm.combinationCounters[i]++
+					if rm.combinations[i] < rm.combinationCounters[i] {
+						rm.mask.Reset()
+						return true
+					}
+				}
+			}
+
 			if len(rn.Variants) > 0 {
 				var match bool
 				for _, v := range rn.Variants {
@@ -1030,6 +1080,16 @@ func (obj *Object) print(w io.Writer, indent uint) {
 				fmt.Fprintln(w, v)
 			}
 		}
+	}
+}
+
+func memset[T comparable](a []T, v T) {
+	if len(a) == 0 {
+		return
+	}
+	a[0] = v
+	for i := 1; i < len(a); i *= 2 {
+		copy(a[i:], a[:i])
 	}
 }
 

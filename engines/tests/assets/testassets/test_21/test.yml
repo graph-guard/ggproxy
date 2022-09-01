@@ -1,0 +1,19 @@
+query: |
+    query X {
+        a
+        c {
+            c0(
+                c0_0: 1
+            ) {
+                c00(c00_0: -1) {
+                    c000
+                    c002
+                }
+            }
+        }
+        e
+    }
+operationName: X
+variables:
+expect:
+    - 0

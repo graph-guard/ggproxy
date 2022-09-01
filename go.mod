@@ -9,7 +9,7 @@ require (
 	github.com/google/uuid v1.3.0
 	github.com/graph-guard/backend v0.0.0-20220822175952-31b33fe61326
 	github.com/graph-guard/gqlscan v1.0.0
-	github.com/graph-guard/gqt v0.0.0-20220825222814-afa9a07c484c
+	github.com/graph-guard/gqt v0.0.0-20220830090241-b646278952f9
 	github.com/phuslu/log v1.0.81
 	github.com/pierrec/xxHash v0.1.5
 	github.com/stretchr/testify v1.7.2
