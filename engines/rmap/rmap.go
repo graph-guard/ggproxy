@@ -18,14 +18,6 @@ import (
 
 var ErrHashCollision = errors.New("hash collsision")
 
-type ErrParser struct {
-	msg string
-}
-
-func (er *ErrParser) Error() string {
-	return er.msg
-}
-
 const (
 	maxRand     = 32768
 	maxAttempts = 32
