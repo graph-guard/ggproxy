@@ -35,7 +35,7 @@ type CommandStop struct{}
 func Parse(
 	w io.Writer,
 	args []string,
-	validateLicenseToken func(string) bool,
+	validateLicenseToken func(string) error,
 ) (cmd Command) {
 	fm := fmt.Sprintf
 
@@ -97,6 +97,8 @@ func Parse(
 			return nil
 		}
 
+		err := validateLicenseToken(c.LicenseToken)
+
 		if c.LicenseToken == "" {
 			writeLines(w,
 				EnvLicense+" isn't set.",
@@ -104,8 +106,9 @@ func Parse(
 			)
 			flags.Usage()
 			return nil
-		} else if !validateLicenseToken(c.LicenseToken) {
+		} else if err != nil {
 			writeLines(w,
+				err.Error(),
 				EnvLicense+" contains an invalid license key!",
 				fm("You can get a valid license key at %s", LinkDashboardDownload),
 			)

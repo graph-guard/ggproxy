@@ -36,8 +36,9 @@ const (
 // Encoded public key
 var PublicKey string
 
-var ErrFailParseClaims = errors.New("fail to parse claims")
+var ErrFailParseClaims = errors.New("fail to parse license token claims")
 var ErrLicenseExpired = errors.New("license expired")
+var ErrNoPEMBlock = errors.New("no valid PEM block in public key")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims.
 func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
@@ -47,7 +48,7 @@ func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
 
 	decodedPublicKey, err := decodePublicKey([]byte(PublicKey))
 	if err != nil {
-		return nil, err
+		panic(err)
 	}
 
 	token, err := jwt.ParseWithClaims(
@@ -75,6 +76,9 @@ func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
 
 func decodePublicKey(pemEncoded []byte) (crypto.PublicKey, error) {
 	block, _ := pem.Decode(pemEncoded)
+	if block == nil {
+		return nil, ErrNoPEMBlock
+	}
 	x509Encoded := block.Bytes
 	genericPublicKey, err := x509.ParsePKIXPublicKey(x509Encoded)
 	if err != nil {

@@ -13,9 +13,9 @@ func main() {
 	switch c := cli.Parse(
 		w,
 		os.Args,
-		func(licenseToken string) bool {
+		func(licenseToken string) error {
 			_, err := lvs.ValidateLicenseToken(licenseToken)
-			return err == nil
+			return err
 		},
 	).(type) {
 	case cli.CommandServe:

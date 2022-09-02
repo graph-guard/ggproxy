@@ -18,6 +18,7 @@ func RegisterStop(
 	signal.Notify(interrupt, syscall.SIGQUIT)
 	signal.Notify(interrupt, syscall.SIGABRT)
 	signal.Notify(interrupt, syscall.SIGTERM)
+	signal.Notify(interrupt, syscall.SIGPIPE)
 	go func() {
 		select {
 		case <-explicitStop:

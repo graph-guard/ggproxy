@@ -25,7 +25,7 @@ func helpOutput(execName string) string {
 
 func TestNoArgs(t *testing.T) {
 	out := new(bytes.Buffer)
-	c := cli.Parse(out, nil, func(s string) bool { return true })
+	c := cli.Parse(out, nil, func(s string) error { return nil })
 	require.Nil(t, c)
 	require.Equal(t, helpOutput("ggproxy"), out.String())
 }
@@ -35,7 +35,7 @@ func TestNoCommand(t *testing.T) {
 	c := cli.Parse(
 		out,
 		[]string{"execname"},
-		func(s string) bool { return true },
+		func(s string) error { return nil },
 	)
 	require.Nil(t, c)
 	require.Equal(t, helpOutput("execname"), out.String())
@@ -46,7 +46,7 @@ func TestUnknownCommand(t *testing.T) {
 	c := cli.Parse(
 		out,
 		[]string{"execname", "unknown-command"},
-		func(s string) bool { return true },
+		func(s string) error { return nil },
 	)
 	require.Nil(t, c)
 	require.Equal(t, helpOutput("execname"), out.String())
@@ -62,7 +62,7 @@ func TestCommandServe(t *testing.T) {
 		c := cli.Parse(
 			out,
 			[]string{"ggproxy", "serve"},
-			func(s string) bool { return true },
+			func(s string) error { return nil },
 		)
 		require.Equal(t, cli.CommandServe{
 			ConfigDirPath: "/etc/ggproxy",
@@ -81,7 +81,7 @@ func TestCommandServe(t *testing.T) {
 				"ggproxy", "serve",
 				"-config", "./custom_config",
 			},
-			func(s string) bool { return true },
+			func(s string) error { return nil },
 		)
 		require.Equal(t, cli.CommandServe{
 			LicenseToken:  "TESTLICENSETOKEN",
@@ -100,7 +100,7 @@ func TestCommandServe(t *testing.T) {
 				"ggproxy", "serve",
 				"-unknown", "foobar",
 			},
-			func(s string) bool { return true },
+			func(s string) error { return nil },
 		)
 		require.Nil(t, c)
 		require.Equal(t,
@@ -132,7 +132,7 @@ func TestAPIPasswordNotSet(t *testing.T) {
 	c := cli.Parse(
 		out,
 		[]string{"ggproxy", "serve"},
-		func(s string) bool { return true },
+		func(s string) error { return nil },
 	)
 	require.Nil(t, c)
 	require.Equal(t,
@@ -168,7 +168,7 @@ func TestLicenseTokenNotSet(t *testing.T) {
 	c := cli.Parse(
 		out,
 		[]string{"ggproxy", "serve"},
-		func(s string) bool { return true },
+		func(s string) error { return nil },
 	)
 	require.Nil(t, c)
 
@@ -205,12 +205,18 @@ func TestLicenseTokenInvalid(t *testing.T) {
 	c := cli.Parse(
 		out,
 		[]string{"ggproxy", "serve"},
-		func(s string) bool { return s == "valid" },
+		func(s string) error {
+			if s != "valid" {
+				return fmt.Errorf("invalid")
+			}
+			return nil
+		},
 	)
 	require.Nil(t, c)
 
 	require.Equal(t,
 		lines(
+			fmt.Sprintf("invalid"),
 			fmt.Sprintf("%s contains an invalid license key!", cli.EnvLicense),
 			fmt.Sprintf(
 				"You can get a valid license key at %s",
@@ -239,7 +245,7 @@ func TestCommandReload(t *testing.T) {
 	c := cli.Parse(
 		out,
 		[]string{"execname", "reload"},
-		func(s string) bool { return true },
+		func(s string) error { return nil },
 	)
 	require.Equal(t, cli.CommandReload{}, c)
 	require.Equal(t, "", out.String())
@@ -250,7 +256,7 @@ func TestCommandStop(t *testing.T) {
 	c := cli.Parse(
 		out,
 		[]string{"execname", "stop"},
-		func(s string) bool { return true },
+		func(s string) error { return nil },
 	)
 	require.Equal(t, cli.CommandStop{}, c)
 	require.Equal(t, "", out.String())
@@ -261,7 +267,7 @@ func TestCommandHelp(t *testing.T) {
 	c := cli.Parse(
 		out,
 		[]string{"execname", "help"},
-		func(s string) bool { return true },
+		func(s string) error { return nil },
 	)
 	require.Nil(t, c)
 

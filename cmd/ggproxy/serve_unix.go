@@ -13,14 +13,14 @@ import (
 // serve turns the CLI process into a ggproxy server process
 // on *nix systems.
 func serve(w io.Writer, c cli.CommandServe) {
-	conf := ReadConfig(w, c.ConfigDirPath)
-	if conf == nil {
-		return
-	}
-
 	l := log.Logger{
 		Level:  log.InfoLevel,
 		Writer: &log.IOWriter{Writer: w},
+	}
+
+	conf := ReadConfig(w, c.ConfigDirPath)
+	if conf == nil {
+		return
 	}
 
 	var s *server.Proxy
