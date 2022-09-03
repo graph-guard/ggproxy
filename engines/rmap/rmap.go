@@ -264,32 +264,10 @@ func buildRulesMapSelections(
 			}
 		case gqt.SelectionInlineFragment:
 			selPath := path + ".|" + selection.TypeName
-			if len(selection.Selections) == 0 {
-				h := xxhash.New(rm.seed)
-				xxhash.Write(&h, selPath)
-				pathHash := h.Sum64()
-				if v, ok := (*rm).rules[pathHash]; ok {
-					v.Mask = v.Mask.Or(mask)
-				} else {
-					if v, ok := rm.hashedPaths[pathHash]; !ok {
-						rm.hashedPaths[pathHash] = selPath
-					} else {
-						if v != selPath {
-							return ErrHashCollision
-						}
-					}
-					(*rm).rules[pathHash] = &RulesNode{
-						Mask:         mask,
-						Dependencies: dependencies,
-						Combination:  Combination{len(rm.combinations) - 1, combinationDepth - 1},
-					}
-				}
-			} else {
-				if err := buildRulesMapSelections(
-					rm, selection.Selections, dependencies, mask, selPath, ruleIdx, combinationDepth,
-				); err != nil {
-					return err
-				}
+			if err := buildRulesMapSelections(
+				rm, selection.Selections, dependencies, mask, selPath, ruleIdx, combinationDepth,
+			); err != nil {
+				return err
 			}
 		case gqt.ConstraintCombine:
 			rm.combinations = append(rm.combinations, uint16(selection.MaxItems))

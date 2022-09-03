@@ -8,5 +8,8 @@ query {
 				a_12: val = 2
 			}
 		]
+		a_2: val = {
+			a_20: val = 0
+		}
 	)
 }
