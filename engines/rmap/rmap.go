@@ -45,10 +45,9 @@ type RulesMap struct {
 
 // RulesNode is an auxiliary RulesMap structure.
 type RulesNode struct {
-	Mask         *bitmask.Set
-	Variants     []Variant
-	Dependencies []uint64
-	Combination  Combination
+	Mask        *bitmask.Set
+	Variants    []Variant
+	Combination Combination
 }
 
 // Variant is an auxiliary RulesNode structure.
@@ -234,9 +233,8 @@ func buildRulesMapSelections(
 						}
 					}
 					(*rm).rules[pathHash] = &RulesNode{
-						Mask:         mask,
-						Dependencies: dependencies,
-						Combination:  Combination{len(rm.combinations) - 1, combinationDepth - 1},
+						Mask:        mask,
+						Combination: Combination{len(rm.combinations) - 1, combinationDepth - 1},
 					}
 				}
 			} else {
@@ -330,9 +328,8 @@ func buildRulesMapConstraints[T ConstraintInterface](
 					}
 				}
 				(*rm).rules[pathHash] = &RulesNode{
-					Mask:         mask,
-					Dependencies: dependencies,
-					Combination:  Combination{len(rm.combinations) - 1, combinationDepth - 1},
+					Mask:        mask,
+					Combination: Combination{len(rm.combinations) - 1, combinationDepth - 1},
 				}
 			}
 			switch cid {
@@ -585,13 +582,6 @@ func (rm *RulesMap) FindMatch(
 	rm.qmake.ParseQuery(variableValues, queryType, selectionSet, func(qp pquery.QueryPart) (stop bool) {
 		qpCount++
 		if rn, ok := rm.rules[qp.Hash]; ok {
-			for _, dep := range rn.Dependencies {
-				if rm.match.Index(dep) == -1 {
-					rm.mask.Reset()
-					return true
-				}
-			}
-
 			if rn.Combination.Direct >= 0 {
 				var depth int
 				if rm.combinationCounters[rn.Combination.Direct] == 0 {
