@@ -346,8 +346,7 @@ func TestPrintPartedQuery(t *testing.T) {
 				)
 			}
 			`,
-			expect: fmt.Sprintf(`%d: 0
-  variants:
+			expect: fmt.Sprintf(`%d:
     ConstraintValEqual: 0
       -:
         ConstraintValEqual:
@@ -365,8 +364,7 @@ func TestPrintPartedQuery(t *testing.T) {
 				)
 			}
 			`,
-			expect: fmt.Sprintf(`%d: 0
-  variants:
+			expect: fmt.Sprintf(`%d:
     ConstraintMap: 0
       ConstraintMap:
         ConstraintValLessOrEqual:
@@ -388,8 +386,7 @@ func TestPrintPartedQuery(t *testing.T) {
 				)
 			}
 			`,
-			expect: fmt.Sprintf(`%d: 0
-  variants:
+			expect: fmt.Sprintf(`%d:
     ConstraintValEqual: 0
       -:
         ConstraintValEqual:
