@@ -1007,14 +1007,24 @@ func (r *Parser) writeValueToBuffer(
 
 	case v.Type == gjson.String:
 		if arrayLevel > -1 &&
-			string(expect.TypeName) != "String" &&
-			string(expect.TypeName) != "ID" {
+			(expect.Array ||
+				string(expect.TypeName) == "Int" ||
+				string(expect.TypeName) == "Float" ||
+				string(expect.TypeName) == "Boolean") {
 			isErr = true
 		}
-		r.buffer2 = append(r.buffer2, Token{
-			ID:    gqlscan.TokenStr,
-			Value: unsafe.S2B(v.Raw[1 : len(v.Raw)-1]),
-		})
+		switch string(expect.TypeName) {
+		case "", "String", "ID":
+			r.buffer2 = append(r.buffer2, Token{
+				ID:    gqlscan.TokenStr,
+				Value: unsafe.S2B(v.Raw[1 : len(v.Raw)-1]),
+			})
+		default:
+			r.buffer2 = append(r.buffer2, Token{
+				ID:    gqlscan.TokenEnumVal,
+				Value: unsafe.S2B(v.Raw[1 : len(v.Raw)-1]),
+			})
+		}
 
 	case v.IsArray():
 		if arrayLevel > -1 && !expect.Array {

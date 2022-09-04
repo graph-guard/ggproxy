@@ -15,6 +15,70 @@ import (
 
 var testdata = []decl.Declaration[TestSuccess]{
 	decl.New(TestSuccess{
+		Src:      "query($e: Episode!) {hero(episode: $e) {id}}",
+		VarsJSON: `{"e": "EMPIRE"}`,
+		ExpectVarVals: map[string][]gqlparse.Token{
+			"e": {Token(gqlscan.TokenEnumVal, "EMPIRE")},
+		},
+		ExpectOpr: []gqlparse.Token{
+			Token(gqlscan.TokenDefQry),
+			Token(gqlscan.TokenVarList),
+			Token(gqlscan.TokenVarName, "e"),
+			Token(gqlscan.TokenVarTypeName, "Episode"),
+			Token(gqlscan.TokenVarTypeNotNull),
+			Token(gqlscan.TokenEnumVal, "EMPIRE"),
+			Token(gqlscan.TokenVarListEnd),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "hero"),
+			Token(gqlscan.TokenArgList),
+			Token(gqlscan.TokenArgName, "episode"),
+			gqlparse.MakeVariableIndexToken(0, "e"),
+			Token(gqlscan.TokenArgListEnd),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "id"),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+		},
+	}),
+	// Inline variables from JSON
+	decl.New(TestSuccess{
+		Src:      `query ($v: InputObj! = {foo: "bar"}) {f(a: $v)}`,
+		VarsJSON: `{"v": {"foo": "bar from JSON"}}`,
+		ExpectVarVals: map[string][]gqlparse.Token{
+			"v": { // $v: InputObj!
+				Token(gqlscan.TokenObj),
+				Token(gqlscan.TokenObjField, "foo"),
+				Token(gqlscan.TokenStr, "bar from JSON"),
+				Token(gqlscan.TokenObjEnd),
+			},
+		},
+		ExpectOpr: []gqlparse.Token{
+			Token(gqlscan.TokenDefQry),
+			Token(gqlscan.TokenVarList),
+
+			// $v
+			Token(gqlscan.TokenVarName, "v"),
+			Token(gqlscan.TokenVarTypeName, "InputObj"),
+			Token(gqlscan.TokenVarTypeNotNull),
+			Token(gqlscan.TokenObj),
+			Token(gqlscan.TokenObjField, "foo"),
+			Token(gqlscan.TokenStr, "bar from JSON"),
+			Token(gqlscan.TokenObjEnd),
+
+			Token(gqlscan.TokenVarListEnd),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "f"),
+			Token(gqlscan.TokenArgList),
+
+			// $v
+			Token(gqlscan.TokenArgName, "a"),
+			gqlparse.MakeVariableIndexToken(0, "v"),
+
+			Token(gqlscan.TokenArgListEnd),
+			Token(gqlscan.TokenSetEnd),
+		},
+	}),
+	decl.New(TestSuccess{
 		Src:           `{x}`,
 		ExpectVarVals: map[string][]gqlparse.Token{},
 		ExpectOpr: []gqlparse.Token{
@@ -1757,7 +1821,7 @@ func TestErr(t *testing.T) {
 					operation []gqlparse.Token,
 					selectionSet []gqlparse.Token,
 				) {
-					t.Fatal("this function is expected not to be called!")
+					t.Fatal("unexpected success!")
 				},
 				func(err error) {
 					require.Error(t, err)
