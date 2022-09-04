@@ -130,4 +130,17 @@ func TestReset(t *testing.T) {
 		r := s.Get(key)
 		require.Equal(t, segmented.Segment{Index: -1}, r)
 	}
+
+	s.Append("n1")
+	s.Append("n2")
+	s.Cut("newkey")
+	{
+		const key = "newkey"
+		require.Equal(t, []string{"n1", "n2"}, s.GetItems(key))
+		r := s.Get(key)
+		require.Equal(t, 0, r.Index)
+		require.Equal(t, segmented.Segment{
+			Index: 0, Start: 0, End: 2,
+		}, r)
+	}
 }

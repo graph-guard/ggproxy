@@ -33,7 +33,7 @@ func (i *Array[K, T]) Len() int {
 // Reset removes all stored segments.
 func (i *Array[K, T]) Reset() {
 	i.index.Reset()
-	i.lastSegStart, i.data = 0, i.data[:0]
+	i.lastSegStart, i.indexCounter, i.data = 0, 0, i.data[:0]
 }
 
 // GetSegment returns the segment.
