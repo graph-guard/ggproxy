@@ -7,3 +7,4 @@ query: |
 operationName: X
 variables:
 expect:
+    - 0
