@@ -1,10 +1,10 @@
 mutation {
-	a {
-		a0(
-			a0_0: val > 0 && val <= 9 || val < 0 && val >= -9
-			a0_1: val = [ ... bytelen > 0 && bytelen != 3 ]
-			a0_2: val = [ val < 0 && val > -9, val > 0 ]
-			a0_3: val = [ val <= 0 ] && val != [ val = -1 ]
-		)
-	}
+	a(
+		a0_0: val > 0 && val <= 9 || val < 0 && val >= -9
+		a0_1: val > 0.0 && val <= 9 || val < 0.0 && val >= -9.0
+		a0_2: val = NEWHOPE || val = EMPIRE
+		a0_3: val = [ ... bytelen > 0 && bytelen != 3 ]
+		a0_4: val = [ val < 0 && val > -9, val > 0 ]
+		a0_5: val = [ val <= 0 ] && val != [ val = -1 ]
+	)
 }

@@ -1,13 +1,13 @@
 query: |
     mutation X {
-        a {
-            a0(
-                a0_0: 9
-                a0_1: [ "test", "object" ]
-                a0_2: [ -1, 1 ]
-                a0_3: [ -2 ]
-            )
-        }
+        a(
+            a0_0: 9
+            a0_1: -9.0
+            a0_2: EMPIRE
+            a0_3: [ "test", "object" ]
+            a0_4: [ -1, 1 ]
+            a0_5: [ -2 ]
+        )
     }
 operationName: X
 variables:

@@ -433,7 +433,7 @@ func buildRulesMapConstraintsArray(
 func buildRulesMapConstraintsObject(
 	constraints []gqt.ObjectField,
 ) (obj Object) {
-	obj = map[string]Elem{}
+	obj = Object{}
 	for _, constraint := range constraints {
 		obj[constraint.Name] = buildRulesMapConstraintsElem(constraint.Value)
 	}
@@ -461,14 +461,6 @@ func mergeVariants(variants []Variant, x Variant) []Variant {
 			case Array:
 				switch xt := x.Value.(type) {
 				case Array:
-					if vt.Equal(xt) {
-						merge(i)
-						return variants
-					}
-				}
-			case Object:
-				switch xt := x.Value.(type) {
-				case Object:
 					if vt.Equal(xt) {
 						merge(i)
 						return variants
@@ -550,7 +542,7 @@ func ConstraintIdAndValue(c gqt.Constraint) (Constraint, any) {
 	}
 }
 
-// Match returns the ID of the matching template or "" if none was matched.
+// Match returns the ID of the first matching template or "" if none was matched.
 func (rm *RulesMap) Match(
 	variableValues [][]gqlparse.Token,
 	queryType gqlscan.Token,
