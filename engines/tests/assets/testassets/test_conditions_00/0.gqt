@@ -16,5 +16,6 @@ mutation {
 				a0_9x0: val = 0
 			}
 		]
+		a0_10: val = [ ... val = [ ... len > 0 ] ]
 	)
 }

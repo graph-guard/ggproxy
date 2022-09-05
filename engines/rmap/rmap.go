@@ -765,24 +765,6 @@ func (v Variant) Compare(x any) bool {
 					if !vt.Compare(el) {
 						return false
 					}
-				case Array:
-					switch elt := el.(type) {
-					case *[]any:
-						if !vt.Compare(*elt) {
-							return false
-						}
-					}
-				case Object:
-					switch elt := el.(type) {
-					case *hamap.Map[string, any]:
-						if !vt.Compare(elt) {
-							return false
-						}
-					}
-				default:
-					if !CompareValues(v.Constraint, v.Value, x) {
-						return false
-					}
 				}
 			}
 			return true
@@ -804,17 +786,10 @@ func (v Variant) Compare(x any) bool {
 	default:
 		neq := v.Constraint == ConstraintValNotEqual
 		switch vt := v.Value.(type) {
-		case Elem:
-			return vt.Compare(x) != neq
 		case Array:
 			switch xt := x.(type) {
 			case *[]any:
 				return vt.Compare(*xt) != neq
-			}
-		case Object:
-			switch xt := x.(type) {
-			case *hamap.Map[string, any]:
-				return vt.Compare(xt) != neq
 			}
 		default:
 			return CompareValues(v.Constraint, v.Value, x)
@@ -834,18 +809,6 @@ func (e Elem) Compare(x any) bool {
 				switch et := e.Value.(type) {
 				case Elem:
 					return et.Compare(el)
-				case Array:
-					switch elt := el.(type) {
-					case *[]any:
-						return et.Compare(*elt)
-					}
-				case Object:
-					switch elt := el.(type) {
-					case *hamap.Map[string, any]:
-						return et.Compare(elt)
-					}
-				default:
-					return CompareValues(e.Constraint, e.Value, x)
 				}
 			}
 		}
@@ -866,8 +829,6 @@ func (e Elem) Compare(x any) bool {
 	default:
 		neq := e.Constraint == ConstraintValNotEqual
 		switch et := e.Value.(type) {
-		case Elem:
-			return et.Compare(x) != neq
 		case Array:
 			switch xt := x.(type) {
 			case *[]any:
