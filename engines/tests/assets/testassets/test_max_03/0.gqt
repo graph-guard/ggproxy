@@ -1,0 +1,10 @@
+query {
+	combine 1 {
+		a
+		b
+	}
+	combine 1 {
+		c
+		d
+	}
+}
