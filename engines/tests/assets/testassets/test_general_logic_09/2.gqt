@@ -1,0 +1,15 @@
+query {
+	a(
+		a_0: val = [val = 0, val = 1, val = 2]
+		a_1: val = [
+			val = {
+				a_10: val = 0
+				a_11: val = 1
+				a_12: val = 2
+			}
+		]
+		a_2: val = {
+			a_20: val = 0
+		}
+	)
+}

@@ -1,0 +1,7 @@
+query {
+	combine 2 {
+		a
+		b
+		c
+	}
+}

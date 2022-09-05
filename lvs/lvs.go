@@ -36,7 +36,7 @@ const (
 // Encoded public key
 var PublicKey string
 
-var ErrFailParseClaims = errors.New("fail to parse license token claims")
+var ErrFailParseClaims = errors.New("failed to parse license token claims")
 var ErrLicenseExpired = errors.New("license expired")
 var ErrNoPEMBlock = errors.New("no valid PEM block in public key")
 
