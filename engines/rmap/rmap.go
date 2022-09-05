@@ -23,25 +23,25 @@ const (
 	maxAttempts = 32
 )
 
-// Combination is a auxiliary "max" block structure.
-type Combination struct {
-	Index     int
-	Depth     int // probably not needed as we allow to pass a single match in arguments
-	RuleIndex uint16
-}
-
 // RulesMap is a graphql query to a template fast search structure.
 type RulesMap struct {
 	seed                uint64
 	mask                *bitmask.Set
 	rejected            *bitmask.Set
 	qmake               pquery.Maker
-	matchCounter        *amap.Map[uint16, uint16]
-	combinations        []uint16
-	combinationCounters []uint16
+	matchCounter        *amap.Map[int, int]
+	combinations        []int
+	combinationCounters []int
 	rules               map[uint64][]Variant
 	hashedPaths         map[uint64]string
 	templateIDs         []string
+}
+
+// Combination is a auxiliary "max" block structure.
+type Combination struct {
+	Index     int
+	Depth     int
+	RuleIndex int
 }
 
 // Variant is an auxiliary RulesNode structure.
@@ -141,9 +141,9 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 		mask:                bitmask.New(),
 		rejected:            bitmask.New(),
 		qmake:               *pquery.NewMaker(seed),
-		matchCounter:        amap.New[uint16, uint16](0),
-		combinations:        []uint16{},
-		combinationCounters: []uint16{},
+		matchCounter:        amap.New[int, int](0),
+		combinations:        []int{},
+		combinationCounters: []int{},
 		rules:               map[uint64][]Variant{},
 		hashedPaths:         map[uint64]string{},
 	}
@@ -161,12 +161,12 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 			m := bitmask.New(index)
 			if rule.Query != nil {
 				err = buildRulesMapSelections(
-					rm, rule.Query, nil, m, "query", uint16(index), 0,
+					rm, rule.Query, nil, m, "query", index, 0,
 				)
 			}
 			if rule.Mutation != nil {
 				err = buildRulesMapSelections(
-					rm, rule.Mutation, nil, m, "mutation", uint16(index), 0,
+					rm, rule.Mutation, nil, m, "mutation", index, 0,
 				)
 			}
 			if rule.Subscription != nil {
@@ -178,9 +178,9 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 					mask:                bitmask.New(),
 					rejected:            bitmask.New(),
 					qmake:               *pquery.NewMaker(seed),
-					matchCounter:        amap.New[uint16, uint16](0),
-					combinations:        []uint16{},
-					combinationCounters: []uint16{},
+					matchCounter:        amap.New[int, int](0),
+					combinations:        []int{},
+					combinationCounters: []int{},
 					rules:               map[uint64][]Variant{},
 					hashedPaths:         map[uint64]string{},
 				}
@@ -206,7 +206,7 @@ func buildRulesMapSelections(
 	dependencies []uint64,
 	mask *bitmask.Set,
 	path string,
-	ruleIdx uint16,
+	ruleIdx int,
 	combinationDepth int,
 ) error {
 	for _, selection := range selections {
@@ -271,7 +271,7 @@ func buildRulesMapSelections(
 				return err
 			}
 		case gqt.ConstraintCombine:
-			rm.combinations = append(rm.combinations, uint16(selection.MaxItems))
+			rm.combinations = append(rm.combinations, int(selection.MaxItems))
 			rm.combinationCounters = append(rm.combinationCounters, 0)
 			if err := buildRulesMapSelections(
 				rm, selection.Items, dependencies, mask, path, ruleIdx, combinationDepth+1,
@@ -291,7 +291,7 @@ func buildRulesMapConstraints[T ConstraintInterface](
 	mask *bitmask.Set,
 	path string,
 	condition bool,
-	ruleIdx uint16,
+	ruleIdx int,
 	combinationDepth int,
 ) ([]uint64, error) {
 	var leafs []uint64
@@ -588,7 +588,7 @@ func (rm *RulesMap) FindMatch(
 	selectionSet []gqlparse.Token,
 	fn func(mask *bitmask.Set),
 ) {
-	var qpCount uint16
+	var qpCount int
 	rm.matchCounter.Reset()
 	rm.mask.Reset()
 	rm.rejected.Reset()
@@ -608,7 +608,7 @@ func (rm *RulesMap) FindMatch(
 							for i := c.Index - depth; i <= c.Index; i++ {
 								rm.combinationCounters[i]++
 								if rm.combinations[i] < rm.combinationCounters[i] {
-									rm.rejected.Add(int(c.RuleIndex))
+									rm.rejected.Add(c.RuleIndex)
 								}
 							}
 						}
@@ -618,7 +618,7 @@ func (rm *RulesMap) FindMatch(
 						match = true
 						rm.mask.SetOr(rm.mask, v.Mask)
 						v.Mask.Visit(func(x int) (skip bool) {
-							rm.matchCounter.SetFn(uint16(x), 1, func(value *uint16) { *value++ })
+							rm.matchCounter.SetFn(x, 1, func(value *int) { *value++ })
 							return false
 						})
 					}
@@ -637,7 +637,7 @@ func (rm *RulesMap) FindMatch(
 	})
 	for _, el := range rm.matchCounter.A {
 		if el.Value < qpCount {
-			rm.rejected.Add(int(el.Key))
+			rm.rejected.Add(el.Key)
 		}
 	}
 	rm.mask.SetAndNot(rm.mask, rm.rejected)
