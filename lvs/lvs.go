@@ -38,6 +38,7 @@ var PublicKey string
 
 var ErrFailParseClaims = errors.New("failed to parse license token claims")
 var ErrLicenseExpired = errors.New("license expired")
+var ErrLicenseMalformed = errors.New("license token malformed or empty")
 var ErrNoPEMBlock = errors.New("no valid PEM block in public key")
 
 // ValidateLicenseToken verifies the license and return license key parameters as claims.
@@ -63,6 +64,9 @@ func ValidateLicenseToken(licenseToken string) (*LicenseTokenClaim, error) {
 	if ok {
 		if e.Errors&jwt.ValidationErrorExpired != 0 {
 			return nil, ErrLicenseExpired
+		}
+		if e.Errors&jwt.ValidationErrorMalformed != 0 {
+			return nil, ErrLicenseMalformed
 		}
 	}
 
