@@ -364,6 +364,14 @@ func buildRulesMapConstraints[T ConstraintInterface](
 						Value:        buildRulesMapConstraintsArray(cv.Items),
 						Combinations: c,
 					})
+				case gqt.EnumValue:
+					(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
+						Condition:    cond,
+						Constraint:   cid,
+						Mask:         mask,
+						Value:        []byte(cv),
+						Combinations: c,
+					})
 				default:
 					(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
 						Condition:    cond,
@@ -408,6 +416,11 @@ func buildRulesMapConstraintsElem(constraint gqt.Constraint) (el Elem) {
 			el = Elem{
 				Constraint: cid,
 				Value:      buildRulesMapConstraintsArray(cv.Items),
+			}
+		case gqt.EnumValue:
+			el = Elem{
+				Constraint: cid,
+				Value:      []byte(cv),
 			}
 		default:
 			el = Elem{
@@ -646,21 +659,16 @@ func CompareValues(constraint Constraint, a any, b any) bool {
 	switch constraint {
 	case None, ConstraintAny:
 		return true
-	case ConstraintValEqual, ConstraintValNotEqual:
-		var eq bool
-		if constraint == ConstraintValEqual {
-			eq = true
-		}
+	case ConstraintValEqual:
 		if b, ok := b.([]byte); ok {
-			var ba []byte
-			if ea, ok := a.(gqt.EnumValue); ok {
-				ba = []byte(ea)
-			} else {
-				ba = a.([]byte)
-			}
-			return bytes.Equal(b, ba) == eq
+			return bytes.Equal(b, a.([]byte))
 		}
-		return (b == a) == eq
+		return b == a
+	case ConstraintValNotEqual:
+		if b, ok := b.([]byte); ok {
+			return !bytes.Equal(b, a.([]byte))
+		}
+		return b != a
 	case ConstraintValGreater, ConstraintValLess,
 		ConstraintValGreaterOrEqual, ConstraintValLessOrEqual:
 		switch vala := a.(type) {
