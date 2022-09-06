@@ -1,0 +1,47 @@
+mutation {
+	a0(
+		a0_0: val = 0
+	)
+	a1(
+		a1_0: val != 0
+	)
+	a2(
+		a2_0: val > 0 && val <= 9 || val < 0 && val >= -9
+	)
+	a3(
+		a3_0: val > 0.0 && val <= 9.0 || val < 0.0 && val >= -9.0
+	)
+	a4(
+		a4_0: val = NEWHOPE || val = EMPIRE
+	)
+	a5(
+		a5_0: val = [ val = {
+				ax_xx0: val = 0
+			}
+		]
+	)
+	a6(
+		a6_0: val = [ val < 0 && val > -9, val > 0 ]
+	)
+	a7(
+		a7_0: val = [ val <= 0 ] && val != [ val = -1 ]
+	)
+	a8(
+		a8_0: val = [ ... bytelen > 0 && bytelen != 3 ]
+	)
+	a9(
+		a9_0: val = [ ... val < 0 || val > 0 ]
+	)
+	a10(
+		a10_0: val = [ ... val = [ val != 0 ] ]
+	)
+	a11(
+		a11_0: val = [ ... val = {
+				ax_xx0: val = 0
+			}
+		]
+	)
+	a12(
+		a12_0: val = [ ... val = [ ... len > 0 ] ]
+	)
+}
