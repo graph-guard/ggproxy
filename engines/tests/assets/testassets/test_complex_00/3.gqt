@@ -1,23 +1,25 @@
 query {
-	b {
-		b0 {
-			b00(
-				b00_0: val = [
-					val != {
-						b00_0x0: val > 0
-					}
-					val = {
-						b00_0x0: val >= -999
-					}
-				]
-			)
-			b01(
-				b01_0: bytelen > 1
-			) {
-				b010
+    ... on Query {
+		b {
+			b0 {
+				b00(
+					b00_0: val = [
+						val != {
+							b00_0x0: val > 0
+						}
+						val = {
+							b00_0x0: val >= -999
+						}
+					]
+				)
+				b01(
+					b01_0: bytelen > 1
+				) {
+					b010
+				}
 			}
 		}
-	}
+    }
 	a {
 		a0(
 			a0_0: val = {

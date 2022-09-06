@@ -3,7 +3,7 @@ query {
 		a0(
 			a0_0: val != {
 				a0_01: val != {
-					a0_010: val != "yo"
+					a0_010: val != JEDI
 				}
 				a0_00: val = [ ... len <= 2 ]
 			}
