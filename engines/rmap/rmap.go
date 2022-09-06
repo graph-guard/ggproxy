@@ -91,6 +91,11 @@ func (e Elem) Equal(x Elem) bool {
 			case Object:
 				return ve.Equal(vx)
 			}
+		case []byte:
+			switch vx := x.Value.(type) {
+			case []byte:
+				return bytes.Equal(ve, vx)
+			}
 		default:
 			return e.Value == x.Value
 		}
