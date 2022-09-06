@@ -646,7 +646,11 @@ func CompareValues(constraint Constraint, a any, b any) bool {
 	switch constraint {
 	case None, ConstraintAny:
 		return true
-	case ConstraintValEqual:
+	case ConstraintValEqual, ConstraintValNotEqual:
+		var eq bool
+		if constraint == ConstraintValEqual {
+			eq = true
+		}
 		if b, ok := b.([]byte); ok {
 			var ba []byte
 			if ea, ok := a.(gqt.EnumValue); ok {
@@ -654,14 +658,9 @@ func CompareValues(constraint Constraint, a any, b any) bool {
 			} else {
 				ba = a.([]byte)
 			}
-			return bytes.Equal(b, ba)
+			return bytes.Equal(b, ba) == eq
 		}
-		return b == a
-	case ConstraintValNotEqual:
-		if b, ok := b.([]byte); ok {
-			return !bytes.Equal(b, a.([]byte))
-		}
-		return b != a
+		return (b == a) == eq
 	case ConstraintValGreater, ConstraintValLess,
 		ConstraintValGreaterOrEqual, ConstraintValLessOrEqual:
 		switch vala := a.(type) {

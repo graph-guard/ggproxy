@@ -3,7 +3,7 @@ query {
 		a0(
 			a0_0: val = {
 				a0_01: val = {
-					a0_010: val = "yo"
+					a0_010: val = JEDI
 				}
 				a0_00: val = [ ... len <= 2 ]
 			}
@@ -19,22 +19,24 @@ query {
 			)
 		}
 	}
-	b {
-		b0 {
-			b00(
-				b00_0: val = [
-					... val = {
-						b00_0x0: val = -273
-					}
-				]
-				b00_1: val = [ ... val <= 0 && val > -99 ]
-			)
-			b01(
-				b01_0: bytelen > 1
-			) {
-				b010
+	c(c_0: val = [ ... val = [ ... len = 2 ] ])
+    ... on Query {
+		b {
+			b0 {
+				b00(
+					b00_0: val = [
+						... val = {
+							b00_0x0: val = -273
+						}
+					]
+					b00_1: val = [ ... val <= 0 && val > -99 ]
+				)
+				b01(
+					b01_0: bytelen > 1
+				) {
+					b010
+				}
 			}
 		}
-	}
-	c(c_0: val = [ ... val = [ ... len = 2 ] ])
+    }
 }

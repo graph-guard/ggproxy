@@ -1,0 +1,12 @@
+query {
+	a(
+		a_0: val = [val = 1]
+		a_1: val = [val = [ val = 1 ]]
+		a_2: val = [
+			val = {
+				a_20: val = 1
+			}
+		]
+		a_3: val = [ ... bytelen = 0 ]
+	)
+}
