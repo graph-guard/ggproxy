@@ -1,4 +1,25 @@
 
+<a name="0.3.0"></a>
+## [0.3.0](https://github.com/graph-guard/ggproxy/compare/0.2.0...0.3.0) (2022-09-06)
+
+### Chore
+
+* Add changelog generated with git-chglog
+
+### Feat
+
+* Ease int usage, change uint16 to int
+* Add combinations ([#11](https://github.com/graph-guard/ggproxy/issues/11))
+
+### Fix
+
+* Fix comparison of byte slices
+* Fix lvs failure on empty license
+* Reset segmented array index counter
+* Accept enum values
+* Fix broken pipe handling
+
+
 <a name="0.2.0"></a>
 ## [0.2.0](https://github.com/graph-guard/ggproxy/compare/0.1.0...0.2.0) (2022-08-29)
 
