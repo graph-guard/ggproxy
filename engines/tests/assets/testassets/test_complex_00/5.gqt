@@ -9,14 +9,16 @@ query {
 			}
 			a0_1: val <= 0
 		) {
-			a01
-			a00(
-				a00_0: val = [ ... bytelen > 0 ]
-				a00_1: val = {
-					a00_10: val = 0
-					a00_11: val = "lol"
-				}
-			)
+			combine 1 {
+				a01
+				a00(
+					a00_0: val = [ ... bytelen > 0 ]
+					a00_1: val = {
+						a00_10: val = 0
+						a00_11: val = "lol"
+					}
+				)
+			}
 		}
 	}
 	b {

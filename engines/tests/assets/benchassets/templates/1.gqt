@@ -1,23 +1,47 @@
 query {
 	a {
-		a0(
-			a0_0: val = {
-				a0_00: val = {
-					a0_000: val = "yo"
+		combine 2 {
+			a0(
+				a0_0: val = {
+					a0_01: val = {
+						a0_010: val = "JEDI"
+					}
+					a0_00: val = [ ... len <= 2 ]
 				}
-				a0_01: val = [ ... len <= 2 ]
+				a0_1: val <= 0
+			) {
+				a01
+				a00(
+					a00_0: val = [ ... bytelen = 3 ]
+					a00_1: val = {
+						a00_11: val != "kek"
+						a00_10: val < 1
+					}
+				)
 			}
-			a0_1: val <= 0
-		) {
-			a00
-			a01(
-				a01_0: val = [ ... bytelen > 0 ]
-				a01_1: val = {
-					a01_10: val = 0
-					a01_11: val = "lol"
-				}
-			)
+			a1
+			a2
 		}
 	}
-	c(c_0: val = [ ... len = 3 ])
+	b {
+		b0 {
+			b00(
+				b00_0: val = [
+					... val = {
+						b00_0x0: val = -273
+					}
+				]
+				b00_1: val = [ ... val <= 0 ]
+			)
+			b01(
+				b01_0: bytelen > 1
+			) {
+				b010
+			}
+		}
+	}
+	c(c_0: val = [ ... val = [ ... len = 2 ] ])
+	d {
+		d0(d0_0: val > 0)
+	}
 }

@@ -605,15 +605,17 @@ func (rm *RulesMap) FindMatch(
 				var match bool
 				for _, v := range rn {
 					if len(v.Combinations) > 0 {
-						var depth int
-						for _, c := range v.Combinations {
-							if rm.combinationCounters[c.Index] == 0 {
-								depth = c.Depth
-							}
-							for i := c.Index - depth; i <= c.Index; i++ {
-								rm.combinationCounters[i]++
-								if rm.combinations[i] < rm.combinationCounters[i] {
-									rm.rejected.Add(c.RuleIndex)
+						if qp.ArgLeafIdx < 1 {
+							var depth int
+							for _, c := range v.Combinations {
+								if rm.combinationCounters[c.Index] == 0 {
+									depth = c.Depth
+								}
+								for i := c.Index - depth; i <= c.Index; i++ {
+									rm.combinationCounters[i]++
+									if rm.combinations[i] < rm.combinationCounters[i] {
+										rm.rejected.Add(c.RuleIndex)
+									}
 								}
 							}
 						}
