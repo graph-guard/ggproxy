@@ -6,18 +6,8 @@ query: |
             {b00_0x0: -273}
         ]
     ) {
-        b {
-            b0 {
-                b00(
-                    b00_0: $b00_0
-                    b00_1: [ -13, -88 ]
-                )
-                b01(
-                    b01_0: $b01_0
-                ) {
-                    b010
-                }
-            }
+        ... on Query {
+        	... f1
         }
         a {
             a0(
@@ -45,7 +35,7 @@ query: |
                         ]
                     ]
                     a0_01: {
-                        a0_010: "yo"
+                        a0_010: JEDI
                     }
                 }
                 a0_1: -1
@@ -117,9 +107,42 @@ query: |
             ]
         )
     }
+
+    fragment f1 on Query {
+        ... f2
+    }
+
+    fragment f2 on Query {
+        b {
+            ... {
+                ... f3
+                ... f3
+            }
+        }
+    }
+
+    fragment f3 on Something {
+        b0 {
+            b00(
+                b00_0: $b00_0
+                b00_1: [ -13, -88 ]
+            )
+            b01(
+                b01_0: $b01_0
+            ) {
+                b010
+            }
+        }
+    }
 operationName: X
-variables:
+variables: |
+    {
+        "b01_0": "alive",
+        "b00_0": [
+            {"b00_0x0": -273},
+            {"b00_0x0": -273}
+        ]
+    }
 expect:
     - 0
-    - 1
     - 4

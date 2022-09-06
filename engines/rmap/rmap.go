@@ -364,6 +364,14 @@ func buildRulesMapConstraints[T ConstraintInterface](
 						Value:        buildRulesMapConstraintsArray(cv.Items),
 						Combinations: c,
 					})
+				case gqt.EnumValue:
+					(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
+						Condition:    cond,
+						Constraint:   cid,
+						Mask:         mask,
+						Value:        []byte(cv),
+						Combinations: c,
+					})
 				default:
 					(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
 						Condition:    cond,
@@ -409,6 +417,11 @@ func buildRulesMapConstraintsElem(constraint gqt.Constraint) (el Elem) {
 				Constraint: cid,
 				Value:      buildRulesMapConstraintsArray(cv.Items),
 			}
+		case gqt.EnumValue:
+			el = Elem{
+				Constraint: cid,
+				Value:      []byte(cv),
+			}
 		default:
 			el = Elem{
 				Constraint: cid,
@@ -433,7 +446,7 @@ func buildRulesMapConstraintsArray(
 func buildRulesMapConstraintsObject(
 	constraints []gqt.ObjectField,
 ) (obj Object) {
-	obj = map[string]Elem{}
+	obj = Object{}
 	for _, constraint := range constraints {
 		obj[constraint.Name] = buildRulesMapConstraintsElem(constraint.Value)
 	}
@@ -461,14 +474,6 @@ func mergeVariants(variants []Variant, x Variant) []Variant {
 			case Array:
 				switch xt := x.Value.(type) {
 				case Array:
-					if vt.Equal(xt) {
-						merge(i)
-						return variants
-					}
-				}
-			case Object:
-				switch xt := x.Value.(type) {
-				case Object:
 					if vt.Equal(xt) {
 						merge(i)
 						return variants
@@ -550,7 +555,7 @@ func ConstraintIdAndValue(c gqt.Constraint) (Constraint, any) {
 	}
 }
 
-// Match returns the ID of the matching template or "" if none was matched.
+// Match returns the ID of the first matching template or "" if none was matched.
 func (rm *RulesMap) Match(
 	variableValues [][]gqlparse.Token,
 	queryType gqlscan.Token,
@@ -600,15 +605,17 @@ func (rm *RulesMap) FindMatch(
 				var match bool
 				for _, v := range rn {
 					if len(v.Combinations) > 0 {
-						var depth int
-						for _, c := range v.Combinations {
-							if rm.combinationCounters[c.Index] == 0 {
-								depth = c.Depth
-							}
-							for i := c.Index - depth; i <= c.Index; i++ {
-								rm.combinationCounters[i]++
-								if rm.combinations[i] < rm.combinationCounters[i] {
-									rm.rejected.Add(c.RuleIndex)
+						if qp.ArgLeafIdx < 1 {
+							var depth int
+							for _, c := range v.Combinations {
+								if rm.combinationCounters[c.Index] == 0 {
+									depth = c.Depth
+								}
+								for i := c.Index - depth; i <= c.Index; i++ {
+									rm.combinationCounters[i]++
+									if rm.combinations[i] < rm.combinationCounters[i] {
+										rm.rejected.Add(c.RuleIndex)
+									}
 								}
 							}
 						}
@@ -656,13 +663,7 @@ func CompareValues(constraint Constraint, a any, b any) bool {
 		return true
 	case ConstraintValEqual:
 		if b, ok := b.([]byte); ok {
-			var ba []byte
-			if ea, ok := a.(gqt.EnumValue); ok {
-				ba = []byte(ea)
-			} else {
-				ba = a.([]byte)
-			}
-			return bytes.Equal(b, ba)
+			return bytes.Equal(b, a.([]byte))
 		}
 		return b == a
 	case ConstraintValNotEqual:
@@ -773,24 +774,6 @@ func (v Variant) Compare(x any) bool {
 					if !vt.Compare(el) {
 						return false
 					}
-				case Array:
-					switch elt := el.(type) {
-					case *[]any:
-						if !vt.Compare(*elt) {
-							return false
-						}
-					}
-				case Object:
-					switch elt := el.(type) {
-					case *hamap.Map[string, any]:
-						if !vt.Compare(elt) {
-							return false
-						}
-					}
-				default:
-					if !CompareValues(v.Constraint, v.Value, x) {
-						return false
-					}
 				}
 			}
 			return true
@@ -812,17 +795,10 @@ func (v Variant) Compare(x any) bool {
 	default:
 		neq := v.Constraint == ConstraintValNotEqual
 		switch vt := v.Value.(type) {
-		case Elem:
-			return vt.Compare(x) != neq
 		case Array:
 			switch xt := x.(type) {
 			case *[]any:
 				return vt.Compare(*xt) != neq
-			}
-		case Object:
-			switch xt := x.(type) {
-			case *hamap.Map[string, any]:
-				return vt.Compare(xt) != neq
 			}
 		default:
 			return CompareValues(v.Constraint, v.Value, x)
@@ -842,18 +818,6 @@ func (e Elem) Compare(x any) bool {
 				switch et := e.Value.(type) {
 				case Elem:
 					return et.Compare(el)
-				case Array:
-					switch elt := el.(type) {
-					case *[]any:
-						return et.Compare(*elt)
-					}
-				case Object:
-					switch elt := el.(type) {
-					case *hamap.Map[string, any]:
-						return et.Compare(elt)
-					}
-				default:
-					return CompareValues(e.Constraint, e.Value, x)
 				}
 			}
 		}
@@ -874,8 +838,6 @@ func (e Elem) Compare(x any) bool {
 	default:
 		neq := e.Constraint == ConstraintValNotEqual
 		switch et := e.Value.(type) {
-		case Elem:
-			return et.Compare(x) != neq
 		case Array:
 			switch xt := x.(type) {
 			case *[]any:

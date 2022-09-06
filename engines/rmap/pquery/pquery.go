@@ -24,8 +24,9 @@ type objectTerminal struct{}
 // when united represents a parted query.
 // Used for a template fast search by rmap.
 type QueryPart struct {
-	Hash  uint64
-	Value any
+	ArgLeafIdx int
+	Hash       uint64
+	Value      any
 }
 
 // Maker is a meta structure to store the runtime data and the hash seed.
@@ -67,7 +68,7 @@ func (m *Maker) ParseQuery(
 	m.qmap.Reset()
 
 	var pathHash uint64
-	var insideArray int
+	var insideArray, argLeafIdx int = 0, -1
 	var lastObjField string
 
 	switch queryType {
@@ -166,8 +167,9 @@ func (m *Maker) ParseQuery(
 							path := m.pstack.Pop()
 							pathHash = path.Sum64()
 							if _, ok := m.qmap.Get(pathHash); !ok {
+								argLeafIdx++
 								m.qmap.Set(pathHash, true)
-								if fn(QueryPart{Hash: pathHash, Value: val}) {
+								if fn(QueryPart{ArgLeafIdx: argLeafIdx, Hash: pathHash, Value: val}) {
 									return
 								}
 							}
@@ -193,7 +195,7 @@ func (m *Maker) ParseQuery(
 							pathHash = path.Sum64()
 							if _, ok := m.qmap.Get(pathHash); !ok {
 								m.qmap.Set(pathHash, true)
-								if fn(QueryPart{Hash: pathHash, Value: nil}) {
+								if fn(QueryPart{ArgLeafIdx: -1, Hash: pathHash, Value: nil}) {
 									return
 								}
 							}
@@ -218,8 +220,9 @@ func (m *Maker) ParseQuery(
 								switch elt := el.(type) {
 								case *[]any, *hamap.Map[string, any]:
 									if _, ok := m.qmap.Get(pathHash); !ok {
+										argLeafIdx++
 										m.qmap.Set(pathHash, true)
-										if fn(QueryPart{Hash: pathHash, Value: elt}) {
+										if fn(QueryPart{ArgLeafIdx: argLeafIdx, Hash: pathHash, Value: elt}) {
 											return
 										}
 									}
@@ -249,7 +252,7 @@ func (m *Maker) ParseQuery(
 				pathHash = path.Sum64()
 				if _, ok := m.qmap.Get(pathHash); !ok {
 					m.qmap.Set(pathHash, true)
-					if fn(QueryPart{Hash: pathHash, Value: nil}) {
+					if fn(QueryPart{ArgLeafIdx: -1, Hash: pathHash, Value: nil}) {
 						return
 					}
 				}
@@ -357,8 +360,9 @@ func (m *Maker) ParseQuery(
 					path := m.pstack.Pop()
 					pathHash = path.Sum64()
 					if _, ok := m.qmap.Get(pathHash); !ok {
+						argLeafIdx++
 						m.qmap.Set(pathHash, true)
-						if fn(QueryPart{Hash: pathHash, Value: val}) {
+						if fn(QueryPart{ArgLeafIdx: argLeafIdx, Hash: pathHash, Value: val}) {
 							return
 						}
 					}
@@ -375,6 +379,9 @@ func (m *Maker) ParseQuery(
 			gqlscan.TokenSetEnd,
 			gqlscan.TokenArgListEnd,
 			gqlscan.TokenObjEnd:
+			if token.ID == gqlscan.TokenArgListEnd {
+				argLeafIdx = -1
+			}
 			if token.ID == gqlscan.TokenArrEnd {
 				insideArray--
 			}
@@ -386,7 +393,7 @@ func (m *Maker) ParseQuery(
 					pathHash = path.Sum64()
 					if _, ok := m.qmap.Get(pathHash); !ok {
 						m.qmap.Set(pathHash, true)
-						if fn(QueryPart{Hash: pathHash, Value: nil}) {
+						if fn(QueryPart{ArgLeafIdx: -1, Hash: pathHash, Value: nil}) {
 							return
 						}
 					}
@@ -411,8 +418,9 @@ func (m *Maker) ParseQuery(
 						switch elt := el.(type) {
 						case *[]any, *hamap.Map[string, any]:
 							if _, ok := m.qmap.Get(pathHash); !ok {
+								argLeafIdx++
 								m.qmap.Set(pathHash, true)
-								if fn(QueryPart{Hash: pathHash, Value: elt}) {
+								if fn(QueryPart{ArgLeafIdx: argLeafIdx, Hash: pathHash, Value: elt}) {
 									return
 								}
 							}

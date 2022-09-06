@@ -73,13 +73,14 @@ func TestNewQueryPart(t *testing.T) {
 			}
 			`,
 			expect: []pquery.QueryPart{
-				{Hash("query.a.a0.a0_0.a0_00"), 1.0},
-				{Hash("query.a.a0.a0_1"), []byte("no")},
-				{Hash("query.a.a0.a00"), nil},
-				{Hash("query.b.b_0.b_00"), []byte("go")},
-				{Hash("query.b.b_1"), &[]any{0.0, 1.0}},
-				{Hash("query.b.b0"), nil},
+				{0, Hash("query.a.a0.a0_0.a0_00"), 1.0},
+				{1, Hash("query.a.a0.a0_1"), []byte("no")},
+				{-1, Hash("query.a.a0.a00"), nil},
+				{0, Hash("query.b.b_0.b_00"), []byte("go")},
+				{1, Hash("query.b.b_1"), &[]any{0.0, 1.0}},
+				{-1, Hash("query.b.b0"), nil},
 				{
+					0,
 					Hash("query.c.c_0"),
 					&[]any{
 						MakeMap(
@@ -93,6 +94,7 @@ func TestNewQueryPart(t *testing.T) {
 					},
 				},
 				{
+					1,
 					Hash("query.c.c_1"),
 					&[]any{
 						&[]any{
@@ -123,8 +125,8 @@ func TestNewQueryPart(t *testing.T) {
 						},
 					},
 				},
-				{Hash("query.c.c0.c0_0"), 0.0},
-				{Hash("query.c.c0.c00"), nil},
+				{0, Hash("query.c.c0.c0_0"), 0.0},
+				{-1, Hash("query.c.c0.c00"), nil},
 			},
 		},
 		{
@@ -142,9 +144,9 @@ func TestNewQueryPart(t *testing.T) {
 			}
 			`,
 			expect: []pquery.QueryPart{
-				{Hash("mutation.a.a0"), nil},
-				{Hash("mutation.b.b_0"), 0.0},
-				{Hash("mutation.b.b0"), nil},
+				{-1, Hash("mutation.a.a0"), nil},
+				{0, Hash("mutation.b.b_0"), 0.0},
+				{-1, Hash("mutation.b.b0"), nil},
 			},
 		},
 	} {
