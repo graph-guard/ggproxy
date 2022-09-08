@@ -340,6 +340,23 @@ func TestPrintPartedQuery(t *testing.T) {
 			template: `
 			query {
 				a(
+					a_0: val = 0
+					a_1: val = "a"
+				)
+			}
+			`,
+			expect: fmt.Sprintf(`%d:
+    ConstraintValEqual: 0
+      0
+%d:
+    ConstraintValEqual: 0
+      a
+`, Hash("query.a.a_0"), Hash("query.a.a_1")),
+		},
+		{
+			template: `
+			query {
+				a(
 					a_0: val = {
 						a_00: val = [val = 1, val = 2]
 					}
