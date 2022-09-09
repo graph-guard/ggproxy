@@ -188,25 +188,7 @@ func (m *Maker) ParseQuery(
 					}
 					for {
 						switch t := m.mstack.Top(); t.(type) {
-						case pathTerminal:
-							m.mstack.Pop()
-							path := m.pstack.Pop()
-							pathHash = path.Sum64()
-							if _, ok := m.qmap.Get(pathHash); !ok {
-								m.qmap.Set(pathHash, true)
-								if fn(QueryPart{ArgLeafIdx: -1, Hash: pathHash, Value: nil}) {
-									return
-								}
-							}
-							continue
-						case argumentPathTerminal:
-							m.mstack.Pop()
-							m.pstack.Pop()
-							continue
-						case argumentsTerminal:
-							m.mstack.Pop()
-							m.pstack.Pop()
-						case selectTerminal, objectTerminal:
+						case objectTerminal:
 							m.mstack.Pop()
 							m.pstack.Pop()
 							m.mstack.Pop()
