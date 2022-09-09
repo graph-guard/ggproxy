@@ -1,4 +1,4 @@
-mutation {
+query {
 	a(
 		a_0: val > 0 && val <= 9 || val < 0 && val >= -9
 		a_1: val = NEWHOPE || val = EMPIRE

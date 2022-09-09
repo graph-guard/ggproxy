@@ -182,8 +182,7 @@ func (m *Maker) ParseQuery(
 							t.Set(lastObjField, val)
 						}
 					}
-				case gqlscan.TokenArrEnd,
-					gqlscan.TokenObjEnd:
+				case gqlscan.TokenArrEnd, gqlscan.TokenObjEnd:
 					if token.ID == gqlscan.TokenArrEnd {
 						insideArray--
 					}
@@ -375,10 +374,8 @@ func (m *Maker) ParseQuery(
 					t.Set(lastObjField, val)
 				}
 			}
-		case gqlscan.TokenArrEnd,
-			gqlscan.TokenSetEnd,
-			gqlscan.TokenArgListEnd,
-			gqlscan.TokenObjEnd:
+		case gqlscan.TokenArrEnd, gqlscan.TokenSetEnd,
+			gqlscan.TokenArgListEnd, gqlscan.TokenObjEnd:
 			if token.ID == gqlscan.TokenArgListEnd {
 				argLeafIdx = -1
 			}

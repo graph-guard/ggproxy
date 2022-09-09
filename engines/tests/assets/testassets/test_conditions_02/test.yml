@@ -1,5 +1,5 @@
 query: |
-    mutation X {
+    query X {
         a0(
             a0_0: -1.0
         )

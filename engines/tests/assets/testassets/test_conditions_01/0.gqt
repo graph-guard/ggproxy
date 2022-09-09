@@ -1,4 +1,4 @@
-mutation {
+query {
 	a0(
 		a0_0: val = 0
 	)
