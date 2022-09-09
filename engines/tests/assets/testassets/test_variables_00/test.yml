@@ -1,0 +1,83 @@
+query: |
+    query X (
+        $a_0: Int!
+        $a_1: Float!
+        $a_2: Boolean!
+        $a_3: String!
+        $a_4: ID!
+
+        $b_0: [Int!]!
+        $b_1: [Float!]!
+        $b_2: [Boolean!]!
+        $b_3: [String!]!
+        $b_4: [ID!]!
+
+        $c_0: Input!
+        $c_1: [Input!]!
+
+        $d_00: [Int!]!
+        $d_1x: Input!
+    ) {
+        a(
+            a_0: $a_0
+            a_1: $a_1
+            a_2: $a_2
+            a_3: $a_3
+            a_4: $a_4
+        )
+
+        b(
+            b_0: $b_0
+            b_1: $b_1
+            b_2: $b_2
+            b_3: $b_3
+            b_4: $b_4  
+        )
+
+        c(
+            c_0: $c_0
+            c_1: $c_1
+        )
+
+        d(
+            d_0: {
+                d_00: $d_00
+            }
+            d_1: [ $d_1x ]
+        )
+    }
+operationName: X
+variables: |
+    {
+        "a_0": 0,
+        "a_1": 0.0,
+        "a_2": true,
+        "a_3": "alive",
+        "a_4": "id",
+
+        "b_0": [0],
+        "b_1": [0.0],
+        "b_2": [true],
+        "b_3": ["alive"],
+        "b_4": ["id"],
+
+        "c_0": {
+            "c_00": 0,
+            "c_01": 0.0,
+            "c_02": true,
+            "c_03": "alive"
+        },
+        "c_1": [{
+            "c_10": 0,
+            "c_11": 0.0,
+            "c_12": true,
+            "c_13": "alive"
+        }],
+
+        "d_00": [0],
+        "d_1x": {
+            "d_1x0": [0]
+        }
+    }
+expect:
+    - 0

@@ -182,32 +182,13 @@ func (m *Maker) ParseQuery(
 							t.Set(lastObjField, val)
 						}
 					}
-				case gqlscan.TokenArrEnd,
-					gqlscan.TokenObjEnd:
+				case gqlscan.TokenArrEnd, gqlscan.TokenObjEnd:
 					if token.ID == gqlscan.TokenArrEnd {
 						insideArray--
 					}
 					for {
 						switch t := m.mstack.Top(); t.(type) {
-						case pathTerminal:
-							m.mstack.Pop()
-							path := m.pstack.Pop()
-							pathHash = path.Sum64()
-							if _, ok := m.qmap.Get(pathHash); !ok {
-								m.qmap.Set(pathHash, true)
-								if fn(QueryPart{ArgLeafIdx: -1, Hash: pathHash, Value: nil}) {
-									return
-								}
-							}
-							continue
-						case argumentPathTerminal:
-							m.mstack.Pop()
-							m.pstack.Pop()
-							continue
-						case argumentsTerminal:
-							m.mstack.Pop()
-							m.pstack.Pop()
-						case selectTerminal, objectTerminal:
+						case objectTerminal:
 							m.mstack.Pop()
 							m.pstack.Pop()
 							m.mstack.Pop()
@@ -375,10 +356,8 @@ func (m *Maker) ParseQuery(
 					t.Set(lastObjField, val)
 				}
 			}
-		case gqlscan.TokenArrEnd,
-			gqlscan.TokenSetEnd,
-			gqlscan.TokenArgListEnd,
-			gqlscan.TokenObjEnd:
+		case gqlscan.TokenArrEnd, gqlscan.TokenSetEnd,
+			gqlscan.TokenArgListEnd, gqlscan.TokenObjEnd:
 			if token.ID == gqlscan.TokenArgListEnd {
 				argLeafIdx = -1
 			}

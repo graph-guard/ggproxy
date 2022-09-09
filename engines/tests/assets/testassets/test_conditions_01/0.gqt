@@ -1,4 +1,4 @@
-mutation {
+query {
 	a0(
 		a0_0: val = 0
 	)
@@ -6,42 +6,72 @@ mutation {
 		a1_0: val != 0
 	)
 	a2(
-		a2_0: val > 0 && val <= 9 || val < 0 && val >= -9
+		a2_0: val < 0
 	)
 	a3(
-		a3_0: val > 0.0 && val <= 9.0 || val < 0.0 && val >= -9.0
+		a3_0: val <= 0
 	)
 	a4(
-		a4_0: val = NEWHOPE || val = EMPIRE
+		a4_0: val > 0
 	)
 	a5(
-		a5_0: val = [ val = {
-				ax_xx0: val = 0
-			}
-		]
+		a5_0: val >= 0
 	)
-	a6(
-		a6_0: val = [ val < 0 && val > -9, val > 0 ]
+
+	b0(
+		b0_0: val = 0.0
 	)
-	a7(
-		a7_0: val = [ val <= 0 ] && val != [ val = -1 ]
+	b1(
+		b1_0: val != 0.0
 	)
-	a8(
-		a8_0: val = [ ... bytelen > 0 && bytelen != 3 ]
+	b2(
+		b2_0: val < 0.0
 	)
-	a9(
-		a9_0: val = [ ... val < 0 || val > 0 ]
+	b3(
+		b3_0: val <= 0.0
 	)
-	a10(
-		a10_0: val = [ ... val = [ val != 0 ] ]
+	b4(
+		b4_0: val > 0.0
 	)
-	a11(
-		a11_0: val = [ ... val = {
-				ax_xx0: val = 0
-			}
-		]
+	b5(
+		b6_0: val >= 0.0
 	)
-	a12(
-		a12_0: val = [ ... val = [ ... len > 0 ] ]
+
+	c0(
+		c0_0: bytelen = 1
+	)
+	c1(
+		c1_0: bytelen != 1
+	)
+	c2(
+		c2_0: bytelen < 1
+	)
+	c3(
+		c3_0: bytelen <= 1
+	)
+	c4(
+		c4_0: bytelen > 1
+	)
+	c5(
+		c5_0: bytelen >= 1
+	)
+
+	d0(
+		d0_0: len = 1
+	)
+	d1(
+		d1_0: len != 1
+	)
+	d2(
+		d2_0: len < 1
+	)
+	d3(
+		d3_0: len <= 1
+	)
+	d4(
+		d4_0: len > 1
+	)
+	d5(
+		d5_0: len >= 1
 	)
 }

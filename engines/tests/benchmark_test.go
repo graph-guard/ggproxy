@@ -1,4 +1,4 @@
-package engines_test
+package engine_test
 
 import (
 	"embed"
