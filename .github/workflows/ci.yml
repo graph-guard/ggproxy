@@ -28,7 +28,7 @@ jobs:
           go env -w GOPRIVATE=github.com/graph-guard/*
           go mod tidy
       - name: Run linting
-        uses: golangci/golangci-lint-action@v3
+        uses: golangci/golangci-lint-action@v2
         with:
           version: v1.49
       - name: Run go vet
