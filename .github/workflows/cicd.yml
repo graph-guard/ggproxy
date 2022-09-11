@@ -78,7 +78,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v3
         with:
           version: ~> 1.11
-          args: release --rm-dist
+          args: --rm-dist --skip-validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUB_KEY: ${ secrets.PUB_KEY }
