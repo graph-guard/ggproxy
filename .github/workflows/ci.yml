@@ -4,16 +4,6 @@ on:
       - Init
     types: 
       - completed
-  push:
-    branches:
-      - main
-      - ci
-    tags:
-      - "^[0-9]+.[0-9]+.[0-9]+$"
-  pull_request:
-    branches:
-      - main
-      - ci
 
 env:
   SERVICE_USER: KernelPryanic
