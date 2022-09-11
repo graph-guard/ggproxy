@@ -22,7 +22,7 @@ jobs:
       - name: Run linting
         uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.4
+          version: v1.48
       - name: Run go vet
         continue-on-error: true
         run: go vet ./...
