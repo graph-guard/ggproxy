@@ -36,5 +36,10 @@ checksum:
   name_template: "{{ .ProjectName }}-{{ .Tag }}-checksums.txt"
 snapshot:
   name_template: "{{ .Tag }}"
+release:
+  draft: true
+  replace_existing_draft: true
+  prerelease: true
+  mode: append
 changelog:
   skip: true
