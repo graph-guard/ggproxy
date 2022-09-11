@@ -76,8 +76,6 @@ func TestProxy(t *testing.T) {
 
 			for _, test := range setup.Tests {
 				t.Run(test.Name, func(t *testing.T) {
-					logs.Reset()
-
 					if test.Destination != nil {
 						body := test.Destination.Response.Body
 						if j := test.Destination.Response.BodyJSON; j != nil {
@@ -178,6 +176,7 @@ func TestProxy(t *testing.T) {
 							)
 						}
 					})
+					logs.Reset()
 				})
 			}
 		})
