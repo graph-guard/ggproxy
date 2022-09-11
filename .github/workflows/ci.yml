@@ -19,8 +19,10 @@ jobs:
           go-version: 1.19.*
       - name: Checkout repository
         uses: actions/checkout@v3
-      - name: Tidy
-        run: go mod tidy
+      - name: Tidy dependencies
+        run: |
+          go env -w GOPRIVATE=github.com/graph-guard/*
+          go mod tidy
       - name: Run linting
         uses: golangci/golangci-lint-action@v3
         with:
