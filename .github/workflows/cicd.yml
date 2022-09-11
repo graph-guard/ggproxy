@@ -34,7 +34,7 @@ jobs:
         with:
           path: |
             ~/.cache/go-build
-            ${GOPATH}/go/pkg/mod
+            ~/go/pkg/mod
           key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
           restore-keys: |
             ${{ runner.os }}-golang-
@@ -55,7 +55,7 @@ jobs:
         with:
           path: |
             ~/.cache/go-build
-            ${GOPATH}/go/pkg/mod
+            ~/go/pkg/mod
           key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
       - name: Run linting
         uses: golangci/golangci-lint-action@v3
@@ -79,7 +79,7 @@ jobs:
         with:
           path: |
             ~/.cache/go-build
-            ${GOPATH}/go/pkg/mod
+            ~/go/pkg/mod
           key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
       - name: Run go vet
         continue-on-error: true
