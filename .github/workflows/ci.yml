@@ -1,3 +1,4 @@
+name: CI
 on:
   workflow_run:
     workflows:
@@ -5,7 +6,6 @@ on:
     types: 
       - completed
 
-name: CI
 jobs:
   lint:
     runs-on: ubuntu-22.04
