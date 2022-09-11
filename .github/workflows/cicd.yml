@@ -78,7 +78,7 @@ jobs:
       - name: Generate changelog
         run: git-chglog -o CHANGELOG.md
       - name: Get branch of the tag
-        run: echo "TAG_BRANCH=$(git branch --contains tags/0.4.0 | cut -c 3-)" >> $GITHUB_ENV
+        run: echo "TAG_BRANCH=$(git log -n 1 --pretty=%d HEAD | awk '{print substr($3, 1, length($3)-1)}')" >> $GITHUB_ENV
       - name: Commit changelog
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
