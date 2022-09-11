@@ -11,6 +11,9 @@ on:
       - main
       - ci
 
+env:
+  SERVICE_USER: KernelPryanic
+
 jobs:
   init:
     runs-on: ubuntu-22.04
