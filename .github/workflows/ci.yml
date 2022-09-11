@@ -1,8 +1,15 @@
 on:
+  workflow_run:
+    workflows:
+      - Init
+    types: 
+      - completed
   push:
     branches:
       - main
       - ci
+    tags:
+      - "^[0-9]+.[0-9]+.[0-9]+$"
   pull_request:
     branches:
       - main
@@ -13,35 +20,55 @@ env:
 
 name: CI
 jobs:
-  test:
+  lint:
     runs-on: ubuntu-22.04
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
       - name: Install Go 1.19
         uses: actions/setup-go@v3
         with:
           go-version: 1.19.*
-      - name: Checkout repository
-        uses: actions/checkout@v3
-      - name: Tidy dependencies
-        run: |
-          git config --global url."https://${SERVICE_USER}:${{secrets.CI}}@github.com".insteadOf "https://github.com"
-          go env -w GOPRIVATE=github.com/graph-guard/*
-          go mod tidy
+      - name: Use cached dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ${GOPATH}/go/pkg/mod
+          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
       - name: Run linting
         uses: golangci/golangci-lint-action@v3
         with:
           args: --out-${NO_FUTURE}format colored-line-number
           version: v1.49
+  test:
+    runs-on: ubuntu-22.04
+    needs:
+      - lint
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install Go 1.19
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19.*
+      - name: Use cached dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ${GOPATH}/go/pkg/mod
+          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
       - name: Run go vet
         continue-on-error: true
         run: go vet ./...
       - name: Test with coverage
         run: |
           go test -v -race -covermode=atomic -coverprofile=coverage.out ./...
-      - name: Convert coverage.out to coverage.lcov
-        uses: jandelgado/gcov2lcov-action@v1.0.9
-      - name: Coveralls
-        uses: coverallsapp/github-action@1.1.3
-        with:
-          github-token: ${{ secrets.CI }}
-          path-to-lcov: coverage.lcov
+      # - name: Convert coverage.out to coverage.lcov
+      #   uses: jandelgado/gcov2lcov-action@v1.0.9
+      # - name: Coveralls
+      #   uses: coverallsapp/github-action@1.1.3
+      #   with:
+      #     github-token: ${{ secrets.CI }}
+      #     path-to-lcov: coverage.lcov
