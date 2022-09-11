@@ -1,15 +1,41 @@
-name: CI
+name: CI/CD
 on:
-  workflow_run:
-    workflows:
-      - Init
+  push:
     branches:
       - main
       - ci
-    types: 
-      - completed
+    tags:
+      - "^[0-9]+.[0-9]+.[0-9]+$"
+  pull_request:
+    branches:
+      - main
+      - ci
 
 jobs:
+  init:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install Go 1.19
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19.*
+      - name: Tidy dependencies
+        run: |
+          git config --global url."https://${SERVICE_USER}:${{secrets.CI}}@github.com".insteadOf "https://github.com"
+          go env -w GOPRIVATE=github.com/graph-guard/*
+          go mod tidy
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ${GOPATH}/go/pkg/mod
+          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-golang-
+
   lint:
     runs-on: ubuntu-22.04
     steps:
@@ -31,6 +57,7 @@ jobs:
         with:
           args: --out-${NO_FUTURE}format colored-line-number
           version: v1.49
+
   test:
     runs-on: ubuntu-22.04
     needs:
