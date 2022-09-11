@@ -12,7 +12,7 @@ on:
       - ci
 
 env:
-  GITHUB_USER: KernelPryanic
+  SERVICE_USER: KernelPryanic
 
 jobs:
   init:
@@ -22,7 +22,7 @@ jobs:
         uses: graph-guard/ggproxy@ci
       - name: Tidy dependencies
         run: |
-          git config --global url."https://${GITHUB_USER}:${{secrets.GITHUB_TOKEN}}@github.com".insteadOf "https://github.com"
+          git config --global url."https://${SERVICE_USER}:${{secrets.SERVICE_TOKEN}}@github.com".insteadOf "https://github.com"
           go env -w GOPRIVATE=github.com/graph-guard/*
           go mod tidy
 
