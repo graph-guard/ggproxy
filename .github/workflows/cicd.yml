@@ -69,10 +69,11 @@ jobs:
     steps:
       - name: Init
         uses: graph-guard/ggproxy@ci
+        with:
+          fetch-depth: 0
       - name: Install build dependencies
         run: |
           go install mvdan.cc/garble@v0.7.1
-          sudo apt-get update && sudo apt-get install -y git
       - name: Release
         uses: goreleaser/goreleaser-action@v3
         with:
