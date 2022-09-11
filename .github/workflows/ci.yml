@@ -3,6 +3,9 @@ on:
   workflow_run:
     workflows:
       - Init
+    branches:
+      - main
+      - ci
     types: 
       - completed
 
