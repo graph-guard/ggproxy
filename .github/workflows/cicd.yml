@@ -74,17 +74,6 @@ jobs:
       - name: Install build dependencies
         run: |
           go install mvdan.cc/garble@v0.7.1
-          go install github.com/git-chglog/git-chglog/cmd/git-chglog@v0.15.1
-      - name: Generate changelog
-        run: git-chglog -o CHANGELOG.md
-      - name: Get branch of the tag
-        run: echo "TAG_BRANCH=$(git log -n 1 --pretty=%d HEAD | awk '{print substr($3, 1, length($3)-1)}')" >> $GITHUB_ENV
-      - name: Commit changelog
-        uses: stefanzweifel/git-auto-commit-action@v4
-        with:
-          commit_message: Changelog update
-          file_pattern: CHANGELOG.md
-          branch: ${TAG_BRANCH}
       - name: Release
         uses: goreleaser/goreleaser-action@v3
         with:
