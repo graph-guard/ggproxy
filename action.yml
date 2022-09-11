@@ -1,0 +1,21 @@
+name: Preset
+description: Preset
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    - name: Install Go 1.19
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.19.*
+    - name: Use cached dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-golang-

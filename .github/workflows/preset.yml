@@ -1,0 +1,24 @@
+name: Preset
+on:
+  workflow_call:
+
+jobs:
+  preset:
+    name: Preset
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install Go 1.19
+        uses: actions/setup-go@v3
+        with:
+          go-version: 1.19.*
+      - name: Use cached dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-golang-

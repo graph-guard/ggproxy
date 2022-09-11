@@ -18,6 +18,8 @@ jobs:
   init:
     runs-on: ubuntu-22.04
     steps:
+      - name: Init
+        uses: graph-guard/ggproxy@ci
       - name: Checkout repository
         uses: actions/checkout@v3
       - name: Install Go 1.19
