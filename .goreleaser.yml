@@ -42,6 +42,6 @@ release:
   prerelease: true
   mode: append
   header: |
-    **[CHANGELOG.md](https://github.com/graph-guard/ggproxy/blob/{{ .Branch }}/CHANGELOG.md)**
+    **[CHANGELOG.md](https://github.com/graph-guard/ggproxy/blob/{{ .Tag }}/CHANGELOG.md)**
 changelog:
   skip: true
