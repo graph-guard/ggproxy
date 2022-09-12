@@ -7,6 +7,7 @@
 * Add 0.3.0 changelog
 * **changelog:** Update changelog
 * **changelog:** Update changelog
+* **changelog:** Update changelog
 
 ### Refactor
 
