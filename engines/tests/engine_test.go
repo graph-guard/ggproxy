@@ -516,16 +516,16 @@ func TestNewQueryPart(t *testing.T) {
 			}
 			`,
 			expect: []pquery.QueryPart{
-				{0, Hash("query.a.a0.a0_0.a0_00"), 1.0},
-				{1, Hash("query.a.a0.a0_1"), []byte("no")},
-				{-1, Hash("query.a.a0.a00"), nil},
-				{0, Hash("query.b.b_0.b_00"), []byte("go")},
-				{1, Hash("query.b.b_1"), &[]any{0.0, 1.0}},
-				{-1, Hash("query.b.b0"), nil},
+				{ArgLeafIdx: 0, Hash: Hash("query.a.a0.a0_0.a0_00"), Value: 1.0},
+				{ArgLeafIdx: 1, Hash: Hash("query.a.a0.a0_1"), Value: []byte("no")},
+				{ArgLeafIdx: -1, Hash: Hash("query.a.a0.a00"), Value: nil},
+				{ArgLeafIdx: 0, Hash: Hash("query.b.b_0.b_00"), Value: []byte("go")},
+				{ArgLeafIdx: 1, Hash: Hash("query.b.b_1"), Value: &[]any{0.0, 1.0}},
+				{ArgLeafIdx: -1, Hash: Hash("query.b.b0"), Value: nil},
 				{
-					0,
-					Hash("query.c.c_0"),
-					&[]any{
+					ArgLeafIdx: 0,
+					Hash:       Hash("query.c.c_0"),
+					Value: &[]any{
 						MakeMap(
 							hamap.Pair[string, any]{
 								Key: "c_000",
@@ -537,9 +537,9 @@ func TestNewQueryPart(t *testing.T) {
 					},
 				},
 				{
-					1,
-					Hash("query.c.c_1"),
-					&[]any{
+					ArgLeafIdx: 1,
+					Hash:       Hash("query.c.c_1"),
+					Value: &[]any{
 						&[]any{
 							MakeMap(
 								hamap.Pair[string, any]{
@@ -568,8 +568,8 @@ func TestNewQueryPart(t *testing.T) {
 						},
 					},
 				},
-				{0, Hash("query.c.c0.c0_0"), 0.0},
-				{-1, Hash("query.c.c0.c00"), nil},
+				{ArgLeafIdx: 0, Hash: Hash("query.c.c0.c0_0"), Value: 0.0},
+				{ArgLeafIdx: -1, Hash: Hash("query.c.c0.c00"), Value: nil},
 			},
 		},
 		{
@@ -587,9 +587,9 @@ func TestNewQueryPart(t *testing.T) {
 			}
 			`,
 			expect: []pquery.QueryPart{
-				{-1, Hash("mutation.a.a0"), nil},
-				{0, Hash("mutation.b.b_0"), 0.0},
-				{-1, Hash("mutation.b.b0"), nil},
+				{ArgLeafIdx: -1, Hash: Hash("mutation.a.a0"), Value: nil},
+				{ArgLeafIdx: 0, Hash: Hash("mutation.b.b_0"), Value: 0.0},
+				{ArgLeafIdx: -1, Hash: Hash("mutation.b.b0"), Value: nil},
 			},
 		},
 	} {

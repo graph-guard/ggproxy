@@ -7,7 +7,7 @@ require (
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/dustin/go-humanize v1.0.0
 	github.com/google/uuid v1.3.0
-	github.com/graph-guard/backend v0.0.0-20220822175952-31b33fe61326
+	github.com/graph-guard/backend v0.0.0-20220826171348-e3dcd100c82b
 	github.com/graph-guard/gqlscan v1.0.0
 	github.com/graph-guard/gqt v0.0.0-20220830090241-b646278952f9
 	github.com/phuslu/log v1.0.81

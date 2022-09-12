@@ -33,7 +33,7 @@ XaRiQUHCa5lES8UIwF8=
 func TestVerifyLicenseToken(t *testing.T) {
 	decodedLicenseToken, err := blvs.GenerateLicenseToken(
 		time.Now().Local(),
-		1,
+		time.Now().Local().Add(time.Hour),
 		lvs.Beta,
 		lvs.Unlimited,
 		uuid.New(),
@@ -55,7 +55,7 @@ func TestVerifyLicenseToken(t *testing.T) {
 func TestLicenseTokenExpired(t *testing.T) {
 	decodedLicenseToken, err := blvs.GenerateLicenseToken(
 		time.Now().Local(),
-		-1,
+		time.Now().Local().Add(-time.Hour),
 		lvs.Beta,
 		lvs.Unlimited,
 		uuid.New(),

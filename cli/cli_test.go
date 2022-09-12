@@ -216,7 +216,7 @@ func TestLicenseTokenInvalid(t *testing.T) {
 
 	require.Equal(t,
 		lines(
-			fmt.Sprintf("invalid"),
+			"invalid",
 			fmt.Sprintf("%s contains an invalid license key!", cli.EnvLicense),
 			fmt.Sprintf(
 				"You can get a valid license key at %s",

@@ -1,0 +1,29 @@
+name: Init
+description: Init
+
+inputs:
+  fetch-depth:
+    description: Depth of git fetching
+    required: false
+    default: "1"
+
+runs:
+  using: composite
+  steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: ${{ inputs.fetch-depth }}
+    - name: Install Go 1.19
+      uses: actions/setup-go@v3
+      with:
+        go-version: 1.19.*
+    - name: Use cached dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-golang-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-golang-
