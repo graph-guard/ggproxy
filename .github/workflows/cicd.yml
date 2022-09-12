@@ -60,11 +60,40 @@ jobs:
       #     github-token: ${{ secrets.GITHUB_TOKEN }}
       #     path-to-lcov: coverage.lcov
 
-  release:
+  changelog:
     runs-on: ubuntu-22.04
     needs:
       - lint
       - test
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
+    steps:
+      - name: Init
+        uses: graph-guard/ggproxy@ci
+        with:
+          fetch-depth: 0
+      - name: Install git-chglog
+        run: go install github.com/git-chglog/git-chglog/cmd/git-chglog@v0.15.1
+      - name: Generate changelog
+        run: git-chglog -o CHANGELOG.md
+      - name: Stash changelog
+        run: git stash CHANGELOG.md
+      - name: Get branch of the tag
+        run: |
+          branch=$(git branch -r --contains $GITHUB_REF | cut -c 3-)
+          echo "TAG_BRANCH=${branch/origin\/}" >> $GITHUB_ENV
+      - name: Checkout to the tag branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ env.TAG_BRANCH }}
+      - name: Commit changelog
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "chore(changelog): Update changelog"
+
+  release:
+    runs-on: ubuntu-22.04
+    needs:
+      - changelog
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - name: Init

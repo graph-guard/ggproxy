@@ -42,8 +42,8 @@ release:
   prerelease: true
   mode: append
   header: |
-    ## GG ({{ .Date }})
+    ## GG {{ .Date }}
 
-    [CHANGELOG.md](https://github.com/graph-guard/ggproxy/blob/{{ .Tag }}/CHANGELOG.md)
+    **[CHANGELOG.md](https://github.com/graph-guard/ggproxy/blob/{{ .Tag }}/CHANGELOG.md)**
 changelog:
   skip: true
