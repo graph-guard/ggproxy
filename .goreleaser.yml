@@ -37,7 +37,6 @@ checksum:
 snapshot:
   name_template: "{{ .Tag }}"
 release:
-  name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
   draft: true
   replace_existing_draft: true
   prerelease: true
