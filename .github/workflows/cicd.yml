@@ -109,6 +109,8 @@ jobs:
       - name: Install build dependencies
         run: |
           go install mvdan.cc/garble@v0.7.1
+      - name: Generate compact tag
+        run: echo "COMPACT_TAG=${GITHUB_REF_NAME//./}" >> $GITHUB_ENV
       - name: Release
         uses: goreleaser/goreleaser-action@v3
         with:
@@ -117,4 +119,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PUB_KEY: ${{ secrets.PUB_KEY }}
-          COMPACT_TAG: ${GITHUB_REF_NAME//./}
+          COMPACT_TAG: ${{ env.COMPACT_TAG }}
