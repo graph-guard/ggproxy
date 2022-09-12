@@ -1,10 +1,11 @@
 
 <a name="0.4.0"></a>
-## [0.4.0](https://github.com/graph-guard/ggproxy/compare/0.3.0...0.4.0) (2022-09-12)
+## [0.4.0](https://github.com/graph-guard/ggproxy/compare/0.3.0...0.4.0)
 
 ### Chore
 
 * Add 0.3.0 changelog
+* **changelog:** Update changelog
 * **changelog:** Update changelog
 
 ### Refactor
@@ -13,7 +14,7 @@
 
 
 <a name="0.3.0"></a>
-## [0.3.0](https://github.com/graph-guard/ggproxy/compare/0.2.0...0.3.0) (2022-09-06)
+## [0.3.0](https://github.com/graph-guard/ggproxy/compare/0.2.0...0.3.0)
 
 ### Chore
 
@@ -34,7 +35,7 @@
 
 
 <a name="0.2.0"></a>
-## [0.2.0](https://github.com/graph-guard/ggproxy/compare/0.1.0...0.2.0) (2022-08-29)
+## [0.2.0](https://github.com/graph-guard/ggproxy/compare/0.1.0...0.2.0)
 
 ### Feat
 
@@ -55,7 +56,7 @@
 
 
 <a name="0.1.0"></a>
-## 0.1.0 (2022-08-26)
+## 0.1.0
 
 ### Chore
 
