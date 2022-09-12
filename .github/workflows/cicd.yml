@@ -67,7 +67,7 @@ jobs:
     needs:
       - lint
       - test
-    if: github.event_name == 'push' && contains(github.ref, 'refs/heads/')
+    if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     steps:
       - name: Init
         uses: graph-guard/ggproxy@ci
@@ -77,6 +77,18 @@ jobs:
         run: go install github.com/git-chglog/git-chglog/cmd/git-chglog@v0.15.1
       - name: Generate changelog
         run: git-chglog -o CHANGELOG.md
+      - name: Stash changelog
+        run: git stash push CHANGELOG.md
+      - name: Get branch of the tag
+        run: |
+          branch=$(git branch -r --contains $GITHUB_REF | cut -c 3-)
+          echo "TAG_BRANCH=${branch/origin\/}" >> $GITHUB_ENV
+      - name: Checkout to the tag branch
+        uses: actions/checkout@v3
+        with:
+          ref: ${{ env.TAG_BRANCH }}
+      - name: Apply changelog
+        run: git stash apply
       - name: Commit changelog
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
@@ -104,4 +116,5 @@ jobs:
           args: --rm-dist --skip-validate
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PUB_KEY: ${ secrets.PUB_KEY }
+          PUB_KEY: ${{ secrets.PUB_KEY }}
+          COMPACT_TAG: ${GITHUB_REF_NAME//./}
