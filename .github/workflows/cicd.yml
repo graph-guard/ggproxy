@@ -76,7 +76,7 @@ jobs:
       - name: Generate changelog
         run: git-chglog -o CHANGELOG.md
       - name: Stash changelog
-        run: git stash CHANGELOG.md
+        run: git stash push CHANGELOG.md
       - name: Get branch of the tag
         run: |
           branch=$(git branch -r --contains $GITHUB_REF | cut -c 3-)
@@ -85,10 +85,13 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: ${{ env.TAG_BRANCH }}
+      - name: Apply changelog
+        run: git stash apply
       - name: Commit changelog
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "chore(changelog): Update changelog"
+          file_pattern: CHANGELOG.md
 
   release:
     runs-on: ubuntu-22.04
