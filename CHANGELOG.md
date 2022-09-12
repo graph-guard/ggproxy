@@ -1,4 +1,16 @@
 
+<a name="0.4.0"></a>
+## [0.4.0](https://github.com/graph-guard/ggproxy/compare/0.3.0...0.4.0) (2022-09-12)
+
+### Chore
+
+* Add 0.3.0 changelog
+
+### Refactor
+
+* **engine:** Engine tests enhancement ([#16](https://github.com/graph-guard/ggproxy/issues/16))
+
+
 <a name="0.3.0"></a>
 ## [0.3.0](https://github.com/graph-guard/ggproxy/compare/0.2.0...0.3.0) (2022-09-06)
 
