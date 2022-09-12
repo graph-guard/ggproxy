@@ -37,7 +37,7 @@ checksum:
 snapshot:
   name_template: "{{ .Tag }}"
 release:
-  draft: true
+  draft: false
   replace_existing_draft: true
   prerelease: true
   mode: append
