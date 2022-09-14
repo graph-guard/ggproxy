@@ -198,7 +198,7 @@ func GetSetups(t *testing.T, filesystem fs.FS, path string) []Setup {
 			continue
 		}
 
-		c, err := config.ReadConfig(testsFS, filepath.Join(path, n))
+		c, err := config.ReadServerConfig(filepath.Join(path, n))
 		require.NoError(t, err)
 
 		tests := GetTests(t, filesystem, filepath.Join(path, n))

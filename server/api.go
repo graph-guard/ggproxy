@@ -243,13 +243,13 @@ func makeServices(
 ) map[string]*model.Service {
 	m := make(
 		map[string]*model.Service,
-		len(conf.ServicesEnabled)+len(conf.ServicesDisabled),
+		len(conf.ServicesAll),
 	)
-	for _, s := range conf.ServicesEnabled {
-		m[s.ID] = makeService(conf, s, true, proxyServer)
-	}
-	for _, s := range conf.ServicesDisabled {
+	for _, s := range conf.ServicesAll {
 		m[s.ID] = makeService(conf, s, false, proxyServer)
+	}
+	for _, s := range conf.ServicesEnabled {
+		m[s.ID].Enabled = true
 	}
 	return m
 }
@@ -265,18 +265,17 @@ func makeService(
 		Stats: stats,
 		TemplatesByID: make(
 			map[string]*model.Template,
-			len(s.TemplatesEnabled)+len(s.TemplatesDisabled),
+			len(s.TemplatesAll),
 		),
 		ID:                s.ID,
 		ForwardURL:        s.ForwardURL,
 		Enabled:           enabled,
 		TemplatesEnabled:  make([]*model.Template, len(s.TemplatesEnabled)),
-		TemplatesDisabled: make([]*model.Template, len(s.TemplatesDisabled)),
+		TemplatesDisabled: make([]*model.Template, len(s.TemplatesAll)-len(s.TemplatesEnabled)),
 	}
 
 	{ // Initialize matcher engine
-		d := make(map[string]gqt.Doc, len(s.TemplatesEnabled)+
-			len(s.TemplatesDisabled))
+		d := make(map[string]gqt.Doc, len(s.TemplatesAll))
 		for i, t := range s.TemplatesEnabled {
 			d[t.ID] = t.Document
 			tm := &model.Template{
@@ -291,7 +290,17 @@ func makeService(
 			service.TemplatesEnabled[i] = tm
 			service.TemplatesByID[t.ID] = tm
 		}
-		for i, t := range s.TemplatesDisabled {
+		for i, t := range s.TemplatesAll {
+			var skip bool
+			for _, te := range s.TemplatesEnabled {
+				if te.ID == t.ID {
+					skip = true
+					break
+				}
+			}
+			if skip {
+				continue
+			}
 			d[t.ID] = t.Document
 			tm := &model.Template{
 				Service: service,
