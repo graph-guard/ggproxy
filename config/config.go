@@ -7,6 +7,7 @@ import (
 	neturl "net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/dustin/go-humanize"
@@ -15,7 +16,8 @@ import (
 	yaml "gopkg.in/yaml.v3"
 )
 
-const TemplateFileExtension = ".gqt"
+var ConfigFileExtension = regexp.MustCompile(`\.(yml|yaml)$`)
+var TemplateFileExtension = regexp.MustCompile(`\.gqt$`)
 
 // MinReqBodySize defines the minimum accepted value for
 // `max-request-body-size` in bytes.
@@ -276,6 +278,10 @@ func readServices(path string) ([]*Service, error) {
 		if o.IsDir() {
 			continue
 		}
+		if !ConfigFileExtension.MatchString(o.Name()) {
+			// Ignore non-yaml files
+			continue
+		}
 		s, err := readServiceConfig(filepath.Join(path, o.Name()))
 		if err != nil {
 			return nil, err
@@ -422,7 +428,7 @@ func readTemplates(
 			continue
 		}
 		n := o.Name()
-		if !strings.HasSuffix(n, TemplateFileExtension) {
+		if !TemplateFileExtension.MatchString(n) {
 			// Ignore non-GQT files
 			continue
 		}
