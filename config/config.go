@@ -108,9 +108,7 @@ type serviceConfig struct {
 func New(path string) (c *Config, err error) {
 	// Set default config values
 	c = &Config{
-		Proxy: ProxyServerConfig{
-			MaxReqBodySizeBytes: DefaultMaxReqBodySize,
-		},
+		Proxy:    ProxyServerConfig{},
 		API:      &APIServerConfig{},
 		Services: hamap.New[[]byte, *Service](0, nil),
 	}
@@ -157,6 +155,7 @@ func (c *Config) readServerConfig(path string) (err error) {
 				Message:  msgMaxReqBodySizeTooSmall,
 			}
 		}
+		c.Proxy.MaxReqBodySizeBytes = *sc.Proxy.MaxRequestBodySizeBytes
 	}
 	if sc.API == nil {
 		// Disable API server
