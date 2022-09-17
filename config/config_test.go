@@ -30,7 +30,7 @@ func TestReadConfig(t *testing.T) {
 	validFS(func(path string, conf *config.Config) {
 		for _, td := range []TestOK{
 			{
-				Path:   path,
+				Path:   filepath.Join(path, "config.yml"),
 				Expect: conf,
 			},
 		} {
@@ -43,40 +43,42 @@ func TestReadConfig(t *testing.T) {
 	})
 }
 
-// func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
-// 	validFS(func(path string, conf *config.Config) {
-// 		createFiles(map[string]any{
-// 			"config.yml": lines(
-// 				`proxy:`,
-// 				`  host: localhost:443`,
-// 				`  tls:`,
-// 				`    cert-file: proxy.cert`,
-// 				`    key-file: proxy.key`,
-// 				`  # max-request-body-size: 1234`,
-// 				`api:`,
-// 				`  host: localhost:3000`,
-// 				`  tls:`,
-// 				`    cert-file: api.cert`,
-// 				`    key-file: api.key`,
-// 			),
-// 		}, path)
+func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		createFiles(map[string]any{
+			"config.yml": lines(
+				`proxy:`,
+				`  host: localhost:443`,
+				`  tls:`,
+				`    cert-file: proxy.cert`,
+				`    key-file: proxy.key`,
+				`  # max-request-body-size: 1234`,
+				`api:`,
+				`  host: localhost:3000`,
+				`  tls:`,
+				`    cert-file: api.cert`,
+				`    key-file: api.key`,
+				`all-services: all-services`,
+				`enabled-services: enabled-services`,
+			),
+		}, nil, path)
 
-// 		conf.Proxy.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
+		conf.Proxy.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
 
-// 		for _, td := range []TestOK{
-// 			{
-// 				Path:   path,
-// 				Expect: conf,
-// 			},
-// 		} {
-// 			t.Run("", func(t *testing.T) {
-// 				c, err := config.ReadServerConfig(td.Path)
-// 				require.NoError(t, err)
-// 				require.Equal(t, td.Expect, c)
-// 			})
-// 		}
-// 	})
-// }
+		for _, td := range []TestOK{
+			{
+				Path:   filepath.Join(path, "config.yml"),
+				Expect: conf,
+			},
+		} {
+			t.Run("", func(t *testing.T) {
+				c, err := config.New(td.Path)
+				require.NoError(t, err)
+				require.Equal(t, td.Expect, c)
+			})
+		}
+	})
+}
 
 // func TestReadConfigErrorMissingServerConfig(t *testing.T) {
 // 	fs, path, _ := validFS()
@@ -940,7 +942,7 @@ func validFS(fn func(path string, conf *config.Config)) {
 		Services: services,
 	}
 
-	fn(filepath.Join(base, "config.yml"), conf)
+	fn(base, conf)
 }
 
 func createDirs(dirs map[string]any, path string) error {
@@ -975,7 +977,9 @@ func createFiles(files map[string]any, hashes map[string][]byte, path string) er
 					return err
 				}
 			}
-			hashes[p] = calculateHash(f)
+			if hashes != nil {
+				hashes[p] = calculateHash(f)
+			}
 		case map[string]any:
 			if err := createFiles(vt, hashes, p); err != nil {
 				return err
