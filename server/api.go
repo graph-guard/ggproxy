@@ -111,10 +111,13 @@ func (s *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *API) Serve(listener net.Listener) {
-	serviceIDs := make([]string, len(s.config.ServicesEnabled))
-	for i := range s.config.ServicesEnabled {
-		serviceIDs[i] = s.config.ServicesEnabled[i].ID
-	}
+	serviceIDs := make([]string, 0)
+	s.config.Services.Visit(func(key []byte, s *config.Service) (stop bool) {
+		if s.Enabled {
+			serviceIDs = append(serviceIDs, s.ID)
+		}
+		return
+	})
 	s.log.Info().
 		Str("host", s.config.API.Host).
 		Bool("tls", s.config.API.TLS.CertFile != "").
@@ -243,21 +246,18 @@ func makeServices(
 ) map[string]*model.Service {
 	m := make(
 		map[string]*model.Service,
-		len(conf.ServicesAll),
+		conf.Services.Len(),
 	)
-	for _, s := range conf.ServicesAll {
-		m[s.ID] = makeService(conf, s, false, proxyServer)
-	}
-	for _, s := range conf.ServicesEnabled {
-		m[s.ID].Enabled = true
-	}
+	conf.Services.Visit(func(key []byte, s *config.Service) (stop bool) {
+		m[s.ID] = makeService(conf, s, proxyServer)
+		return
+	})
 	return m
 }
 
 func makeService(
 	c *config.Config,
 	s *config.Service,
-	enabled bool,
 	proxyServer *Proxy,
 ) *model.Service {
 	stats := proxyServer.GetServiceStatistics(s.ID)
@@ -265,18 +265,18 @@ func makeService(
 		Stats: stats,
 		TemplatesByID: make(
 			map[string]*model.Template,
-			len(s.TemplatesAll),
+			s.Templates.Len(),
 		),
 		ID:                s.ID,
 		ForwardURL:        s.ForwardURL,
-		Enabled:           enabled,
-		TemplatesEnabled:  make([]*model.Template, len(s.TemplatesEnabled)),
-		TemplatesDisabled: make([]*model.Template, len(s.TemplatesAll)-len(s.TemplatesEnabled)),
+		Enabled:           s.Enabled,
+		TemplatesEnabled:  make([]*model.Template, 0),
+		TemplatesDisabled: make([]*model.Template, 0),
 	}
 
 	{ // Initialize matcher engine
-		d := make(map[string]gqt.Doc, len(s.TemplatesAll))
-		for i, t := range s.TemplatesEnabled {
+		d := make(map[string]gqt.Doc, s.Templates.Len())
+		s.Templates.Visit(func(key []byte, t *config.Template) (stop bool) {
 			d[t.ID] = t.Document
 			tm := &model.Template{
 				Service: service,
@@ -285,35 +285,12 @@ func makeService(
 				ID:      t.ID,
 				Tags:    t.Tags,
 				Source:  string(t.Source),
-				Enabled: true,
+				Enabled: t.Enabled,
 			}
-			service.TemplatesEnabled[i] = tm
+			service.TemplatesEnabled = append(service.TemplatesEnabled, tm)
 			service.TemplatesByID[t.ID] = tm
-		}
-		for i, t := range s.TemplatesAll {
-			var skip bool
-			for _, te := range s.TemplatesEnabled {
-				if te.ID == t.ID {
-					skip = true
-					break
-				}
-			}
-			if skip {
-				continue
-			}
-			d[t.ID] = t.Document
-			tm := &model.Template{
-				Service: service,
-				Stats:   proxyServer.GetTemplateStatistics(s.ID, t.ID),
-
-				ID:      t.ID,
-				Tags:    t.Tags,
-				Source:  string(t.Source),
-				Enabled: false,
-			}
-			service.TemplatesDisabled[i] = tm
-			service.TemplatesByID[t.ID] = tm
-		}
+			return
+		})
 
 		var err error
 		service.Matcher, err = rmap.New(d, 0)

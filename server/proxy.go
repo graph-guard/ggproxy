@@ -43,7 +43,7 @@ type matcher struct {
 }
 
 func NewProxy(
-	config *config.Config,
+	conf *config.Config,
 	readTimeout, writeTimeout time.Duration,
 	readBufferSize, writeBufferSize int,
 	log plog.Logger,
@@ -61,7 +61,7 @@ func NewProxy(
 		Str("server-module", "fasthttp").Value()
 
 	srv := &Proxy{
-		config: config,
+		config: conf,
 		server: &fasthttp.Server{
 			ReadTimeout:                  readTimeout,
 			WriteTimeout:                 writeTimeout,
@@ -70,7 +70,7 @@ func NewProxy(
 			DisablePreParseMultipartForm: false,
 			TLSConfig:                    tlsConfig,
 			Logger:                       &lFasthttp,
-			MaxRequestBodySize:           config.Proxy.MaxReqBodySizeBytes,
+			MaxRequestBodySize:           conf.Proxy.MaxReqBodySizeBytes,
 		},
 		client:   client,
 		log:      log,
@@ -78,16 +78,20 @@ func NewProxy(
 	}
 	srv.server.Handler = srv.handle
 
-	for _, serviceEnabled := range config.ServicesEnabled {
-		s := serviceEnabled
-
+	conf.Services.Visit(func(key []byte, s *config.Service) (stop bool) {
+		if !s.Enabled {
+			return
+		}
 		templateStatistics := make(
 			map[string]*statistics.TemplateSync,
-			len(s.TemplatesEnabled),
+			0,
 		)
-		for _, t := range s.TemplatesEnabled {
-			templateStatistics[t.ID] = statistics.NewTemplateSync()
-		}
+		s.Templates.Visit(func(key []byte, t *config.Template) (stop bool) {
+			if t.Enabled {
+				templateStatistics[t.ID] = statistics.NewTemplateSync()
+			}
+			return
+		})
 
 		services[s.Path] = &service{
 			id:             s.ID,
@@ -96,10 +100,13 @@ func NewProxy(
 			log:            log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make(map[string]gqt.Doc, len(s.TemplatesEnabled))
-					for _, t := range s.TemplatesEnabled {
-						d[t.ID] = t.Document
-					}
+					d := make(map[string]gqt.Doc, 0)
+					s.Templates.Visit(func(key []byte, t *config.Template) (stop bool) {
+						if t.Enabled {
+							d[t.ID] = t.Document
+						}
+						return
+					})
 					engine, err := rmap.New(d, 0)
 					if err != nil {
 						panic(fmt.Errorf(
@@ -130,7 +137,9 @@ func NewProxy(
 				services[s.Path].matcherpool.Put(m[i])
 			}
 		}()
-	}
+
+		return
+	})
 
 	return srv
 }
@@ -302,10 +311,13 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 }
 
 func (s *Proxy) Serve(listener net.Listener) {
-	serviceIDs := make([]string, len(s.config.ServicesEnabled))
-	for i := range s.config.ServicesEnabled {
-		serviceIDs[i] = s.config.ServicesEnabled[i].ID
-	}
+	serviceIDs := make([]string, 0)
+	s.config.Services.Visit(func(key []byte, s *config.Service) (stop bool) {
+		if s.Enabled {
+			serviceIDs = append(serviceIDs, s.ID)
+		}
+		return
+	})
 	s.log.Info().
 		Str("host", s.config.Proxy.Host).
 		Bool("tls", s.config.Proxy.TLS.CertFile != "").
