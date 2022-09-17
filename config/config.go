@@ -148,13 +148,6 @@ func (c *Config) readServerConfig(path string) (err error) {
 	if sc.Proxy.MaxRequestBodySizeBytes == nil {
 		c.Proxy.MaxReqBodySizeBytes = DefaultMaxReqBodySize
 	} else {
-		if *sc.Proxy.MaxRequestBodySizeBytes < MinReqBodySize {
-			return &ErrorIllegal{
-				FilePath: path,
-				Feature:  "proxy.max-request-body-size",
-				Message:  msgMaxReqBodySizeTooSmall,
-			}
-		}
 		c.Proxy.MaxReqBodySizeBytes = *sc.Proxy.MaxRequestBodySizeBytes
 	}
 	if sc.API == nil {
@@ -261,6 +254,16 @@ func validateServerConfig(sc *serverConfig, path string) (err error) {
 		}
 	}
 
+	if sc.Proxy.MaxRequestBodySizeBytes != nil {
+		if *sc.Proxy.MaxRequestBodySizeBytes < MinReqBodySize {
+			return &ErrorIllegal{
+				FilePath: path,
+				Feature:  "proxy.max-request-body-size",
+				Message:  msgMaxReqBodySizeTooSmall,
+			}
+		}
+	}
+
 	return
 }
 
@@ -313,7 +316,6 @@ func (c *Config) readEnabledServices(path string) (err error) {
 
 	var alien []string
 	for _, sf := range d {
-		filePath := filepath.Join(path, sf.Name())
 		if sf.IsDir() {
 			continue
 		}
@@ -322,6 +324,7 @@ func (c *Config) readEnabledServices(path string) (err error) {
 			continue
 		}
 
+		filePath := filepath.Join(path, sf.Name())
 		file, err := openFile(filePath)
 		if err != nil {
 			return err
