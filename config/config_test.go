@@ -836,6 +836,88 @@ func validFS(fn func(path string, conf *config.Config)) {
 		panic(err)
 	}
 
+	services := []*config.Service{
+		{
+			ID:             "a",
+			Path:           "/path",
+			ForwardURL:     "http://localhost:8080/path",
+			ForwardReduced: true,
+			TemplatesAll: []*config.Template{
+				{
+					ID:     "a",
+					Name:   "Template A",
+					Tags:   []string{"tag_a"},
+					Source: lines(`query { foo }`),
+					Document: gqt.Doc{
+						Query: []gqt.Selection{
+							gqt.SelectionField{
+								Name: "foo",
+							},
+						},
+					},
+				},
+				{
+					ID:     "b",
+					Tags:   []string{"tag_b1", "tag_b2"},
+					Source: lines(`query { bar }`),
+					Document: gqt.Doc{
+						Query: []gqt.Selection{
+							gqt.SelectionField{
+								Name: "bar",
+							},
+						},
+					},
+				},
+			},
+			TemplatesEnabled: []*config.Template{
+				{
+					ID:     "a",
+					Name:   "Template A",
+					Tags:   []string{"tag_a"},
+					Source: lines(`query { foo }`),
+					Document: gqt.Doc{
+						Query: []gqt.Selection{
+							gqt.SelectionField{
+								Name: "foo",
+							},
+						},
+					},
+				},
+				{
+					ID:     "b",
+					Tags:   []string{"tag_b1", "tag_b2"},
+					Source: lines(`query { bar }`),
+					Document: gqt.Doc{
+						Query: []gqt.Selection{
+							gqt.SelectionField{
+								Name: "bar",
+							},
+						},
+					},
+				},
+			},
+		},
+		{
+			ID:             "b",
+			Path:           "/",
+			ForwardURL:     "http://localhost:9090/",
+			ForwardReduced: false,
+			TemplatesAll: []*config.Template{
+				{
+					ID:     "c",
+					Source: []byte(`query { maz }`),
+					Document: gqt.Doc{
+						Query: []gqt.Selection{
+							gqt.SelectionField{
+								Name: "maz",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
 	conf := &config.Config{
 		Proxy: config.ProxyServerConfig{
 			Host: "localhost:443",
@@ -852,122 +934,8 @@ func validFS(fn func(path string, conf *config.Config)) {
 				KeyFile:  "api.key",
 			},
 		},
-		ServicesAll: []*config.Service{
-			{
-				ID:             "a",
-				Path:           "/path",
-				ForwardURL:     "http://localhost:8080/path",
-				ForwardReduced: true,
-				TemplatesAll: []*config.Template{
-					{
-						ID:     "a",
-						Name:   "Template A",
-						Tags:   []string{"tag_a"},
-						Source: lines(`query { foo }`),
-						Document: gqt.Doc{
-							Query: []gqt.Selection{
-								gqt.SelectionField{
-									Name: "foo",
-								},
-							},
-						},
-					},
-					{
-						ID:     "b",
-						Tags:   []string{"tag_b1", "tag_b2"},
-						Source: lines(`query { bar }`),
-						Document: gqt.Doc{
-							Query: []gqt.Selection{
-								gqt.SelectionField{
-									Name: "bar",
-								},
-							},
-						},
-					},
-				},
-				TemplatesEnabled: []*config.Template{
-					{
-						ID:     "a",
-						Name:   "Template A",
-						Tags:   []string{"tag_a"},
-						Source: lines(`query { foo }`),
-						Document: gqt.Doc{
-							Query: []gqt.Selection{
-								gqt.SelectionField{
-									Name: "foo",
-								},
-							},
-						},
-					},
-					{
-						ID:     "b",
-						Tags:   []string{"tag_b1", "tag_b2"},
-						Source: lines(`query { bar }`),
-						Document: gqt.Doc{
-							Query: []gqt.Selection{
-								gqt.SelectionField{
-									Name: "bar",
-								},
-							},
-						},
-					},
-				},
-			},
-			{
-				ID:             "b",
-				Path:           "/",
-				ForwardURL:     "http://localhost:9090/",
-				ForwardReduced: false,
-				TemplatesAll: []*config.Template{
-					{
-						ID:     "c",
-						Source: []byte(`query { maz }`),
-						Document: gqt.Doc{
-							Query: []gqt.Selection{
-								gqt.SelectionField{
-									Name: "maz",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-		ServicesEnabled: []*config.Service{
-			{
-				ID:             "a",
-				Path:           "/path",
-				ForwardURL:     "http://localhost:8080/path",
-				ForwardReduced: true,
-				TemplatesEnabled: []*config.Template{
-					{
-						ID:     "a",
-						Name:   "Template A",
-						Tags:   []string{"tag_a"},
-						Source: lines(`query { foo }`),
-						Document: gqt.Doc{
-							Query: []gqt.Selection{
-								gqt.SelectionField{
-									Name: "foo",
-								},
-							},
-						},
-					},
-					{
-						ID:     "b",
-						Tags:   []string{"tag_b1", "tag_b2"},
-						Source: lines(`query { bar }`),
-						Document: gqt.Doc{
-							Query: []gqt.Selection{
-								gqt.SelectionField{
-									Name: "bar",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
+		ServicesAll:     services,
+		ServicesEnabled: services,
 	}
 
 	fn(filepath.Join(base, "config.yml"), conf)
