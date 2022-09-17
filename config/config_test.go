@@ -1,7 +1,9 @@
 package config_test
 
 import (
+	"crypto/md5"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +11,7 @@ import (
 	"testing/fstest"
 
 	"github.com/graph-guard/ggproxy/config"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/gqt"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +35,7 @@ func TestReadConfig(t *testing.T) {
 			},
 		} {
 			t.Run("", func(t *testing.T) {
-				c, err := config.ReadServerConfig(td.Path)
+				c, err := config.New(td.Path)
 				require.NoError(t, err)
 				require.Equal(t, td.Expect, c)
 			})
@@ -801,7 +804,7 @@ func validFS(fn func(path string, conf *config.Config)) {
 				),
 			},
 			"b": map[string]any{
-				"a.gqt":            []byte(`query { maz }`),
+				"c.gqt":            []byte(`query { maz }`),
 				"ignored_file.txt": []byte(`this file should be ignored`),
 			},
 		},
@@ -821,102 +824,102 @@ func validFS(fn func(path string, conf *config.Config)) {
 		"all-services/b.yml":               "enabled-services/b.yml",
 		"all-templates/a/a.gqt":            "enabled-templates/a/a.gqt",
 		"all-templates/a/b.gqt":            "enabled-templates/a/b.gqt",
-		"all-templates/b/a.gqt":            "enabled-templates/b/a.gqt",
+		"all-templates/b/c.gqt":            "enabled-templates/b/c.gqt",
 		"all-services/ignored_file.txt":    "enabled-services/ignored_file.txt",
 		"all-templates/b/ignored_file.txt": "enabled-templates/b/ignored_file.txt",
 	}
 
+	var hashes = make(map[string][]byte)
+
 	if err := createDirs(dirs, base); err != nil {
 		panic(err)
 	}
-	if err := createFiles(files, base); err != nil {
+	if err := createFiles(files, hashes, base); err != nil {
 		panic(err)
 	}
 	if err := createSymlinks(links, base); err != nil {
 		panic(err)
 	}
 
-	services := []*config.Service{
-		{
+	path := ""
+	services := hamap.New[[]byte, *config.Service](0, nil)
+	serviceATemplates := hamap.New[[]byte, *config.Template](0, nil)
+	serviceBTemplates := hamap.New[[]byte, *config.Template](0, nil)
+	path = filepath.Join(base, "all-templates", "a", "a.gqt")
+	serviceATemplates.Set(hashes[path],
+		&config.Template{
+			ID:     "a",
+			Name:   "Template A",
+			Tags:   []string{"tag_a"},
+			Source: lines(`query { foo }`),
+			Document: gqt.Doc{
+				Query: []gqt.Selection{
+					gqt.SelectionField{
+						Name: "foo",
+					},
+				},
+			},
+			Enabled:  true,
+			FilePath: path,
+		},
+	)
+	path = filepath.Join(base, "all-templates", "a", "b.gqt")
+	serviceATemplates.Set(hashes[path],
+		&config.Template{
+			ID:     "b",
+			Tags:   []string{"tag_b1", "tag_b2"},
+			Source: lines(`query { bar }`),
+			Document: gqt.Doc{
+				Query: []gqt.Selection{
+					gqt.SelectionField{
+						Name: "bar",
+					},
+				},
+			},
+			Enabled:  true,
+			FilePath: path,
+		},
+	)
+	path = filepath.Join(base, "all-services", "a.yml")
+	services.Set(hashes[path],
+		&config.Service{
 			ID:             "a",
 			Path:           "/path",
 			ForwardURL:     "http://localhost:8080/path",
 			ForwardReduced: true,
-			TemplatesAll: []*config.Template{
-				{
-					ID:     "a",
-					Name:   "Template A",
-					Tags:   []string{"tag_a"},
-					Source: lines(`query { foo }`),
-					Document: gqt.Doc{
-						Query: []gqt.Selection{
-							gqt.SelectionField{
-								Name: "foo",
-							},
-						},
-					},
-				},
-				{
-					ID:     "b",
-					Tags:   []string{"tag_b1", "tag_b2"},
-					Source: lines(`query { bar }`),
-					Document: gqt.Doc{
-						Query: []gqt.Selection{
-							gqt.SelectionField{
-								Name: "bar",
-							},
-						},
-					},
-				},
-			},
-			TemplatesEnabled: []*config.Template{
-				{
-					ID:     "a",
-					Name:   "Template A",
-					Tags:   []string{"tag_a"},
-					Source: lines(`query { foo }`),
-					Document: gqt.Doc{
-						Query: []gqt.Selection{
-							gqt.SelectionField{
-								Name: "foo",
-							},
-						},
-					},
-				},
-				{
-					ID:     "b",
-					Tags:   []string{"tag_b1", "tag_b2"},
-					Source: lines(`query { bar }`),
-					Document: gqt.Doc{
-						Query: []gqt.Selection{
-							gqt.SelectionField{
-								Name: "bar",
-							},
-						},
-					},
-				},
-			},
+			Templates:      serviceATemplates,
+			Enabled:        true,
+			FilePath:       path,
 		},
-		{
+	)
+	path = filepath.Join(base, "all-templates", "b", "c.gqt")
+	serviceBTemplates.Set(hashes[path],
+		&config.Template{
+			ID:     "c",
+			Source: []byte(`query { maz }`),
+			Document: gqt.Doc{
+				Query: []gqt.Selection{
+					gqt.SelectionField{
+						Name: "maz",
+					},
+				},
+			},
+			Enabled:  true,
+			FilePath: path,
+		},
+	)
+	path = filepath.Join(base, "all-services", "b.yml")
+	services.Set(hashes[path],
+		&config.Service{
 			ID:             "b",
 			Path:           "/",
 			ForwardURL:     "http://localhost:9090/",
 			ForwardReduced: false,
-			TemplatesAll: []*config.Template{
-				{
-					ID:     "c",
-					Source: []byte(`query { maz }`),
-					Document: gqt.Doc{
-						Query: []gqt.Selection{
-							gqt.SelectionField{
-								Name: "maz",
-							},
-						},
-					},
-				},
-			},
+			Templates:      serviceBTemplates,
+			Enabled:        true,
+			FilePath:       path,
 		},
-	}
+	)
 
 	conf := &config.Config{
 		Proxy: config.ProxyServerConfig{
@@ -934,8 +937,7 @@ func validFS(fn func(path string, conf *config.Config)) {
 				KeyFile:  "api.key",
 			},
 		},
-		ServicesAll:     services,
-		ServicesEnabled: services,
+		Services: services,
 	}
 
 	fn(filepath.Join(base, "config.yml"), conf)
@@ -960,20 +962,22 @@ func createDirs(dirs map[string]any, path string) error {
 	return nil
 }
 
-func createFiles(files map[string]any, path string) error {
+func createFiles(files map[string]any, hashes map[string][]byte, path string) error {
 	for k, v := range files {
 		p := filepath.Join(path, k)
 		switch vt := v.(type) {
 		case []byte:
-			if f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644); err != nil {
+			f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+			if err != nil {
 				return err
 			} else {
 				if _, err := f.Write(vt); err != nil {
 					return err
 				}
 			}
+			hashes[p] = calculateHash(f)
 		case map[string]any:
-			if err := createFiles(vt, p); err != nil {
+			if err := createFiles(vt, hashes, p); err != nil {
 				return err
 			}
 		}
@@ -999,4 +1003,18 @@ func lines(lines ...string) []byte {
 		b.WriteByte('\n')
 	}
 	return []byte(b.String())
+}
+
+func calculateHash(file *os.File) []byte {
+	_, err := file.Seek(0, io.SeekStart)
+	if err != nil {
+		panic(err)
+	}
+	h := md5.New()
+	_, err = io.Copy(h, file)
+	if err != nil {
+		panic(err)
+	}
+
+	return h.Sum(nil)
 }

@@ -1,7 +1,6 @@
 package config
 
 import (
-	"bytes"
 	"crypto/md5"
 	"errors"
 	"fmt"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/graph-guard/ggproxy/config/metadata"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/gqt"
 	yaml "gopkg.in/yaml.v3"
 )
@@ -35,10 +35,9 @@ var msgMaxReqBodySizeTooSmall = fmt.Sprintf(
 )
 
 type Config struct {
-	Proxy           ProxyServerConfig
-	API             *APIServerConfig
-	ServicesAll     []*Service
-	ServicesEnabled []*Service
+	Proxy    ProxyServerConfig
+	API      *APIServerConfig
+	Services *hamap.Map[[]byte, *Service]
 }
 
 type ProxyServerConfig struct {
@@ -58,22 +57,23 @@ type TLS struct {
 }
 
 type Service struct {
-	Hash             []byte
-	ID               string
-	Path             string
-	ForwardURL       string
-	TemplatesAll     []*Template
-	TemplatesEnabled []*Template
-	ForwardReduced   bool
+	ID             string
+	Path           string
+	ForwardURL     string
+	Templates      *hamap.Map[[]byte, *Template]
+	ForwardReduced bool
+	Enabled        bool
+	FilePath       string
 }
 
 type Template struct {
-	Hash     []byte
 	ID       string
 	Source   []byte
 	Document gqt.Doc
 	Name     string
 	Tags     []string
+	Enabled  bool
+	FilePath string
 }
 
 type serverConfig struct {
@@ -105,35 +105,53 @@ type serviceConfig struct {
 	TemplatesEnabled string `yaml:"enabled-templates"`
 }
 
-func ReadServerConfig(path string) (*Config, error) {
-	dirPath := filepath.Dir(path)
-	f, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("opening server config file: %w", err)
-	}
-	sc, err := readServerConfigFile(f)
-	if err != nil {
-		return nil, err
-	}
-
+func New(path string) (c *Config, err error) {
 	// Set default config values
-	conf := &Config{
+	c = &Config{
 		Proxy: ProxyServerConfig{
 			MaxReqBodySizeBytes: DefaultMaxReqBodySize,
 		},
-		API: &APIServerConfig{},
+		API:      &APIServerConfig{},
+		Services: hamap.New[[]byte, *Service](0, nil),
+	}
+	err = c.readServerConfig(path)
+
+	return
+}
+
+func (c *Config) readServerConfig(path string) (err error) {
+	dirPath := filepath.Dir(path)
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("opening server config file: %w", err)
 	}
 
-	conf.Proxy.Host = sc.Proxy.Host
+	sc := &serverConfig{}
+	d := yaml.NewDecoder(file)
+	d.KnownFields(true)
+	if err := d.Decode(sc); err != nil {
+		return &ErrorIllegal{
+			FilePath: path,
+			Feature:  "syntax",
+			Message:  err.Error(),
+		}
+	}
+
+	err = validateServerConfig(sc, path)
+	if err != nil {
+		return err
+	}
+
+	c.Proxy.Host = sc.Proxy.Host
 	if sc.Proxy.TLS != nil {
-		conf.Proxy.TLS.CertFile = sc.Proxy.TLS.CertFile
-		conf.Proxy.TLS.KeyFile = sc.Proxy.TLS.KeyFile
+		c.Proxy.TLS.CertFile = sc.Proxy.TLS.CertFile
+		c.Proxy.TLS.KeyFile = sc.Proxy.TLS.KeyFile
 	}
 	if sc.Proxy.MaxRequestBodySizeBytes == nil {
-		conf.Proxy.MaxReqBodySizeBytes = DefaultMaxReqBodySize
+		c.Proxy.MaxReqBodySizeBytes = DefaultMaxReqBodySize
 	} else {
 		if *sc.Proxy.MaxRequestBodySizeBytes < MinReqBodySize {
-			return nil, &ErrorIllegal{
+			return &ErrorIllegal{
 				FilePath: path,
 				Feature:  "proxy.max-request-body-size",
 				Message:  msgMaxReqBodySizeTooSmall,
@@ -142,26 +160,26 @@ func ReadServerConfig(path string) (*Config, error) {
 	}
 	if sc.API == nil {
 		// Disable API server
-		conf.API = nil
+		c.API = nil
 	} else {
-		conf.API.Host = sc.API.Host
+		c.API.Host = sc.API.Host
 		if sc.API.TLS != nil {
-			conf.API.TLS.CertFile = sc.API.TLS.CertFile
-			conf.API.TLS.KeyFile = sc.API.TLS.KeyFile
+			c.API.TLS.CertFile = sc.API.TLS.CertFile
+			c.API.TLS.KeyFile = sc.API.TLS.KeyFile
 		}
 	}
 
 	var servicesAllPath, servicesEnabledPath string
 	servicesAllPath = sc.ServicesAll
 	if servicesAllPath == "" {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"path to all services (all-services) is not defined in %s",
 			path,
 		)
 	}
 	servicesEnabledPath = sc.ServicesEnabled
 	if servicesEnabledPath == "" {
-		return nil, fmt.Errorf(
+		return fmt.Errorf(
 			"path to enabled services (enabled-services) is not defined in %s",
 			path,
 		)
@@ -174,37 +192,24 @@ func ReadServerConfig(path string) (*Config, error) {
 	}
 
 	// reading all services
-	s, err := readServices(servicesAllPath, nil)
+	err = c.readAllServices(servicesAllPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	conf.ServicesAll = s
 
 	// reading enabled services
-	s, err = readServices(servicesEnabledPath, conf.ServicesAll)
+	err = c.readEnabledServices(servicesEnabledPath)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	conf.ServicesEnabled = s
 
-	return conf, nil
+	return
 }
 
-func readServerConfigFile(file *os.File) (sc *serverConfig, err error) {
-	filePath, _ := filepath.Abs(file.Name())
-	d := yaml.NewDecoder(file)
-	d.KnownFields(true)
-	if err := d.Decode(&sc); err != nil {
-		return nil, &ErrorIllegal{
-			FilePath: filePath,
-			Feature:  "syntax",
-			Message:  err.Error(),
-		}
-	}
-
+func validateServerConfig(sc *serverConfig, path string) (err error) {
 	if sc.Proxy.Host == "" {
-		return nil, &ErrorMissing{
-			FilePath: filePath,
+		return &ErrorMissing{
+			FilePath: path,
 			Feature:  "proxy.host",
 		}
 	}
@@ -215,14 +220,14 @@ func readServerConfigFile(file *os.File) (sc *serverConfig, err error) {
 		// present then both must be defined, otherwise TLS must be nil.
 		switch {
 		case c.CertFile != "" && c.KeyFile == "":
-			return nil, &ErrorMissing{
-				FilePath: filePath,
+			return &ErrorMissing{
+				FilePath: path,
 				Feature:  "proxy.tls.key-file",
 			}
 		case (c.KeyFile != "" && c.CertFile == "") ||
 			(c.KeyFile == "" && c.CertFile == ""):
-			return nil, &ErrorMissing{
-				FilePath: filePath,
+			return &ErrorMissing{
+				FilePath: path,
 				Feature:  "proxy.tls.cert-file",
 			}
 		}
@@ -231,8 +236,8 @@ func readServerConfigFile(file *os.File) (sc *serverConfig, err error) {
 	if sc.API != nil {
 		c := sc.API
 		if c.Host == "" {
-			return nil, &ErrorMissing{
-				FilePath: filePath,
+			return &ErrorMissing{
+				FilePath: path,
 				Feature:  "api.host",
 			}
 		}
@@ -243,14 +248,14 @@ func readServerConfigFile(file *os.File) (sc *serverConfig, err error) {
 			// then both must be defined, otherwise TLS must be nil.
 			switch {
 			case c.CertFile != "" && c.KeyFile == "":
-				return nil, &ErrorMissing{
-					FilePath: filePath,
+				return &ErrorMissing{
+					FilePath: path,
 					Feature:  "api.tls.key-file",
 				}
 			case (c.KeyFile != "" && c.CertFile == "") ||
 				(c.KeyFile == "" && c.CertFile == ""):
-				return nil, &ErrorMissing{
-					FilePath: filePath,
+				return &ErrorMissing{
+					FilePath: path,
 					Feature:  "api.tls.cert-file",
 				}
 			}
@@ -260,12 +265,12 @@ func readServerConfigFile(file *os.File) (sc *serverConfig, err error) {
 	return
 }
 
-func readServices(path string, existingServices []*Service) ([]*Service, error) {
+func (c *Config) readAllServices(path string) (err error) {
 	d, err := os.ReadDir(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading services directory: %w", err)
+		return fmt.Errorf("reading services directory: %w", err)
 	}
-	var services []*Service
+
 	for _, sf := range d {
 		if sf.IsDir() {
 			continue
@@ -277,33 +282,67 @@ func readServices(path string, existingServices []*Service) ([]*Service, error) 
 
 		file, err := openFile(filepath.Join(path, sf.Name()))
 		if err != nil {
-			return nil, err
+			return err
 		}
 		h, err := calculateHash(file)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		if existingServices != nil {
-			if idx := contains(
-				existingServices, h, func(a *Service, h []byte) bool { return bytes.Equal(a.Hash, h) },
-			); idx != -1 {
-				services = append(services, existingServices[idx])
-			} else {
-				return nil, &ErrorAlien{
-					Items: []string{sf.Name()},
-				}
-			}
-		} else {
-			s, err := readServiceConfig(file)
-			if err != nil {
-				return nil, err
-			}
-			s.Hash = h
-			services = append(services, s)
+		s, err := readServiceConfig(file)
+		if err != nil {
+			return err
 		}
+		original, ok := c.Services.Get(h)
+		if ok {
+			return &ErrorDuplicate{
+				Original:  original.FilePath,
+				Duplicate: s.FilePath,
+			}
+		}
+		c.Services.Set(h, s)
 	}
-	return services, nil
+
+	return
+}
+
+func (c *Config) readEnabledServices(path string) (err error) {
+	d, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("reading enabled services directory: %w", err)
+	}
+
+	var alien []string
+	for _, sf := range d {
+		filePath := filepath.Join(path, sf.Name())
+		if sf.IsDir() {
+			continue
+		}
+		if !ConfigFileExtension.MatchString(sf.Name()) {
+			// Ignore non-yaml files
+			continue
+		}
+
+		file, err := openFile(filePath)
+		if err != nil {
+			return err
+		}
+		h, err := calculateHash(file)
+		if err != nil {
+			return err
+		}
+		s, ok := c.Services.Get(h)
+		if !ok {
+			alien = append(alien, filePath)
+		}
+		s.Enabled = true
+	}
+
+	if len(alien) > 0 {
+		return &ErrorAlien{Items: alien}
+	}
+
+	return
 }
 
 func readServiceConfig(file *os.File) (*Service, error) {
@@ -348,29 +387,25 @@ func readServiceConfig(file *os.File) (*Service, error) {
 	id = strings.ToLower(id)
 
 	s := &Service{
-		ID: id,
+		ID:        id,
+		Templates: hamap.New[[]byte, *Template](0, nil),
+		FilePath:  filePath,
 	}
 	s.Path = sc.Path
 	s.ForwardURL = sc.ForwardURL
 	s.ForwardReduced = sc.ForwardReduced
 
 	// reading all templates
-	t, err := readTemplates(
-		templatesAllPath, nil,
-	)
+	err = s.readAllTemplates(templatesAllPath)
 	if err != nil {
 		return nil, err
 	}
-	s.TemplatesAll = t
 
 	// reading enabled templates
-	t, err = readTemplates(
-		templatesEnabledPath, s.TemplatesAll,
-	)
+	err = s.readEnabledTemplates(templatesEnabledPath)
 	if err != nil {
 		return nil, err
 	}
-	s.TemplatesEnabled = t
 
 	return s, nil
 }
@@ -417,27 +452,25 @@ func readServiceConfigFile(file *os.File) (sc *serviceConfig, err error) {
 	return
 }
 
-func readTemplates(
-	path string, existingTemplates []*Template,
-) (templates []*Template, err error) {
+func (s *Service) readAllTemplates(path string) (err error) {
 	dir, err := os.ReadDir(path)
 	if err != nil {
-		return nil, fmt.Errorf("reading templates directory: %w", err)
+		return fmt.Errorf("reading templates directory: %w", err)
 	}
 
-	for _, t := range dir {
-		if t.IsDir() {
+	for _, tf := range dir {
+		if tf.IsDir() {
 			continue
 		}
-		n := t.Name()
-		if !TemplateFileExtension.MatchString(n) {
+		name := tf.Name()
+		if !TemplateFileExtension.MatchString(name) {
 			// Ignore non-GQT files
 			continue
 		}
-		p := filepath.Join(path, n)
-		id := n[:len(n)-len(filepath.Ext(n))]
+		p := filepath.Join(path, name)
+		id := name[:len(name)-len(filepath.Ext(name))]
 		if err := ValidateID(id); err != "" {
-			return nil, &ErrorIllegal{
+			return &ErrorIllegal{
 				FilePath: p,
 				Feature:  "id",
 				Message:  err,
@@ -447,16 +480,20 @@ func readTemplates(
 
 		file, err := openFile(p)
 		if err != nil {
-			return nil, err
+			return err
+		}
+		h, err := calculateHash(file)
+		if err != nil {
+			return err
 		}
 		b, err := io.ReadAll(file)
 		if err != nil {
-			return nil, fmt.Errorf("reading template %q: %w", p, err)
+			return fmt.Errorf("reading template %q: %w", p, err)
 		}
 
 		meta, template, err := metadata.Parse(b)
 		if err != nil {
-			return nil, &ErrorIllegal{
+			return &ErrorIllegal{
 				FilePath: p,
 				Feature:  "metadata",
 				Message:  err.Error(),
@@ -465,40 +502,70 @@ func readTemplates(
 
 		doc, errParser := gqt.Parse(template)
 		if errParser.IsErr() {
-			return nil, &ErrorIllegal{
+			return &ErrorIllegal{
 				FilePath: p,
 				Feature:  "template",
 				Message:  errParser.Error(),
 			}
 		}
 
-		h, err := calculateHash(file)
+		original, ok := s.Templates.Get(h)
+		if ok {
+			return &ErrorDuplicate{
+				Original:  original.FilePath,
+				Duplicate: p,
+			}
+		}
+		s.Templates.Set(h, &Template{
+			ID:       id,
+			Source:   template,
+			Document: doc,
+			Name:     meta.Name,
+			Tags:     meta.Tags,
+			FilePath: p,
+		})
+	}
+
+	return
+}
+
+func (s *Service) readEnabledTemplates(path string) (err error) {
+	dir, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("reading enabled templates directory: %w", err)
+	}
+
+	var aliens []string
+	for _, tf := range dir {
+		if tf.IsDir() {
+			continue
+		}
+		name := tf.Name()
+		if !TemplateFileExtension.MatchString(name) {
+			// Ignore non-GQT files
+			continue
+		}
+		p := filepath.Join(path, name)
+
+		file, err := openFile(p)
 		if err != nil {
-			return nil, err
+			return err
 		}
 
-		if existingTemplates != nil {
-			idx := contains(
-				existingTemplates, h,
-				func(a *Template, h []byte) bool { return bytes.Equal(a.Hash, h) },
-			)
-			if idx != -1 {
-				templates = append(templates, existingTemplates[idx])
-			} else {
-				return nil, &ErrorAlien{
-					Items: []string{t.Name()},
-				}
-			}
-		} else {
-			templates = append(templates, &Template{
-				Hash:     h,
-				ID:       id,
-				Source:   template,
-				Document: doc,
-				Name:     meta.Name,
-				Tags:     meta.Tags,
-			})
+		h, err := calculateHash(file)
+		if err != nil {
+			return err
 		}
+		t, ok := s.Templates.Get(h)
+		if ok {
+			t.Enabled = true
+		} else {
+			aliens = append(aliens, name)
+		}
+	}
+
+	if len(aliens) > 0 {
+		return &ErrorAlien{Items: aliens}
 	}
 
 	return
@@ -521,13 +588,38 @@ const IDValidCharDict = "abcdefghijklmnopqrstuvwxyz" +
 	"0123456789" +
 	"_-"
 
+type ErrorDuplicate struct {
+	Original  string
+	Duplicate string
+}
+
+func (e ErrorDuplicate) Error() string {
+	return fmt.Sprintf("%s is a duplicate of %s", e.Duplicate, e.Original)
+}
+
+type ErrorConflict struct {
+	Items []string
+}
+
+func (e ErrorConflict) Error() string {
+	var b strings.Builder
+	b.WriteString("conflict between: ")
+	for i := range e.Items {
+		b.WriteString(e.Items[i])
+		if i+1 < len(e.Items) {
+			b.WriteString(", ")
+		}
+	}
+	return b.String()
+}
+
 type ErrorAlien struct {
 	Items []string
 }
 
 func (e ErrorAlien) Error() string {
 	var b strings.Builder
-	b.WriteString("configs are not defined in the pool: ")
+	b.WriteString("templates are not defined in the service templates pool (all-templates): ")
 	for i := range e.Items {
 		b.WriteString(e.Items[i])
 		if i+1 < len(e.Items) {

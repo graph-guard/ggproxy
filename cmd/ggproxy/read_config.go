@@ -11,7 +11,7 @@ func ReadConfig(
 	w io.Writer,
 	configPath string,
 ) *config.Config {
-	conf, err := config.ReadServerConfig(configPath)
+	conf, err := config.New(configPath)
 	if err != nil {
 		fmt.Fprintf(w, "reading config: %s\n", err)
 		return nil
