@@ -1,10 +1,10 @@
 package config
 
 import (
+	"bytes"
 	"crypto/md5"
 	"errors"
 	"fmt"
-	"hash"
 	"io"
 	neturl "net/url"
 	"os"
@@ -58,7 +58,7 @@ type TLS struct {
 }
 
 type Service struct {
-	Hash             hash.Hash
+	Hash             []byte
 	ID               string
 	Path             string
 	ForwardURL       string
@@ -68,7 +68,7 @@ type Service struct {
 }
 
 type Template struct {
-	Hash     hash.Hash
+	Hash     []byte
 	ID       string
 	Source   []byte
 	Document gqt.Doc
@@ -97,7 +97,6 @@ type serverConfig struct {
 }
 
 type serviceConfig struct {
-	Hash             hash.Hash
 	Name             string `yaml:"name"`
 	Path             string `yaml:"path"`
 	ForwardURL       string `yaml:"forward-url"`
@@ -267,40 +266,40 @@ func readServices(path string, existingServices []*Service) ([]*Service, error) 
 		return nil, fmt.Errorf("reading services directory: %w", err)
 	}
 	var services []*Service
-	for _, s := range d {
-		if s.IsDir() {
+	for _, sf := range d {
+		if sf.IsDir() {
 			continue
 		}
-		if !ConfigFileExtension.MatchString(s.Name()) {
+		if !ConfigFileExtension.MatchString(sf.Name()) {
 			// Ignore non-yaml files
 			continue
 		}
 
-		f, err := openFile(filepath.Join(path, s.Name()))
+		file, err := openFile(filepath.Join(path, sf.Name()))
 		if err != nil {
 			return nil, err
 		}
-		h := md5.New()
-		_, err = io.Copy(h, f)
+		h, err := calculateHash(file)
 		if err != nil {
 			return nil, err
 		}
 
 		if existingServices != nil {
 			if idx := contains(
-				existingServices, h, func(a *Service, h hash.Hash) bool { return a.Hash == h },
+				existingServices, h, func(a *Service, h []byte) bool { return bytes.Equal(a.Hash, h) },
 			); idx != -1 {
 				services = append(services, existingServices[idx])
 			} else {
 				return nil, &ErrorAlien{
-					Items: []string{s.Name()},
+					Items: []string{sf.Name()},
 				}
 			}
 		} else {
-			s, err := readServiceConfig(f)
+			s, err := readServiceConfig(file)
 			if err != nil {
 				return nil, err
 			}
+			s.Hash = h
 			services = append(services, s)
 		}
 	}
@@ -338,7 +337,7 @@ func readServiceConfig(file *os.File) (*Service, error) {
 		templatesEnabledPath = filepath.Join(dirPath, templatesEnabledPath)
 	}
 
-	id := strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))
+	id := strings.TrimSuffix(filepath.Base(file.Name()), filepath.Ext(file.Name()))
 	if err := ValidateID(id); err != "" {
 		return nil, &ErrorIllegal{
 			FilePath: filePath,
@@ -357,7 +356,7 @@ func readServiceConfig(file *os.File) (*Service, error) {
 
 	// reading all templates
 	t, err := readTemplates(
-		templatesAllPath,
+		templatesAllPath, nil,
 	)
 	if err != nil {
 		return nil, err
@@ -366,7 +365,7 @@ func readServiceConfig(file *os.File) (*Service, error) {
 
 	// reading enabled templates
 	t, err = readTemplates(
-		templatesEnabledPath,
+		templatesEnabledPath, s.TemplatesAll,
 	)
 	if err != nil {
 		return nil, err
@@ -415,29 +414,22 @@ func readServiceConfigFile(file *os.File) (sc *serviceConfig, err error) {
 		}
 	}
 
-	hash := md5.New()
-	_, err = io.Copy(hash, file)
-	if err != nil {
-		return nil, err
-	}
-	sc.Hash = hash
-
 	return
 }
 
 func readTemplates(
-	path string,
-) (t []*Template, err error) {
+	path string, existingTemplates []*Template,
+) (templates []*Template, err error) {
 	dir, err := os.ReadDir(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading templates directory: %w", err)
 	}
 
-	for _, o := range dir {
-		if o.IsDir() {
+	for _, t := range dir {
+		if t.IsDir() {
 			continue
 		}
-		n := o.Name()
+		n := t.Name()
 		if !TemplateFileExtension.MatchString(n) {
 			// Ignore non-GQT files
 			continue
@@ -453,11 +445,11 @@ func readTemplates(
 		}
 		id = strings.ToLower(id)
 
-		f, err := openFile(p)
+		file, err := openFile(p)
 		if err != nil {
 			return nil, err
 		}
-		b, err := io.ReadAll(f)
+		b, err := io.ReadAll(file)
 		if err != nil {
 			return nil, fmt.Errorf("reading template %q: %w", p, err)
 		}
@@ -480,23 +472,36 @@ func readTemplates(
 			}
 		}
 
-		hash := md5.New()
-		_, err = io.Copy(hash, f)
+		h, err := calculateHash(file)
 		if err != nil {
 			return nil, err
 		}
 
-		t = append(t, &Template{
-			Hash:     hash,
-			ID:       id,
-			Source:   template,
-			Document: doc,
-			Name:     meta.Name,
-			Tags:     meta.Tags,
-		})
+		if existingTemplates != nil {
+			idx := contains(
+				existingTemplates, h,
+				func(a *Template, h []byte) bool { return bytes.Equal(a.Hash, h) },
+			)
+			if idx != -1 {
+				templates = append(templates, existingTemplates[idx])
+			} else {
+				return nil, &ErrorAlien{
+					Items: []string{t.Name()},
+				}
+			}
+		} else {
+			templates = append(templates, &Template{
+				Hash:     h,
+				ID:       id,
+				Source:   template,
+				Document: doc,
+				Name:     meta.Name,
+				Tags:     meta.Tags,
+			})
+		}
 	}
 
-	return t, nil
+	return
 }
 
 func ValidateID(n string) (err string) {
@@ -522,7 +527,7 @@ type ErrorAlien struct {
 
 func (e ErrorAlien) Error() string {
 	var b strings.Builder
-	b.WriteString("configs are not defined in the pool (all-configs): ")
+	b.WriteString("configs are not defined in the pool: ")
 	for i := range e.Items {
 		b.WriteString(e.Items[i])
 		if i+1 < len(e.Items) {
@@ -633,4 +638,20 @@ func openFile(path string) (*os.File, error) {
 	}
 
 	return f, nil
+}
+
+func calculateHash(file *os.File) (sum []byte, err error) {
+	h := md5.New()
+
+	_, err = io.Copy(h, file)
+	if err != nil {
+		return nil, err
+	}
+	_, err = file.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	sum = h.Sum(nil)
+
+	return
 }
