@@ -8,10 +8,13 @@ import (
 	neturl "net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"strings"
 
 	"github.com/dustin/go-humanize"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/graph-guard/ggproxy/config/metadata"
 	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/gqt"
@@ -35,9 +38,37 @@ var msgMaxReqBodySizeTooSmall = fmt.Sprintf(
 )
 
 type Config struct {
-	Proxy    ProxyServerConfig
-	API      *APIServerConfig
-	Services *hamap.Map[[]byte, *Service]
+	Proxy           ProxyServerConfig
+	API             *APIServerConfig
+	Services        *hamap.Map[[]byte, *Service]
+	ServicesEnabled []*Service
+}
+
+func (c *Config) Equal(d *Config) bool {
+	eq := true
+	c.Services.Visit(func(key []byte, value *Service) (stop bool) {
+		v, ok := d.Services.Get(key)
+		if !ok {
+			eq = false
+			return true
+		}
+		if !v.Equal(value) {
+			eq = false
+			return true
+		}
+		return
+	})
+	if !eq {
+		return eq
+	}
+
+	less := func(a, b *Service) bool { return a.ID < b.ID }
+	eq = eq &&
+		reflect.DeepEqual(c.Proxy, d.Proxy) &&
+		reflect.DeepEqual(c.API, d.API) &&
+		cmp.Equal(c.ServicesEnabled, d.ServicesEnabled, cmpopts.SortSlices(less))
+
+	return eq
 }
 
 type ProxyServerConfig struct {
@@ -57,13 +88,26 @@ type TLS struct {
 }
 
 type Service struct {
-	ID             string
-	Path           string
-	ForwardURL     string
-	Templates      *hamap.Map[[]byte, *Template]
-	ForwardReduced bool
-	Enabled        bool
-	FilePath       string
+	ID               string
+	Path             string
+	ForwardURL       string
+	Templates        *hamap.Map[[]byte, *Template]
+	TemplatesEnabled []*Template
+	ForwardReduced   bool
+	Enabled          bool
+	FilePath         string
+}
+
+func (c *Service) Equal(d *Service) bool {
+	less := func(a, b *Template) bool { return a.ID < b.ID }
+	return c.ID == d.ID &&
+		c.Path == d.Path &&
+		c.ForwardURL == d.ForwardURL &&
+		c.ForwardReduced == d.ForwardReduced &&
+		c.Enabled == d.Enabled &&
+		c.FilePath == d.FilePath &&
+		reflect.DeepEqual(c.Templates, d.Templates) &&
+		cmp.Equal(c.TemplatesEnabled, d.TemplatesEnabled, cmpopts.SortSlices(less))
 }
 
 type Template struct {
@@ -338,10 +382,12 @@ func (c *Config) readEnabledServices(path string) (err error) {
 			return err
 		}
 		s, ok := c.Services.Get(h)
-		if !ok {
+		if ok {
+			s.Enabled = true
+			c.ServicesEnabled = append(c.ServicesEnabled, s)
+		} else {
 			alien = append(alien, filePath)
 		}
-		s.Enabled = true
 	}
 
 	if len(alien) > 0 {
@@ -528,6 +574,7 @@ func (s *Service) readEnabledTemplates(path string) (err error) {
 		t, ok := s.Templates.Get(h)
 		if ok {
 			t.Enabled = true
+			s.TemplatesEnabled = append(s.TemplatesEnabled, t)
 		} else {
 			aliens = append(aliens, tf.Name())
 		}

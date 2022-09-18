@@ -41,7 +41,7 @@ func TestReadConfig(t *testing.T) {
 			t.Run("", func(t *testing.T) {
 				c, err := config.New(td.Path)
 				require.NoError(t, err)
-				require.Equal(t, td.Expect, c)
+				require.True(t, td.Expect.Equal(c))
 			})
 		}
 	})
@@ -78,7 +78,7 @@ func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 			t.Run("", func(t *testing.T) {
 				c, err := config.New(td.Path)
 				require.NoError(t, err)
-				require.Equal(t, td.Expect, c)
+				require.True(t, td.Expect.Equal(c))
 			})
 		}
 	})
@@ -266,7 +266,7 @@ func TestReadConfigErrorIllegalProxyMaxReqBodySize(t *testing.T) {
 
 func TestReadServiceConfigErrorMissingConfig(t *testing.T) {
 	minValidFS(func(path string) {
-		p := filepath.Join(path, ServerConfigFileName)
+		p := filepath.Join(path, "all-services", "a.yml")
 		createDirs(map[string]any{
 			"all-services": nil,
 		}, path)
@@ -277,128 +277,80 @@ func TestReadServiceConfigErrorMissingConfig(t *testing.T) {
 			},
 		}, hashes, path)
 		_, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: filepath.Join(
-				path, "all-services",
+		require.Contains(t, err.Error(), "no such file or directory")
+	})
+}
+
+func TestReadConfigErrorMalformedMetadata(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join("all-templates", "a", "a.gqt")
+		createFiles(map[string]any{
+			p: lines(
+				"---",
+				"malformed metadata",
+				"---",
+				`query { foo }`,
 			),
+		}, nil, path)
+		_, err := config.New(filepath.Join(path, ServerConfigFileName))
+		require.Equal(t, &config.ErrorIllegal{
+			FilePath: filepath.Join(path, p),
+			Feature:  "metadata",
+			Message: "decoding yaml: yaml: " +
+				"unmarshal errors:\n  " +
+				"line 1: cannot unmarshal !!str `malform...` " +
+				"into metadata.Metadata",
 		}, err)
 	})
 }
 
-// func TestReadConfigErrorMalformedMetadata(t *testing.T) {
-// 	fs, path, _ := validFS()
-// 	p := filepath.Join(
-// 		path,
-// 		config.ServicesEnabledDir,
-// 		"service_a",
-// 		config.TemplatesEnabledDir,
-// 		"template_a.gqt",
-// 	)
-// 	fs[p] = &fstest.MapFile{
-// 		Data: lines(
-// 			"---",
-// 			"malformed metadata",
-// 			"---",
-// 			`query { foo }`,
-// 		),
-// 	}
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorIllegal{
-// 		FilePath: p,
-// 		Feature:  "metadata",
-// 		Message: "decoding yaml: yaml: " +
-// 			"unmarshal errors:\n  " +
-// 			"line 1: cannot unmarshal !!str `malform...` " +
-// 			"into metadata.Metadata",
-// 	}, err)
-// }
+func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		t1 := filepath.Join("all-templates", "a", "d1.gqt")
+		t2 := filepath.Join("all-templates", "a", "d2.gqt")
+		createFiles(map[string]any{
+			t1: []byte(
+				`query { duplicate }`,
+			),
+			t2: []byte(
+				`query { duplicate }`,
+			),
+		}, nil, path)
+		_, err := config.New(filepath.Join(path, ServerConfigFileName))
+		require.Equal(t, &config.ErrorDuplicate{
+			Original:  filepath.Join(path, t1),
+			Duplicate: filepath.Join(path, t2),
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorDuplicateServerConfig(t *testing.T) {
-// 	fs, path := minValidFS()
-// 	fs[filepath.Join(
-// 		path,
-// 		config.ServerConfigFile1,
-// 	)] = &fstest.MapFile{
-// 		Data: lines(
-// 			`proxy:`,
-// 			`  host: localhost:8080/`,
-// 		),
-// 	}
-// 	fs[filepath.Join(
-// 		path,
-// 		config.ServerConfigFile2,
-// 	)] = &fstest.MapFile{
-// 		Data: lines(
-// 			`proxy:`,
-// 			`  host: localhost:9090/`,
-// 		),
-// 	}
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorConflict{Items: []string{
-// 		config.ServerConfigFile1,
-// 		config.ServerConfigFile2,
-// 	}}, err)
-// }
-
-// func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
-// 	fs, path, _ := validFS()
-// 	fs[filepath.Join(
-// 		path,
-// 		config.ServicesEnabledDir,
-// 		"service_a",
-// 		config.TemplatesEnabledDir,
-// 		"dup.gqt",
-// 	)] = &fstest.MapFile{
-// 		Data: []byte(`query { duplicate }`),
-// 	}
-// 	fs[filepath.Join(
-// 		path,
-// 		config.ServicesEnabledDir,
-// 		"service_a",
-// 		config.TemplatesDisabledDir,
-// 		"dup.gqt",
-// 	)] = &fstest.MapFile{
-// 		Data: []byte(`query { duplicate }`),
-// 	}
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorConflict{
-// 		Items: []string{
-// 			"templates_enabled/dup",
-// 			"templates_disabled/dup",
-// 		},
-// 	}, err)
-// }
-
-// func TestReadConfigErrorDuplicateService(t *testing.T) {
-// 	fs, path := minValidFS()
-// 	fs[filepath.Join(
-// 		path,
-// 		config.ServicesEnabledDir,
-// 		"service_a",
-// 		config.ServiceConfigFile1,
-// 	)] = &fstest.MapFile{
-// 		Data: lines(
-// 			`path: /`,
-// 			`forward_url: http://localhost:8080/`,
-// 		),
-// 	}
-// 	fs[filepath.Join(
-// 		path,
-// 		config.ServicesDisabledDir,
-// 		"service_a",
-// 		config.ServiceConfigFile1,
-// 	)] = &fstest.MapFile{
-// 		Data: lines(
-// 			`path: /`,
-// 			`forward_url: http://localhost:8080/`,
-// 		),
-// 	}
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorConflict{Items: []string{
-// 		filepath.Join(config.ServicesEnabledDir, "service_a"),
-// 		filepath.Join(config.ServicesDisabledDir, "service_a"),
-// 	}}, err)
-// }
+func TestReadConfigErrorDuplicateService(t *testing.T) {
+	minValidFS(func(path string) {
+		p := filepath.Join(path, ServerConfigFileName)
+		hashes := map[string][]byte{}
+		createFiles(map[string]any{
+			"all-services": map[string]any{
+				"a.yml": lines(
+					`path: /`,
+					`forward-url: http://localhost:8080/`,
+					`all-templates: ../all-templates/a`,
+					`enabled-templates: ../enabled-templates/a`,
+				),
+				"b.yml": lines(
+					`path: /`,
+					`forward-url: http://localhost:8080/`,
+					`all-templates: ../all-templates/a`,
+					`enabled-templates: ../enabled-templates/a`,
+				),
+			},
+		}, hashes, path)
+		_, err := config.New(p)
+		require.Equal(t, &config.ErrorDuplicate{
+			Original:  filepath.Join(path, "all-services", "a.yml"),
+			Duplicate: filepath.Join(path, "all-services", "b.yml"),
+		}, err)
+	})
+}
 
 // func TestReadConfigErrorDuplicateServiceConfig(t *testing.T) {
 // 	for _, m := range [2]string{
@@ -689,11 +641,17 @@ func minValidFS(fn func(path string)) {
 	defer os.RemoveAll(base)
 
 	dirs := map[string]any{
-		"all-services":      nil,
-		"enabled-services":  nil,
-		"all-templates":     nil,
-		"enabled-templates": nil,
-		"irrelevant-dir":    nil,
+		"all-services":     nil,
+		"enabled-services": nil,
+		"all-templates": map[string]any{
+			"a": nil,
+			"b": nil,
+		},
+		"enabled-templates": map[string]any{
+			"a": nil,
+			"b": nil,
+		},
+		"irrelevant-dir": nil,
 	}
 	files := map[string]any{
 		ServerConfigFileName: lines(
@@ -880,13 +838,14 @@ func validFS(fn func(path string, conf *config.Config)) {
 	path = filepath.Join(base, "all-services", "a.yml")
 	services.Set(hashes[path],
 		&config.Service{
-			ID:             "a",
-			Path:           "/path",
-			ForwardURL:     "http://localhost:8080/path",
-			ForwardReduced: true,
-			Templates:      serviceATemplates,
-			Enabled:        true,
-			FilePath:       path,
+			ID:               "a",
+			Path:             "/path",
+			ForwardURL:       "http://localhost:8080/path",
+			ForwardReduced:   true,
+			Templates:        serviceATemplates,
+			TemplatesEnabled: serviceATemplates.Values(),
+			Enabled:          true,
+			FilePath:         path,
 		},
 	)
 	path = filepath.Join(base, "all-templates", "b", "c.gqt")
@@ -908,13 +867,14 @@ func validFS(fn func(path string, conf *config.Config)) {
 	path = filepath.Join(base, "all-services", "b.yml")
 	services.Set(hashes[path],
 		&config.Service{
-			ID:             "b",
-			Path:           "/",
-			ForwardURL:     "http://localhost:9090/",
-			ForwardReduced: false,
-			Templates:      serviceBTemplates,
-			Enabled:        true,
-			FilePath:       path,
+			ID:               "b",
+			Path:             "/",
+			ForwardURL:       "http://localhost:9090/",
+			ForwardReduced:   false,
+			Templates:        serviceBTemplates,
+			TemplatesEnabled: serviceBTemplates.Values(),
+			Enabled:          true,
+			FilePath:         path,
 		},
 	)
 
@@ -934,7 +894,8 @@ func validFS(fn func(path string, conf *config.Config)) {
 				KeyFile:  "api.key",
 			},
 		},
-		Services: services,
+		Services:        services,
+		ServicesEnabled: services.Values(),
 	}
 
 	fn(base, conf)
@@ -964,7 +925,7 @@ func createFiles(files map[string]any, hashes map[string][]byte, path string) er
 		p := filepath.Join(path, k)
 		switch vt := v.(type) {
 		case []byte:
-			f, err := os.OpenFile(p, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0644)
+			f, err := os.Create(p)
 			if err != nil {
 				return err
 			} else {

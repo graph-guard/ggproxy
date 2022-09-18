@@ -9,6 +9,7 @@
 package hamap
 
 import (
+	"github.com/google/go-cmp/cmp"
 	"github.com/graph-guard/ggproxy/utilities/math"
 	"github.com/zeebo/xxh3"
 )
@@ -36,6 +37,10 @@ type Map[K KeyInterface, V any] struct {
 	size   int
 	d      []bucket[K, V]
 	hasher Hasher[K]
+}
+
+func (m *Map[K, V]) Equal(mm *Map[K, V]) bool {
+	return m.size == mm.size && cmp.Equal(m.d, mm.d) && m.hasher == mm.hasher
 }
 
 // HasherXXH3 can be used to provide custom seeds during initialization.
@@ -271,6 +276,15 @@ func (m *Map[K, V]) VisitAll(fn func(key K, value V)) {
 		}
 		fn(m.d[i].Key, m.d[i].Value)
 	}
+}
+
+// Values returns all map values
+func (m *Map[K, V]) Values() (values []V) {
+	m.VisitAll(func(key K, value V) {
+		values = append(values, value)
+	})
+
+	return
 }
 
 // findExp utilizes exponential binary search and returns index and true if

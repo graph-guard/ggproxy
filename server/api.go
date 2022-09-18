@@ -111,13 +111,10 @@ func (s *API) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *API) Serve(listener net.Listener) {
-	serviceIDs := make([]string, 0)
-	s.config.Services.Visit(func(key []byte, s *config.Service) (stop bool) {
-		if s.Enabled {
-			serviceIDs = append(serviceIDs, s.ID)
-		}
-		return
-	})
+	serviceIDs := make([]string, len(s.config.ServicesEnabled))
+	for i := range s.config.ServicesEnabled {
+		serviceIDs[i] = s.config.ServicesEnabled[i].ID
+	}
 	s.log.Info().
 		Str("host", s.config.API.Host).
 		Bool("tls", s.config.API.TLS.CertFile != "").
@@ -270,8 +267,8 @@ func makeService(
 		ID:                s.ID,
 		ForwardURL:        s.ForwardURL,
 		Enabled:           s.Enabled,
-		TemplatesEnabled:  make([]*model.Template, 0),
-		TemplatesDisabled: make([]*model.Template, 0),
+		TemplatesEnabled:  make([]*model.Template, len(s.TemplatesEnabled)),
+		TemplatesDisabled: make([]*model.Template, s.Templates.Len()-len(s.TemplatesEnabled)),
 	}
 
 	{ // Initialize matcher engine
