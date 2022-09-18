@@ -113,6 +113,9 @@ func New(path string) (c *Config, err error) {
 		Services: hamap.New[[]byte, *Service](0, nil),
 	}
 	err = c.readServerConfig(path)
+	if err != nil {
+		return nil, err
+	}
 
 	return
 }

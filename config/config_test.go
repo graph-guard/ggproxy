@@ -26,11 +26,15 @@ type TestError struct {
 	Check      func(*testing.T, error)
 }
 
+var ServerConfigFileName = "config.yml"
+var ServiceAConfigFileName = "a.yml"
+var ServiceBConfigFileName = "b.yml"
+
 func TestReadConfig(t *testing.T) {
 	validFS(func(path string, conf *config.Config) {
 		for _, td := range []TestOK{
 			{
-				Path:   filepath.Join(path, "config.yml"),
+				Path:   filepath.Join(path, ServerConfigFileName),
 				Expect: conf,
 			},
 		} {
@@ -46,7 +50,7 @@ func TestReadConfig(t *testing.T) {
 func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 	validFS(func(path string, conf *config.Config) {
 		createFiles(map[string]any{
-			"config.yml": lines(
+			ServerConfigFileName: lines(
 				`proxy:`,
 				`  host: localhost:443`,
 				`  tls:`,
@@ -67,7 +71,7 @@ func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 
 		for _, td := range []TestOK{
 			{
-				Path:   filepath.Join(path, "config.yml"),
+				Path:   filepath.Join(path, ServerConfigFileName),
 				Expect: conf,
 			},
 		} {
@@ -80,224 +84,206 @@ func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 	})
 }
 
-// func TestReadConfigErrorMissingServerConfig(t *testing.T) {
-// 	fs, path, _ := validFS()
-// 	p := filepath.Join(
-// 		path,
-// 		config.ServerConfigFile1,
-// 	)
-// 	delete(fs, p)
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorMissing{
-// 		FilePath: p,
-// 	}, err)
-// }
+func TestReadConfigErrorMissingServerConfig(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		err := os.Remove(p)
+		require.NoError(t, err)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Contains(t, err.Error(), "no such file or directory")
+	})
+}
 
-// func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
-// 	for _, m := range [2]string{
-// 		config.ServicesDisabledDir, config.ServicesEnabledDir,
-// 	} {
-// 		t.Run(m, func(t *testing.T) {
-// 			fs, path, _ := validFS()
-// 			p := filepath.Join(
-// 				path,
-// 				config.ServiceConfigFile1,
-// 			)
-// 			fs[p].Data = lines(
-// 				"not a valid config.yaml",
-// 			)
-// 			err := testError(t, fs, path)
-// 			require.Equal(t, &config.ErrorIllegal{
-// 				FilePath: p,
-// 				Feature:  "syntax",
-// 				Message: "yaml: unmarshal errors:\n  " +
-// 					"line 1: cannot unmarshal !!str `not a v...` " +
-// 					"into config.serverConfig",
-// 			}, err)
-// 		})
-// 	}
-// }
+func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createFiles(map[string]any{
+			ServerConfigFileName: lines("not a valid config.yaml"),
+		}, nil, path)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Equal(t, &config.ErrorIllegal{
+			FilePath: p,
+			Feature:  "syntax",
+			Message: "yaml: unmarshal errors:\n  " +
+				"line 1: cannot unmarshal !!str `not a v...` " +
+				"into config.serverConfig",
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorMissingProxyHostConfig(t *testing.T) {
-// 	for _, m := range [2]string{
-// 		config.ServicesDisabledDir, config.ServicesEnabledDir,
-// 	} {
-// 		t.Run(m, func(t *testing.T) {
-// 			fs, path, _ := validFS()
-// 			p := filepath.Join(
-// 				path,
-// 				config.ServerConfigFile1,
-// 			)
-// 			fs[p].Data = lines(
-// 				`proxy:`,
-// 				`  host: `,
-// 			)
-// 			err := testError(t, fs, path)
-// 			require.Equal(t, &config.ErrorMissing{
-// 				FilePath: p,
-// 				Feature:  "proxy.host",
-// 			}, err)
-// 		})
-// 	}
-// }
+func TestReadConfigErrorMissingProxyHostConfig(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createFiles(map[string]any{
+			ServerConfigFileName: lines(
+				`proxy:`,
+				`  host: `,
+			),
+		}, nil, path)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Equal(t, &config.ErrorMissing{
+			FilePath: p,
+			Feature:  "proxy.host",
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorMissingAPIHostConfig(t *testing.T) {
-// 	for _, m := range [2]string{
-// 		config.ServicesDisabledDir, config.ServicesEnabledDir,
-// 	} {
-// 		t.Run(m, func(t *testing.T) {
-// 			fs, path, _ := validFS()
-// 			p := filepath.Join(
-// 				path,
-// 				config.ServerConfigFile1,
-// 			)
-// 			fs[p].Data = lines(
-// 				`proxy:`,
-// 				`  host: localhost:8080`,
-// 				`api:`,
-// 				`  host: `,
-// 			)
-// 			err := testError(t, fs, path)
-// 			require.Equal(t, &config.ErrorMissing{
-// 				FilePath: p,
-// 				Feature:  "api.host",
-// 			}, err)
-// 		})
-// 	}
-// }
+func TestReadConfigErrorMissingAPIHostConfig(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createFiles(map[string]any{
+			ServerConfigFileName: lines(
+				`proxy:`,
+				`  host: localhost:8080`,
+				`api:`,
+				`  host: `,
+			),
+		}, nil, path)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Equal(t, &config.ErrorMissing{
+			FilePath: p,
+			Feature:  "api.host",
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorMissingProxyTLSCert(t *testing.T) {
-// 	fs, path, _ := validFS()
-// 	p := filepath.Join(
-// 		path,
-// 		config.ServerConfigFile1,
-// 	)
-// 	fs[p].Data = lines(
-// 		`proxy:`,
-// 		`  host: localhost:8080`,
-// 		`  tls:`,
-// 		`    key-file: proxy.key`,
-// 		`api:`,
-// 		`  host: localhost:9090`,
-// 	)
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorMissing{
-// 		FilePath: p,
-// 		Feature:  "proxy.tls.cert-file",
-// 	}, err)
-// }
+func TestReadConfigErrorMissingProxyTLSCert(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createFiles(map[string]any{
+			ServerConfigFileName: lines(
+				`proxy:`,
+				`  host: localhost:8080`,
+				`  tls:`,
+				`    key-file: proxy.key`,
+				`api:`,
+				`  host: localhost:9090`,
+			),
+		}, nil, path)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Equal(t, &config.ErrorMissing{
+			FilePath: p,
+			Feature:  "proxy.tls.cert-file",
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorMissingProxyTLSKey(t *testing.T) {
-// 	fs, path, _ := validFS()
-// 	p := filepath.Join(
-// 		path,
-// 		config.ServerConfigFile1,
-// 	)
-// 	fs[p].Data = lines(
-// 		`proxy:`,
-// 		`  host: localhost:8080`,
-// 		`  tls:`,
-// 		`    cert-file: proxy.cert`,
-// 		`api:`,
-// 		`  host: localhost:9090`,
-// 	)
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorMissing{
-// 		FilePath: p,
-// 		Feature:  "proxy.tls.key-file",
-// 	}, err)
-// }
+func TestReadConfigErrorMissingProxyTLSKey(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createFiles(map[string]any{
+			ServerConfigFileName: lines(
+				`proxy:`,
+				`  host: localhost:8080`,
+				`  tls:`,
+				`    cert-file: proxy.cert`,
+				`api:`,
+				`  host: localhost:9090`,
+			),
+		}, nil, path)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Equal(t, &config.ErrorMissing{
+			FilePath: p,
+			Feature:  "proxy.tls.key-file",
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorMissingAPITLSCert(t *testing.T) {
-// 	fs, path, _ := validFS()
-// 	p := filepath.Join(
-// 		path,
-// 		config.ServerConfigFile1,
-// 	)
-// 	fs[p].Data = lines(
-// 		`proxy:`,
-// 		`  host: localhost:8080`,
-// 		`api:`,
-// 		`  host: localhost:9090`,
-// 		`  tls:`,
-// 		`    key-file: api.key`,
-// 	)
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorMissing{
-// 		FilePath: p,
-// 		Feature:  "api.tls.cert-file",
-// 	}, err)
-// }
+func TestReadConfigErrorMissingAPITLSCert(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createFiles(map[string]any{
+			ServerConfigFileName: lines(
+				`proxy:`,
+				`  host: localhost:8080`,
+				`api:`,
+				`  host: localhost:9090`,
+				`  tls:`,
+				`    key-file: api.key`,
+			),
+		}, nil, path)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Equal(t, &config.ErrorMissing{
+			FilePath: p,
+			Feature:  "api.tls.cert-file",
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorMissingAPITLSKey(t *testing.T) {
-// 	fs, path, _ := validFS()
-// 	p := filepath.Join(
-// 		path,
-// 		config.ServerConfigFile1,
-// 	)
-// 	fs[p].Data = lines(
-// 		`proxy:`,
-// 		`  host: localhost:8080`,
-// 		`api:`,
-// 		`  host: localhost:9090`,
-// 		`  tls:`,
-// 		`    cert-file: api.cert`,
-// 	)
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorMissing{
-// 		FilePath: p,
-// 		Feature:  "api.tls.key-file",
-// 	}, err)
-// }
+func TestReadConfigErrorMissingAPITLSKey(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createFiles(map[string]any{
+			ServerConfigFileName: lines(
+				`proxy:`,
+				`  host: localhost:8080`,
+				`api:`,
+				`  host: localhost:9090`,
+				`  tls:`,
+				`    cert-file: api.cert`,
+			),
+		}, nil, path)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Equal(t, &config.ErrorMissing{
+			FilePath: p,
+			Feature:  "api.tls.key-file",
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorIllegalProxyMaxReqBodySize(t *testing.T) {
-// 	fs, path, _ := validFS()
-// 	p := filepath.Join(
-// 		path,
-// 		config.ServerConfigFile1,
-// 	)
-// 	fs[p].Data = lines(
-// 		`proxy:`,
-// 		`  host: localhost:8080`,
-// 		`  max-request-body-size: 255`,
-// 		`api:`,
-// 		`  host: localhost:9090`,
-// 	)
-// 	err := testError(t, fs, path)
-// 	require.Equal(t, &config.ErrorIllegal{
-// 		FilePath: p,
-// 		Feature:  "proxy.max-request-body-size",
-// 		Message: fmt.Sprintf(
-// 			"maximum request body size should not be smaller than %d B",
-// 			config.MinReqBodySize,
-// 		),
-// 	}, err)
-// }
+func TestReadConfigErrorIllegalProxyMaxReqBodySize(t *testing.T) {
+	validFS(func(path string, conf *config.Config) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createFiles(map[string]any{
+			ServerConfigFileName: lines(
+				`proxy:`,
+				`  host: localhost:8080`,
+				`  max-request-body-size: 255`,
+				`api:`,
+				`  host: localhost:9090`,
+			),
+		}, nil, path)
+		c, err := config.New(p)
+		require.Nil(t, c)
+		require.Equal(t, &config.ErrorIllegal{
+			FilePath: p,
+			Feature:  "proxy.max-request-body-size",
+			Message: fmt.Sprintf(
+				"maximum request body size should not be smaller than %d B",
+				config.MinReqBodySize,
+			),
+		}, err)
+	})
+}
 
-// func TestReadConfigErrorMissingConfig(t *testing.T) {
-// 	for _, m := range [2]string{
-// 		config.ServicesDisabledDir, config.ServicesEnabledDir,
-// 	} {
-// 		t.Run(m, func(t *testing.T) {
-// 			fs, path := minValidFS()
-// 			p := filepath.Join(
-// 				path,
-// 				m,
-// 				"service_a",
-// 				"irrelevant_file.txt",
-// 			)
-// 			fs[p] = &fstest.MapFile{
-// 				Data: []byte(`this file only keeps the directory`),
-// 			}
-// 			err := testError(t, fs, path)
-// 			require.Equal(t, &config.ErrorMissing{
-// 				FilePath: filepath.Join(
-// 					path, m, "service_a", config.ServiceConfigFile1,
-// 				),
-// 			}, err)
-// 		})
-// 	}
-// }
+func TestReadServiceConfigErrorMissingConfig(t *testing.T) {
+	minValidFS(func(path string) {
+		p := filepath.Join(path, ServerConfigFileName)
+		createDirs(map[string]any{
+			"all-services": nil,
+		}, path)
+		hashes := map[string][]byte{}
+		createFiles(map[string]any{
+			"all-services": map[string]any{
+				"irrelevant_file.txt": []byte(`this file only keeps the directory`),
+			},
+		}, hashes, path)
+		_, err := config.New(p)
+		require.Equal(t, &config.ErrorMissing{
+			FilePath: filepath.Join(
+				path, "all-services",
+			),
+		}, err)
+	})
+}
 
 // func TestReadConfigErrorMalformedMetadata(t *testing.T) {
 // 	fs, path, _ := validFS()
@@ -644,49 +630,13 @@ func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 
 // func testError(
 // 	t *testing.T,
-// 	filesystem fstest.MapFS,
 // 	path string,
 // ) error {
 // 	t.Helper()
-// 	c, err := config.ReadConfig(filesystem, path)
+// 	c, err := config.New(path)
 // 	require.Error(t, err)
 // 	require.Nil(t, c)
 // 	return err
-// }
-
-// func minValidFS() (filesystem fstest.MapFS, path string) {
-// 	path = "testconfig"
-// 	filesystem = fstest.MapFS{
-// 		filepath.Join(
-// 			path,
-// 			config.ServerConfigFile1,
-// 		): &fstest.MapFile{
-// 			Data: lines(
-// 				`proxy:`,
-// 				`  host: localhost:443`,
-// 			),
-// 		},
-
-// 		// Irrelevant files
-// 		filepath.Join(
-// 			"irrelevant_dir",
-// 			"irrelevant_file.txt",
-// 		): &fstest.MapFile{
-// 			Data: lines(
-// 				`this file is irrelevant and exists only for the purposes`,
-// 				`of testing function ReadConfig.`,
-// 			),
-// 		},
-// 		filepath.Join(
-// 			"irrelevant_file.txt",
-// 		): &fstest.MapFile{
-// 			Data: lines(
-// 				`this file is irrelevant and exists only for the purposes`,
-// 				`of testing function ReadConfig.`,
-// 			),
-// 		},
-// 	}
-// 	return
 // }
 
 // func TestErrorString(t *testing.T) {
@@ -731,6 +681,51 @@ func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
 // 	}
 // }
 
+func minValidFS(fn func(path string)) {
+	base, err := os.MkdirTemp("", "ggproxy-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(base)
+
+	dirs := map[string]any{
+		"all-services":      nil,
+		"enabled-services":  nil,
+		"all-templates":     nil,
+		"enabled-templates": nil,
+		"irrelevant-dir":    nil,
+	}
+	files := map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: localhost:443`,
+			`all-services: all-services`,
+			`enabled-services: enabled-services`,
+		),
+		"irrelevant-file.txt": lines(
+			`this file is irrelevant and exists only for the purposes`,
+			`of testing function ReadConfig.`,
+		),
+		"irrelevant-dir": map[string]any{
+			"irrelevant_file.txt": lines(
+				`this file is irrelevant and exists only for the purposes`,
+				`of testing function ReadConfig.`,
+			),
+		},
+	}
+
+	var hashes = make(map[string][]byte)
+
+	if err := createDirs(dirs, base); err != nil {
+		panic(err)
+	}
+	if err := createFiles(files, hashes, base); err != nil {
+		panic(err)
+	}
+
+	fn(base)
+}
+
 func validFS(fn func(path string, conf *config.Config)) {
 	base, err := os.MkdirTemp("", "ggproxy-")
 	if err != nil {
@@ -749,10 +744,10 @@ func validFS(fn func(path string, conf *config.Config)) {
 			"a": nil,
 			"b": nil,
 		},
-		"irrelevant_dir": nil,
+		"irrelevant-dir": nil,
 	}
 	files := map[string]any{
-		"config.yml": lines(
+		ServerConfigFileName: lines(
 			`proxy:`,
 			`  host: localhost:443`,
 			`  tls:`,
@@ -810,11 +805,11 @@ func validFS(fn func(path string, conf *config.Config)) {
 				"ignored_file.txt": []byte(`this file should be ignored`),
 			},
 		},
-		"irrelevant_file.txt": lines(
+		"irrelevant-file.txt": lines(
 			`this file is irrelevant and exists only for the purposes`,
 			`of testing function ReadConfig.`,
 		),
-		"irrelevant_dir": map[string]any{
+		"irrelevant-dir": map[string]any{
 			"irrelevant_file.txt": lines(
 				`this file is irrelevant and exists only for the purposes`,
 				`of testing function ReadConfig.`,
@@ -827,8 +822,8 @@ func validFS(fn func(path string, conf *config.Config)) {
 		"all-templates/a/a.gqt":            "enabled-templates/a/a.gqt",
 		"all-templates/a/b.gqt":            "enabled-templates/a/b.gqt",
 		"all-templates/b/c.gqt":            "enabled-templates/b/c.gqt",
-		"all-services/ignored_file.txt":    "enabled-services/ignored_file.txt",
-		"all-templates/b/ignored_file.txt": "enabled-templates/b/ignored_file.txt",
+		"all-services/ignored-file.txt":    "enabled-services/ignored-file.txt",
+		"all-templates/b/ignored-file.txt": "enabled-templates/b/ignored-file.txt",
 	}
 
 	var hashes = make(map[string][]byte)
