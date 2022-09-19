@@ -770,7 +770,7 @@ func openFile(path string) (*os.File, error) {
 		return nil, fmt.Errorf("getting information about file: %w", err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		path, err = os.Readlink(path)
+		path, err = filepath.EvalSymlinks(path)
 		if err != nil {
 			return nil, fmt.Errorf("reading link: %w", err)
 		}

@@ -1,5 +1,3 @@
-# /etc/ggproxy/config.yaml
-
 proxy:
   # Address and port of the proxy server.
   host: localhost:8000
@@ -22,3 +20,6 @@ api:
     #cert-file: api.cert
     # Private key file path.
     #key-file: api.key
+
+all-services: ./all-services
+enabled-services: ./enabled-services
