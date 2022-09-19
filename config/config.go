@@ -1,29 +1,28 @@
 package config
 
 import (
+	"crypto/md5"
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	neturl "net/url"
+	"os"
 	"path/filepath"
+	"reflect"
+	"regexp"
 	"strings"
 
 	"github.com/dustin/go-humanize"
+	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/graph-guard/ggproxy/config/metadata"
+	"github.com/graph-guard/ggproxy/utilities/container/hamap"
 	"github.com/graph-guard/gqt"
 	yaml "gopkg.in/yaml.v3"
 )
 
-const ServerConfigFile1 = "config.yaml"
-const ServerConfigFile2 = "config.yml"
-const ServicesEnabledDir = "services_enabled"
-const ServicesDisabledDir = "services_disabled"
-const TemplatesEnabledDir = "templates_enabled"
-const TemplatesDisabledDir = "templates_disabled"
-const ServiceConfigFile1 = "config.yaml"
-const ServiceConfigFile2 = "config.yml"
-const FileExtGQT = ".gqt"
+var ConfigFileExtension = regexp.MustCompile(`\.(yml|yaml)$`)
+var TemplateFileExtension = regexp.MustCompile(`\.gqt$`)
 
 // MinReqBodySize defines the minimum accepted value for
 // `max-request-body-size` in bytes.
@@ -39,10 +38,37 @@ var msgMaxReqBodySizeTooSmall = fmt.Sprintf(
 )
 
 type Config struct {
-	Proxy            ProxyServerConfig
-	API              *APIServerConfig
-	ServicesEnabled  []*Service
-	ServicesDisabled []*Service
+	Proxy           ProxyServerConfig
+	API             *APIServerConfig
+	Services        *hamap.Map[[]byte, *Service]
+	ServicesEnabled []*Service
+}
+
+func (c *Config) Equal(d *Config) bool {
+	eq := true
+	c.Services.Visit(func(key []byte, value *Service) (stop bool) {
+		v, ok := d.Services.Get(key)
+		if !ok {
+			eq = false
+			return true
+		}
+		if !v.Equal(value) {
+			eq = false
+			return true
+		}
+		return
+	})
+	if !eq {
+		return eq
+	}
+
+	less := func(a, b *Service) bool { return a.ID < b.ID }
+	eq = eq &&
+		reflect.DeepEqual(c.Proxy, d.Proxy) &&
+		reflect.DeepEqual(c.API, d.API) &&
+		cmp.Equal(c.ServicesEnabled, d.ServicesEnabled, cmpopts.SortSlices(less))
+
+	return eq
 }
 
 type ProxyServerConfig struct {
@@ -62,12 +88,26 @@ type TLS struct {
 }
 
 type Service struct {
-	ID                string
-	Path              string
-	ForwardURL        string
-	TemplatesEnabled  []*Template
-	TemplatesDisabled []*Template
-	ForwardReduced    bool
+	ID               string
+	Path             string
+	ForwardURL       string
+	Templates        *hamap.Map[[]byte, *Template]
+	TemplatesEnabled []*Template
+	ForwardReduced   bool
+	Enabled          bool
+	FilePath         string
+}
+
+func (c *Service) Equal(d *Service) bool {
+	less := func(a, b *Template) bool { return a.ID < b.ID }
+	return c.ID == d.ID &&
+		c.Path == d.Path &&
+		c.ForwardURL == d.ForwardURL &&
+		c.ForwardReduced == d.ForwardReduced &&
+		c.Enabled == d.Enabled &&
+		c.FilePath == d.FilePath &&
+		reflect.DeepEqual(c.Templates, d.Templates) &&
+		cmp.Equal(c.TemplatesEnabled, d.TemplatesEnabled, cmpopts.SortSlices(less))
 }
 
 type Template struct {
@@ -76,217 +116,8 @@ type Template struct {
 	Document gqt.Doc
 	Name     string
 	Tags     []string
-}
-
-func ReadConfig(filesystem fs.FS, dirPath string) (*Config, error) {
-	d, err := fs.ReadDir(filesystem, dirPath)
-	if err != nil {
-		return nil, fmt.Errorf("reading config directory: %w", err)
-	}
-
-	var servicesEnabledDir bool
-	var servicesDisabledDir bool
-	var serverConf bool
-
-	// Set default config values
-	conf := &Config{
-		Proxy: ProxyServerConfig{
-			MaxReqBodySizeBytes: DefaultMaxReqBodySize,
-		},
-		API: &APIServerConfig{},
-	}
-
-	for _, o := range d {
-		n := o.Name()
-		if o.IsDir() {
-			switch n {
-			case ServicesEnabledDir:
-				servicesEnabledDir = true
-			case ServicesDisabledDir:
-				servicesDisabledDir = true
-			}
-			continue
-		} else if n == ServerConfigFile1 ||
-			n == ServerConfigFile2 {
-			if serverConf {
-				return nil, &ErrorConflict{Items: []string{
-					ServerConfigFile1,
-					ServerConfigFile2,
-				}}
-			}
-			serverConf = true
-
-			p := filepath.Join(dirPath, n)
-			f, err := filesystem.Open(p)
-			if err != nil {
-				return nil, fmt.Errorf("reading server config: %w", err)
-			}
-
-			var c serverConfig
-			d := yaml.NewDecoder(f)
-			d.KnownFields(true)
-			if err := d.Decode(&c); err != nil {
-				return nil, &ErrorIllegal{
-					FilePath: p,
-					Feature:  "syntax",
-					Message:  err.Error(),
-				}
-			}
-
-			if err = setConfig(conf, c, p); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if !serverConf {
-		return nil, &ErrorMissing{
-			FilePath: filepath.Join(dirPath, ServerConfigFile1),
-		}
-	}
-
-	if servicesEnabledDir {
-		s, err := readServicesDir(
-			filesystem, filepath.Join(dirPath, ServicesEnabledDir),
-		)
-		if err != nil {
-			return nil, err
-		}
-		conf.ServicesEnabled = s
-	}
-
-	if servicesDisabledDir {
-		s, err := readServicesDir(
-			filesystem, filepath.Join(dirPath, ServicesDisabledDir),
-		)
-		if err != nil {
-			return nil, err
-		}
-		conf.ServicesDisabled = s
-	}
-
-	if d := duplicate(
-		conf.ServicesEnabled,
-		conf.ServicesDisabled,
-		func(a, b *Service) bool { return a.ID == b.ID },
-	); d != nil {
-		return nil, &ErrorConflict{Items: []string{
-			filepath.Join(ServicesEnabledDir, d.ID),
-			filepath.Join(ServicesDisabledDir, d.ID),
-		}}
-	}
-
-	return conf, nil
-}
-
-func readServicesDir(filesystem fs.FS, path string) ([]*Service, error) {
-	d, err := fs.ReadDir(filesystem, path)
-	if err != nil {
-		return nil, fmt.Errorf("reading directory: %w", err)
-	}
-	var services []*Service
-	for _, o := range d {
-		if !o.IsDir() {
-			// Ignore files
-			continue
-		}
-		s, err := readServiceDir(
-			filesystem, filepath.Join(path, o.Name()),
-		)
-		if err != nil {
-			return nil, err
-		}
-		services = append(services, s)
-	}
-	return services, nil
-}
-
-func readServiceDir(filesystem fs.FS, path string) (*Service, error) {
-	dir, err := fs.ReadDir(filesystem, path)
-	if err != nil {
-		return nil, fmt.Errorf("reading directory: %w", err)
-	}
-
-	id := filepath.Base(path)
-	if err := ValidateID(id); err != "" {
-		return nil, &ErrorIllegal{
-			FilePath: path,
-			Feature:  "id",
-			Message:  err,
-		}
-	}
-	id = strings.ToLower(id)
-
-	var configFile bool
-	s := &Service{
-		ID: id,
-	}
-
-	for _, o := range dir {
-		n := o.Name()
-		if o.IsDir() {
-			switch n {
-			case TemplatesEnabledDir:
-				templates, err := readTemplatesDir(
-					filesystem, filepath.Join(path, n),
-				)
-				if err != nil {
-					return nil, err
-				}
-				s.TemplatesEnabled = append(s.TemplatesEnabled, templates...)
-			case TemplatesDisabledDir:
-				templates, err := readTemplatesDir(
-					filesystem, filepath.Join(path, n),
-				)
-				if err != nil {
-					return nil, err
-				}
-				s.TemplatesDisabled = append(s.TemplatesDisabled, templates...)
-			}
-			continue
-		}
-		if n == ServiceConfigFile1 ||
-			n == ServiceConfigFile2 {
-			if configFile {
-				return nil, &ErrorConflict{Items: []string{
-					filepath.Join(path, ServiceConfigFile1),
-					filepath.Join(path, ServiceConfigFile2),
-				}}
-			}
-			c, err := readServiceConfigFile(
-				filesystem,
-				filepath.Join(path, n),
-			)
-			if err != nil {
-				return nil, err
-			}
-			s.Path = c.Path
-			s.ForwardURL = c.ForwardURL
-			s.ForwardReduced = c.ForwardReduced
-			configFile = true
-		}
-	}
-
-	if !configFile {
-		return nil, &ErrorMissing{
-			FilePath: filepath.Join(path, ServiceConfigFile1),
-		}
-	}
-
-	if d := duplicate(
-		s.TemplatesEnabled,
-		s.TemplatesDisabled,
-		func(a, b *Template) bool { return a.ID == b.ID },
-	); d != nil {
-		return nil, &ErrorConflict{
-			Items: []string{
-				filepath.Join(TemplatesEnabledDir, d.ID),
-				filepath.Join(TemplatesDisabledDir, d.ID),
-			},
-		}
-	}
-
-	return s, nil
+	Enabled  bool
+	FilePath string
 }
 
 type serverConfig struct {
@@ -305,128 +136,506 @@ type serverConfig struct {
 			KeyFile  string `yaml:"key-file"`
 		} `yaml:"tls"`
 	} `yaml:"api"`
+	ServicesAll     string `yaml:"all-services"`
+	ServicesEnabled string `yaml:"enabled-services"`
 }
 
 type serviceConfig struct {
-	Name           string `yaml:"name"`
-	Path           string `yaml:"path"`
-	ForwardURL     string `yaml:"forward_url"`
-	ForwardReduced bool   `yaml:"forward_reduced"`
+	Name             string `yaml:"name"`
+	Path             string `yaml:"path"`
+	ForwardURL       string `yaml:"forward-url"`
+	ForwardReduced   bool   `yaml:"forward-reduced"`
+	TemplatesAll     string `yaml:"all-templates"`
+	TemplatesEnabled string `yaml:"enabled-templates"`
 }
 
-func readServiceConfigFile(
-	filesystem fs.FS,
-	path string,
-) (*serviceConfig, error) {
-	f, err := filesystem.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("opening file: %w", err)
+func New(path string) (c *Config, err error) {
+	// Set default config values
+	c = &Config{
+		Proxy:    ProxyServerConfig{},
+		API:      &APIServerConfig{},
+		Services: hamap.New[[]byte, *Service](0, nil),
 	}
-	var c serviceConfig
-	d := yaml.NewDecoder(f)
+	err = c.readServerConfig(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return
+}
+
+func (c *Config) readServerConfig(path string) (err error) {
+	dirPath := filepath.Dir(path)
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("opening server config file: %w", err)
+	}
+
+	sc := &serverConfig{}
+	d := yaml.NewDecoder(file)
 	d.KnownFields(true)
-	if err := d.Decode(&c); err != nil {
-		return nil, &ErrorIllegal{
+	if err := d.Decode(sc); err != nil {
+		return &ErrorIllegal{
 			FilePath: path,
 			Feature:  "syntax",
 			Message:  err.Error(),
 		}
 	}
-	if c.Path == "" {
-		return nil, &ErrorMissing{
-			FilePath: path,
-			Feature:  "path",
+
+	err = validateServerConfig(sc, path)
+	if err != nil {
+		return err
+	}
+
+	c.Proxy.Host = sc.Proxy.Host
+	if sc.Proxy.TLS != nil {
+		c.Proxy.TLS.CertFile = sc.Proxy.TLS.CertFile
+		c.Proxy.TLS.KeyFile = sc.Proxy.TLS.KeyFile
+	}
+	if sc.Proxy.MaxRequestBodySizeBytes == nil {
+		c.Proxy.MaxReqBodySizeBytes = DefaultMaxReqBodySize
+	} else {
+		c.Proxy.MaxReqBodySizeBytes = *sc.Proxy.MaxRequestBodySizeBytes
+	}
+	if sc.API == nil {
+		// Disable API server
+		c.API = nil
+	} else {
+		c.API.Host = sc.API.Host
+		if sc.API.TLS != nil {
+			c.API.TLS.CertFile = sc.API.TLS.CertFile
+			c.API.TLS.KeyFile = sc.API.TLS.KeyFile
 		}
 	}
-	if err := validatePath(c.Path); err != nil {
-		return nil, &ErrorIllegal{
-			FilePath: path,
-			Feature:  "path",
-			Message:  err.Error(),
-		}
+
+	var servicesAllPath, servicesEnabledPath string
+	servicesAllPath = sc.ServicesAll
+	servicesEnabledPath = sc.ServicesEnabled
+	if !strings.HasPrefix(servicesAllPath, "/") {
+		servicesAllPath = filepath.Join(dirPath, servicesAllPath)
 	}
-	if c.ForwardURL == "" {
-		return nil, &ErrorMissing{
-			FilePath: path,
-			Feature:  "forward_url",
-		}
+	if !strings.HasPrefix(servicesEnabledPath, "/") {
+		servicesEnabledPath = filepath.Join(dirPath, servicesEnabledPath)
 	}
-	if err := validateURL(c.ForwardURL); err != nil {
-		return nil, &ErrorIllegal{
-			FilePath: path,
-			Feature:  "forward_url",
-			Message:  err.Error(),
-		}
+
+	// reading all services
+	err = c.readAllServices(servicesAllPath)
+	if err != nil {
+		return err
 	}
-	return &c, nil
+
+	// reading enabled services
+	err = c.readEnabledServices(servicesEnabledPath)
+	if err != nil {
+		return err
+	}
+
+	return
 }
 
-func readTemplatesDir(
-	filesystem fs.FS,
-	path string,
-) (t []*Template, err error) {
-	dir, err := fs.ReadDir(filesystem, path)
-	if err != nil {
-		return nil, fmt.Errorf("reading directory: %w", err)
+func validateServerConfig(sc *serverConfig, path string) (err error) {
+	if sc.Proxy.Host == "" {
+		return &ErrorMissing{
+			FilePath: path,
+			Feature:  "proxy.host",
+		}
 	}
 
-	for _, o := range dir {
-		if o.IsDir() {
+	if sc.Proxy.TLS != nil {
+		c := sc.Proxy.TLS
+		// If either of proxy.cert-file and proxy.key-file are
+		// present then both must be defined, otherwise TLS must be nil.
+		switch {
+		case c.CertFile != "" && c.KeyFile == "":
+			return &ErrorMissing{
+				FilePath: path,
+				Feature:  "proxy.tls.key-file",
+			}
+		case (c.KeyFile != "" && c.CertFile == "") ||
+			(c.KeyFile == "" && c.CertFile == ""):
+			return &ErrorMissing{
+				FilePath: path,
+				Feature:  "proxy.tls.cert-file",
+			}
+		}
+	}
+
+	if sc.API != nil {
+		c := sc.API
+		if c.Host == "" {
+			return &ErrorMissing{
+				FilePath: path,
+				Feature:  "api.host",
+			}
+		}
+
+		if c.TLS != nil {
+			c := c.TLS
+			// If either of api.cert-file and api.key-file are present
+			// then both must be defined, otherwise TLS must be nil.
+			switch {
+			case c.CertFile != "" && c.KeyFile == "":
+				return &ErrorMissing{
+					FilePath: path,
+					Feature:  "api.tls.key-file",
+				}
+			case (c.KeyFile != "" && c.CertFile == "") ||
+				(c.KeyFile == "" && c.CertFile == ""):
+				return &ErrorMissing{
+					FilePath: path,
+					Feature:  "api.tls.cert-file",
+				}
+			}
+		}
+	}
+
+	if sc.Proxy.MaxRequestBodySizeBytes != nil {
+		if *sc.Proxy.MaxRequestBodySizeBytes < MinReqBodySize {
+			return &ErrorIllegal{
+				FilePath: path,
+				Feature:  "proxy.max-request-body-size",
+				Message:  msgMaxReqBodySizeTooSmall,
+			}
+		}
+	}
+
+	if sc.ServicesAll == "" {
+		return &ErrorMissing{
+			FilePath: path,
+			Feature:  "all-services",
+		}
+	}
+	if sc.ServicesEnabled == "" {
+		return &ErrorMissing{
+			FilePath: path,
+			Feature:  "enabled-services",
+		}
+	}
+
+	return
+}
+
+func (c *Config) readAllServices(path string) (err error) {
+	d, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("reading services directory: %w", err)
+	}
+
+	for _, sf := range d {
+		if sf.IsDir() {
 			continue
 		}
-		n := o.Name()
-		if !strings.HasSuffix(n, FileExtGQT) {
+		if !ConfigFileExtension.MatchString(sf.Name()) {
+			// Ignore non-yaml files
+			continue
+		}
+
+		file, err := openFile(filepath.Join(path, sf.Name()))
+		if err != nil {
+			return err
+		}
+		h, err := calculateHash(file)
+		if err != nil {
+			return err
+		}
+
+		s, err := readServiceConfig(file)
+		if err != nil {
+			return err
+		}
+		original, ok := c.Services.Get(h)
+		if ok {
+			return &ErrorDuplicate{
+				Original:  original.FilePath,
+				Duplicate: s.FilePath,
+			}
+		}
+		c.Services.Set(h, s)
+	}
+
+	return
+}
+
+func (c *Config) readEnabledServices(path string) (err error) {
+	d, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("reading enabled services directory: %w", err)
+	}
+
+	var alien []string
+	for _, sf := range d {
+		if sf.IsDir() {
+			continue
+		}
+		if !ConfigFileExtension.MatchString(sf.Name()) {
+			// Ignore non-yaml files
+			continue
+		}
+
+		filePath := filepath.Join(path, sf.Name())
+		file, err := openFile(filePath)
+		if err != nil {
+			return err
+		}
+		h, err := calculateHash(file)
+		if err != nil {
+			return err
+		}
+		s, ok := c.Services.Get(h)
+		if ok {
+			s.Enabled = true
+			c.ServicesEnabled = append(c.ServicesEnabled, s)
+		} else {
+			alien = append(alien, filePath)
+		}
+	}
+
+	if len(alien) > 0 {
+		return &ErrorAlien{Items: alien}
+	}
+
+	return
+}
+
+func readServiceConfig(file *os.File) (s *Service, err error) {
+	filePath := file.Name()
+	dirPath := filepath.Dir(file.Name())
+
+	sc := &serviceConfig{}
+	d := yaml.NewDecoder(file)
+	d.KnownFields(true)
+	if err := d.Decode(sc); err != nil {
+		return nil, &ErrorIllegal{
+			FilePath: filePath,
+			Feature:  "syntax",
+			Message:  err.Error(),
+		}
+	}
+
+	err = validateServiceConfig(sc, filePath)
+	if err != nil {
+		return nil, err
+	}
+
+	var templatesAllPath, templatesEnabledPath string
+	templatesAllPath = sc.TemplatesAll
+	templatesEnabledPath = sc.TemplatesEnabled
+	if !strings.HasPrefix(templatesAllPath, "/") {
+		templatesAllPath = filepath.Join(dirPath, templatesAllPath)
+	}
+	if !strings.HasPrefix(templatesEnabledPath, "/") {
+		templatesEnabledPath = filepath.Join(dirPath, templatesEnabledPath)
+	}
+
+	id := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
+	if err := ValidateID(id); err != "" {
+		return nil, &ErrorIllegal{
+			FilePath: filePath,
+			Feature:  "id",
+			Message:  err,
+		}
+	}
+	id = strings.ToLower(id)
+
+	s = &Service{
+		ID:             id,
+		Templates:      hamap.New[[]byte, *Template](0, nil),
+		FilePath:       filePath,
+		Path:           sc.Path,
+		ForwardURL:     sc.ForwardURL,
+		ForwardReduced: sc.ForwardReduced,
+	}
+
+	// reading all templates
+	err = s.readAllTemplates(templatesAllPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// reading enabled templates
+	err = s.readEnabledTemplates(templatesEnabledPath)
+	if err != nil {
+		return nil, err
+	}
+
+	return
+}
+
+func validateServiceConfig(sc *serviceConfig, path string) (err error) {
+	if sc.Path == "" {
+		return &ErrorMissing{
+			FilePath: path,
+			Feature:  "path",
+		}
+	}
+	if err := validatePath(sc.Path); err != nil {
+		return &ErrorIllegal{
+			FilePath: path,
+			Feature:  "path",
+			Message:  err.Error(),
+		}
+	}
+	if sc.ForwardURL == "" {
+		return &ErrorMissing{
+			FilePath: path,
+			Feature:  "forward-url",
+		}
+	}
+	if err := validateURL(sc.ForwardURL); err != nil {
+		return &ErrorIllegal{
+			FilePath: path,
+			Feature:  "forward-url",
+			Message:  err.Error(),
+		}
+	}
+	if sc.TemplatesAll == "" {
+		return &ErrorMissing{
+			FilePath: path,
+			Feature:  "all-templates",
+		}
+	}
+	if sc.TemplatesEnabled == "" {
+		return &ErrorMissing{
+			FilePath: path,
+			Feature:  "enabled-templates",
+		}
+	}
+
+	return
+}
+
+func (s *Service) readAllTemplates(path string) (err error) {
+	dir, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("reading templates directory: %w", err)
+	}
+
+	for _, tf := range dir {
+		if tf.IsDir() {
+			continue
+		}
+		if !TemplateFileExtension.MatchString(tf.Name()) {
 			// Ignore non-GQT files
 			continue
 		}
-		p := filepath.Join(path, n)
-		id := n[:len(n)-len(filepath.Ext(n))]
-		if err := ValidateID(id); err != "" {
-			return nil, &ErrorIllegal{
-				FilePath: p,
-				Feature:  "id",
-				Message:  err,
+
+		file, err := openFile(filepath.Join(path, tf.Name()))
+		if err != nil {
+			return err
+		}
+		h, err := calculateHash(file)
+		if err != nil {
+			return err
+		}
+
+		t, err := readTemplate(file)
+		if err != nil {
+			return err
+		}
+
+		original, ok := s.Templates.Get(h)
+		if ok {
+			return &ErrorDuplicate{
+				Original:  original.FilePath,
+				Duplicate: t.FilePath,
 			}
 		}
-
-		id = strings.ToLower(id)
-
-		src, err := filesystem.Open(p)
-		if err != nil {
-			return nil, fmt.Errorf("opening %q: %w", p, err)
-		}
-		b, err := io.ReadAll(src)
-		if err != nil {
-			return nil, fmt.Errorf("reading %q: %w", p, err)
-		}
-
-		meta, template, err := metadata.Parse(b)
-		if err != nil {
-			return nil, &ErrorIllegal{
-				FilePath: p,
-				Feature:  "metadata",
-				Message:  err.Error(),
-			}
-		}
-
-		doc, errParser := gqt.Parse(template)
-		if errParser.IsErr() {
-			return nil, &ErrorIllegal{
-				FilePath: p,
-				Feature:  "template",
-				Message:  errParser.Error(),
-			}
-		}
-		t = append(t, &Template{
-			ID:       id,
-			Source:   template,
-			Document: doc,
-			Name:     meta.Name,
-			Tags:     meta.Tags,
-		})
+		s.Templates.Set(h, t)
 	}
 
-	return t, nil
+	return
+}
+
+func (s *Service) readEnabledTemplates(path string) (err error) {
+	dir, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("reading enabled templates directory: %w", err)
+	}
+
+	var aliens []string
+	for _, tf := range dir {
+		if tf.IsDir() {
+			continue
+		}
+		if !TemplateFileExtension.MatchString(tf.Name()) {
+			// Ignore non-GQT files
+			continue
+		}
+
+		file, err := openFile(filepath.Join(path, tf.Name()))
+		if err != nil {
+			return err
+		}
+
+		h, err := calculateHash(file)
+		if err != nil {
+			return err
+		}
+		t, ok := s.Templates.Get(h)
+		if ok {
+			t.Enabled = true
+			s.TemplatesEnabled = append(s.TemplatesEnabled, t)
+		} else {
+			aliens = append(aliens, tf.Name())
+		}
+	}
+
+	if len(aliens) > 0 {
+		return &ErrorAlien{Items: aliens}
+	}
+
+	return
+}
+
+func readTemplate(file *os.File) (t *Template, err error) {
+	filePath := file.Name()
+
+	id := strings.ToLower(
+		strings.TrimSuffix(
+			filepath.Base(filePath), filepath.Ext(filePath),
+		),
+	)
+	if err := ValidateID(id); err != "" {
+		return nil, &ErrorIllegal{
+			FilePath: filePath,
+			Feature:  "id",
+			Message:  err,
+		}
+	}
+
+	b, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("reading template %q: %w", filePath, err)
+	}
+
+	meta, template, err := metadata.Parse(b)
+	if err != nil {
+		return nil, &ErrorIllegal{
+			FilePath: filePath,
+			Feature:  "metadata",
+			Message:  err.Error(),
+		}
+	}
+
+	doc, errParser := gqt.Parse(template)
+	if errParser.IsErr() {
+		return nil, &ErrorIllegal{
+			FilePath: filePath,
+			Feature:  "template",
+			Message:  errParser.Error(),
+		}
+	}
+
+	t = &Template{
+		ID:       id,
+		Source:   template,
+		Document: doc,
+		Name:     meta.Name,
+		Tags:     meta.Tags,
+		FilePath: filePath,
+	}
+
+	return
 }
 
 func ValidateID(n string) (err string) {
@@ -446,24 +655,22 @@ const IDValidCharDict = "abcdefghijklmnopqrstuvwxyz" +
 	"0123456789" +
 	"_-"
 
-func duplicate[T any](a, b []T, isEqual func(a, b T) bool) (d T) {
-	for i := range a {
-		for i2 := range b {
-			if isEqual(a[i], b[i2]) {
-				return a[i]
-			}
-		}
-	}
-	return
+type ErrorDuplicate struct {
+	Original  string
+	Duplicate string
 }
 
-type ErrorConflict struct {
+func (e ErrorDuplicate) Error() string {
+	return fmt.Sprintf("%s is a duplicate of %s", e.Duplicate, e.Original)
+}
+
+type ErrorAlien struct {
 	Items []string
 }
 
-func (e ErrorConflict) Error() string {
+func (e ErrorAlien) Error() string {
 	var b strings.Builder
-	b.WriteString("conflict between: ")
+	b.WriteString("templates are not defined in the service templates pool (all-templates): ")
 	for i := range e.Items {
 		b.WriteString(e.Items[i])
 		if i+1 < len(e.Items) {
@@ -517,102 +724,6 @@ func (e ErrorIllegal) Error() string {
 	return b.String()
 }
 
-func setConfig(conf *Config, c serverConfig, filePath string) (err error) {
-	if c.API == nil {
-		// Disable API server
-		conf.API = nil
-	}
-
-	if c.Proxy.Host == "" {
-		return &ErrorMissing{
-			FilePath: filePath,
-			Feature:  "proxy.host",
-		}
-	}
-	conf.Proxy.Host = c.Proxy.Host
-
-	if c.Proxy.TLS != nil {
-		c := c.Proxy.TLS
-		// If either of proxy.cert-file and proxy.key-file are
-		// present then both must be defined, otherwise TLS must be nil.
-		switch {
-		case c.CertFile != "" && c.KeyFile == "":
-			return &ErrorMissing{
-				FilePath: filePath,
-				Feature:  "proxy.tls.key-file",
-			}
-		case (c.KeyFile != "" && c.CertFile == "") ||
-			(c.KeyFile == "" && c.CertFile == ""):
-			return &ErrorMissing{
-				FilePath: filePath,
-				Feature:  "proxy.tls.cert-file",
-			}
-		}
-		conf.Proxy.TLS.CertFile = c.CertFile
-		conf.Proxy.TLS.KeyFile = c.KeyFile
-	}
-
-	if conf.Proxy.MaxReqBodySizeBytes, err = getReqBodySize(
-		c.Proxy.MaxRequestBodySizeBytes,
-		filePath, "proxy.max-request-body-size",
-	); err != nil {
-		return err
-	}
-
-	if c.API != nil {
-		c := c.API
-		if c.Host == "" {
-			return &ErrorMissing{
-				FilePath: filePath,
-				Feature:  "api.host",
-			}
-		}
-		conf.API.Host = c.Host
-
-		if c.TLS != nil {
-			c := c.TLS
-			// If either of api.cert-file and api.key-file are present
-			// then both must be defined, otherwise TLS must be nil.
-			switch {
-			case c.CertFile != "" && c.KeyFile == "":
-				return &ErrorMissing{
-					FilePath: filePath,
-					Feature:  "api.tls.key-file",
-				}
-			case (c.KeyFile != "" && c.CertFile == "") ||
-				(c.KeyFile == "" && c.CertFile == ""):
-				return &ErrorMissing{
-					FilePath: filePath,
-					Feature:  "api.tls.cert-file",
-				}
-			}
-			conf.API.TLS.CertFile = c.CertFile
-			conf.API.TLS.KeyFile = c.KeyFile
-		}
-	}
-
-	return nil
-}
-
-// getReqBodySize reads and validates a request body size value or
-// uses the default if none is given.
-func getReqBodySize(
-	reqBodySize *int,
-	filePath, feature string,
-) (int, error) {
-	if reqBodySize == nil {
-		return DefaultMaxReqBodySize, nil
-	}
-	if *reqBodySize < MinReqBodySize {
-		return 0, &ErrorIllegal{
-			FilePath: filePath,
-			Feature:  feature,
-			Message:  msgMaxReqBodySizeTooSmall,
-		}
-	}
-	return *reqBodySize, nil
-}
-
 var ErrPathNotAbsolute = errors.New("path is not starting with /")
 var ErrURLProtocolProblem = errors.New("protocol is not supported or undefined")
 var ErrURLNoHost = errors.New("host is not defined")
@@ -625,7 +736,7 @@ func validateURL(url string) error {
 		return err
 	}
 
-	if !contains(ValidProtocolSchemes, u.Scheme) {
+	if contains(ValidProtocolSchemes, u.Scheme, func(a, b string) bool { return a == b }) == -1 {
 		return ErrURLProtocolProblem
 	}
 	if u.Host == "" {
@@ -643,12 +754,47 @@ func validatePath(path string) error {
 	return nil
 }
 
-func contains[T comparable](arr []T, x T) bool {
-	for _, el := range arr {
-		if el == x {
-			return true
+func contains[T any](arr []T, x T, equal func(a, b T) bool) int {
+	for i, el := range arr {
+		if equal(el, x) {
+			return i
 		}
 	}
 
-	return false
+	return -1
+}
+
+func openFile(path string) (*os.File, error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("getting information about file: %w", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		path, err = filepath.EvalSymlinks(path)
+		if err != nil {
+			return nil, fmt.Errorf("reading link: %w", err)
+		}
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("opening file: %w", err)
+	}
+
+	return f, nil
+}
+
+func calculateHash(file *os.File) (sum []byte, err error) {
+	h := md5.New()
+
+	_, err = io.Copy(h, file)
+	if err != nil {
+		return nil, err
+	}
+	_, err = file.Seek(0, io.SeekStart)
+	if err != nil {
+		return nil, err
+	}
+	sum = h.Sum(nil)
+
+	return
 }

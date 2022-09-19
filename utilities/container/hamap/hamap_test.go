@@ -525,6 +525,18 @@ func TestVisitStop(t *testing.T) {
 	require.Equal(t, 4, calls)
 }
 
+func TestValues(t *testing.T) {
+	m := hamap.New[string, string](8, &MockHasher[string]{
+		Map: map[string]uint64{"a": 0, "b": 1, "c": 2},
+	})
+	m.Set("a", "val1")
+	m.Set("b", "val2")
+	m.Set("c", "val3")
+
+	expect := []string{"val1", "val2", "val3"}
+	require.Equal(t, expect, m.Values())
+}
+
 func TestGet512(t *testing.T) {
 	m := hamap.New[string, int](8, nil)
 	for i := 0; i < 512; i++ {

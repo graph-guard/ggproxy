@@ -243,21 +243,18 @@ func makeServices(
 ) map[string]*model.Service {
 	m := make(
 		map[string]*model.Service,
-		len(conf.ServicesEnabled)+len(conf.ServicesDisabled),
+		conf.Services.Len(),
 	)
-	for _, s := range conf.ServicesEnabled {
-		m[s.ID] = makeService(conf, s, true, proxyServer)
-	}
-	for _, s := range conf.ServicesDisabled {
-		m[s.ID] = makeService(conf, s, false, proxyServer)
-	}
+	conf.Services.Visit(func(key []byte, s *config.Service) (stop bool) {
+		m[s.ID] = makeService(conf, s, proxyServer)
+		return
+	})
 	return m
 }
 
 func makeService(
 	c *config.Config,
 	s *config.Service,
-	enabled bool,
 	proxyServer *Proxy,
 ) *model.Service {
 	stats := proxyServer.GetServiceStatistics(s.ID)
@@ -265,19 +262,18 @@ func makeService(
 		Stats: stats,
 		TemplatesByID: make(
 			map[string]*model.Template,
-			len(s.TemplatesEnabled)+len(s.TemplatesDisabled),
+			s.Templates.Len(),
 		),
 		ID:                s.ID,
 		ForwardURL:        s.ForwardURL,
-		Enabled:           enabled,
+		Enabled:           s.Enabled,
 		TemplatesEnabled:  make([]*model.Template, len(s.TemplatesEnabled)),
-		TemplatesDisabled: make([]*model.Template, len(s.TemplatesDisabled)),
+		TemplatesDisabled: make([]*model.Template, s.Templates.Len()-len(s.TemplatesEnabled)),
 	}
 
 	{ // Initialize matcher engine
-		d := make(map[string]gqt.Doc, len(s.TemplatesEnabled)+
-			len(s.TemplatesDisabled))
-		for i, t := range s.TemplatesEnabled {
+		d := make(map[string]gqt.Doc, s.Templates.Len())
+		s.Templates.Visit(func(key []byte, t *config.Template) (stop bool) {
 			d[t.ID] = t.Document
 			tm := &model.Template{
 				Service: service,
@@ -286,25 +282,12 @@ func makeService(
 				ID:      t.ID,
 				Tags:    t.Tags,
 				Source:  string(t.Source),
-				Enabled: true,
+				Enabled: t.Enabled,
 			}
-			service.TemplatesEnabled[i] = tm
+			service.TemplatesEnabled = append(service.TemplatesEnabled, tm)
 			service.TemplatesByID[t.ID] = tm
-		}
-		for i, t := range s.TemplatesDisabled {
-			d[t.ID] = t.Document
-			tm := &model.Template{
-				Service: service,
-				Stats:   proxyServer.GetTemplateStatistics(s.ID, t.ID),
-
-				ID:      t.ID,
-				Tags:    t.Tags,
-				Source:  string(t.Source),
-				Enabled: false,
-			}
-			service.TemplatesDisabled[i] = tm
-			service.TemplatesByID[t.ID] = tm
-		}
+			return
+		})
 
 		var err error
 		service.Matcher, err = rmap.New(d, 0)

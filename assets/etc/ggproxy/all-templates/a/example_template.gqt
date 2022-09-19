@@ -1,6 +1,4 @@
 ---
-# /etc/ggproxy/services_enabled/example_service/templates_enabled/example_template.gqt
-
 # The template's display name
 name: "Example Template"
 

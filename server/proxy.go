@@ -43,7 +43,7 @@ type matcher struct {
 }
 
 func NewProxy(
-	config *config.Config,
+	conf *config.Config,
 	readTimeout, writeTimeout time.Duration,
 	readBufferSize, writeBufferSize int,
 	log plog.Logger,
@@ -61,7 +61,7 @@ func NewProxy(
 		Str("server-module", "fasthttp").Value()
 
 	srv := &Proxy{
-		config: config,
+		config: conf,
 		server: &fasthttp.Server{
 			ReadTimeout:                  readTimeout,
 			WriteTimeout:                 writeTimeout,
@@ -70,7 +70,7 @@ func NewProxy(
 			DisablePreParseMultipartForm: false,
 			TLSConfig:                    tlsConfig,
 			Logger:                       &lFasthttp,
-			MaxRequestBodySize:           config.Proxy.MaxReqBodySizeBytes,
+			MaxRequestBodySize:           conf.Proxy.MaxReqBodySizeBytes,
 		},
 		client:   client,
 		log:      log,
@@ -78,9 +78,7 @@ func NewProxy(
 	}
 	srv.server.Handler = srv.handle
 
-	for _, serviceEnabled := range config.ServicesEnabled {
-		s := serviceEnabled
-
+	for _, s := range conf.ServicesEnabled {
 		templateStatistics := make(
 			map[string]*statistics.TemplateSync,
 			len(s.TemplatesEnabled),

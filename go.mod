@@ -6,6 +6,7 @@ require (
 	github.com/99designs/gqlgen v0.17.13
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/dustin/go-humanize v1.0.0
+	github.com/google/go-cmp v0.5.8
 	github.com/google/uuid v1.3.0
 	github.com/graph-guard/backend v0.0.0-20220826171348-e3dcd100c82b
 	github.com/graph-guard/gqlscan v1.0.0

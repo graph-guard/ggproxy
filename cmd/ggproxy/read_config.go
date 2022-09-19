@@ -3,23 +3,22 @@ package main
 import (
 	"fmt"
 	"io"
-	"os"
 
 	"github.com/graph-guard/ggproxy/config"
 )
 
 func ReadConfig(
 	w io.Writer,
-	configDirPath string,
+	configPath string,
 ) *config.Config {
-	conf, err := config.ReadConfig(os.DirFS(configDirPath), ".")
+	conf, err := config.New(configPath)
 	if err != nil {
-		fmt.Fprintf(w, "Reading conf: %s\n", err)
+		fmt.Fprintf(w, "reading config: %s\n", err)
 		return nil
 	}
 
 	if len(conf.ServicesEnabled) < 1 {
-		fmt.Fprintf(w, "No services enabled: %s\n", err)
+		fmt.Fprintf(w, "no services enabled: %s\n", err)
 		return nil
 	}
 

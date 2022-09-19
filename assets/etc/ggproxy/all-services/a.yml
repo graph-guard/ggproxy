@@ -1,11 +1,12 @@
-# /etc/ggproxy/services_enabled/example_service/config.yaml
-
 # Source URL path
 path: "/path"
 
 # Destination URL (where to proxy requests to)
-forward_url: "http://localhost:8080/path"
+forward-url: "http://localhost:8080/path"
 
 # false for forwarding the original request,
 # true for the reduced version.
-forward_reduced: true
+forward-reduced: true
+
+all-templates: ../all-templates/a
+enabled-templates: ../enabled-templates/a
