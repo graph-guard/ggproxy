@@ -20,6 +20,8 @@ type argumentsTerminal struct{}
 type argumentPathTerminal struct{}
 type objectTerminal struct{}
 
+var specialFields []string = []string{"__typename"}
+
 // QueryPart is a structure of query pash hash and value,
 // when united represents a parted query.
 // Used for a template fast search by rmap.
@@ -84,7 +86,7 @@ func (m *Maker) ParseQuery(
 		panic(fmt.Errorf("unsupported query type: %v", queryType))
 	}
 
-	for _, token := range selectionSet {
+	for tokenIdx, token := range selectionSet {
 		if ix := token.VariableIndex(); ix > -1 {
 			value := variableValues[ix]
 			for _, token := range value {
@@ -232,9 +234,11 @@ func (m *Maker) ParseQuery(
 				path := m.pstack.Pop()
 				pathHash = path.Sum64()
 				if _, ok := m.qmap.Get(pathHash); !ok {
-					m.qmap.Set(pathHash, true)
-					if fn(QueryPart{ArgLeafIdx: -1, Hash: pathHash, Value: nil}) {
-						return
+					if !inSlice(specialFields, unsafe.B2S(selectionSet[tokenIdx-1].Value)) {
+						m.qmap.Set(pathHash, true)
+						if fn(QueryPart{ArgLeafIdx: -1, Hash: pathHash, Value: nil}) {
+							return
+						}
 					}
 				}
 			}
@@ -500,4 +504,14 @@ func printObj(obj hamap.Map[string, any], w io.Writer, indent uint) {
 		}
 		return false
 	})
+}
+
+func inSlice[T comparable](a []T, e T) bool {
+	for _, el := range a {
+		if el == e {
+			return true
+		}
+	}
+
+	return false
 }
