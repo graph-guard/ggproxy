@@ -68,8 +68,8 @@ type Object map[string]Elem
 // ConstraintInterface is a generic interface for constraints.
 type ConstraintInterface interface {
 	Key() string
-	Content() gqt.Constraint
-	gqt.InputConstraint | gqt.ObjectField
+	Content() gqt.Expression
+	gqt.Argument | gqt.ObjectField
 }
 
 // Equal checks two Elems for equality.
@@ -140,7 +140,7 @@ func (obj Object) Equal(x Object) bool {
 
 // New creates a new instance of RulesMap.
 // Accepts a rules list and a hash seed.
-func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
+func New(rules map[string]gqt.Operation, seed uint64) (*RulesMap, error) {
 	rm := &RulesMap{
 		seed:                seed,
 		mask:                bitmask.New(),
@@ -164,17 +164,16 @@ func New(rules map[string]gqt.Doc, seed uint64) (*RulesMap, error) {
 		for index, id := range rm.templateIDs {
 			rule := rules[id]
 			m := bitmask.New(index)
-			if rule.Query != nil {
+			switch rule.Type {
+			case gqt.OperationTypeQuery:
 				err = buildRulesMapSelections(
-					rm, rule.Query, nil, m, "query", index, 0,
+					rm, rule.Selections, nil, m, "query", index, 0,
 				)
-			}
-			if rule.Mutation != nil {
+			case gqt.OperationTypeMutation:
 				err = buildRulesMapSelections(
-					rm, rule.Mutation, nil, m, "mutation", index, 0,
+					rm, rule.Selections, nil, m, "mutation", index, 0,
 				)
-			}
-			if rule.Subscription != nil {
+			case gqt.OperationTypeSubscription:
 				panic("subscriptions are not yet supported")
 			}
 			if err == ErrHashCollision {
@@ -216,7 +215,9 @@ func buildRulesMapSelections(
 ) error {
 	for _, selection := range selections {
 		switch selection := selection.(type) {
-		case gqt.SelectionField:
+		case *gqt.ObjectField:
+			// TODO
+		case *gqt.SelectionField:
 			selPath := path + "." + selection.Name
 			if len(selection.Selections) == 0 && len(selection.InputConstraints) == 0 {
 				h := xxhash.New(rm.seed)
