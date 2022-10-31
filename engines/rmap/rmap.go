@@ -69,7 +69,7 @@ type Object map[string]Elem
 type ConstraintInterface interface {
 	Key() string
 	Content() gqt.Expression
-	gqt.Argument | gqt.ObjectField
+	*gqt.Argument | *gqt.ObjectField
 }
 
 // Equal checks two Elems for equality.
@@ -218,8 +218,8 @@ func buildRulesMapSelections(
 		case *gqt.ObjectField:
 			// TODO
 		case *gqt.SelectionField:
-			selPath := path + "." + selection.Name
-			if len(selection.Selections) == 0 && len(selection.InputConstraints) == 0 {
+			selPath := path + "." + selection.Name.Name
+			if len(selection.Selections) == 0 && len(selection.Arguments) == 0 {
 				h := xxhash.New(rm.seed)
 				xxhash.Write(&h, selPath)
 				pathHash := h.Sum64()
@@ -249,16 +249,16 @@ func buildRulesMapSelections(
 			} else {
 				var leafs []uint64
 				var err error
-				if len(selection.InputConstraints) > 0 {
+				if len(selection.Arguments) > 0 {
 					leafs, err = buildRulesMapConstraints(
-						rm, selection.InputConstraints, dependencies, mask, selPath, true, ruleIdx, combinationDepth,
+						rm, selection.Arguments, dependencies, mask, selPath, true, ruleIdx, combinationDepth,
 					)
 					if err != nil {
 						return err
 					}
 				}
 				if len(selection.Selections) > 0 {
-					if len(selection.InputConstraints) > 0 {
+					if len(selection.Arguments) > 0 {
 						combinationDepth = 0
 					}
 					err = buildRulesMapSelections(
@@ -269,14 +269,14 @@ func buildRulesMapSelections(
 					}
 				}
 			}
-		case gqt.SelectionInlineFragment:
+		case *gqt.SelectionInlineFrag:
 			selPath := path + ".|" + selection.TypeName
 			if err := buildRulesMapSelections(
 				rm, selection.Selections, dependencies, mask, selPath, ruleIdx, combinationDepth,
 			); err != nil {
 				return err
 			}
-		case gqt.ConstraintCombine:
+		case *gqt.ConstrMap:
 			rm.combinations = append(rm.combinations, int(selection.MaxItems))
 			rm.combinationCounters = append(rm.combinationCounters, 0)
 			if err := buildRulesMapSelections(

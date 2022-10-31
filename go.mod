@@ -2,6 +2,8 @@ module github.com/graph-guard/ggproxy
 
 go 1.18
 
+replace github.com/graph-guard/gqt => /home/null/workspace/graph-guard/gqt
+
 require (
 	github.com/99designs/gqlgen v0.17.13
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
