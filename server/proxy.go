@@ -94,9 +94,9 @@ func NewProxy(
 			log:            log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make(map[string]gqt.Doc, len(s.TemplatesEnabled))
+					d := make(map[string]*gqt.Operation, len(s.TemplatesEnabled))
 					for _, t := range s.TemplatesEnabled {
-						d[t.ID] = t.Document
+						d[t.ID] = t.Operation
 					}
 					engine, err := rmap.New(d, 0)
 					if err != nil {

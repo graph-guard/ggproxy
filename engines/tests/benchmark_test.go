@@ -22,7 +22,7 @@ func BenchmarkPartedQuery(b *testing.B) {
 	templates := readTestAssets(benchassets, "assets/benchassets", "templates")[0].Templates
 	rules := make(map[string]gqt.Doc, len(templates))
 	for _, r := range templates {
-		rules[r.ID] = r.Document
+		rules[r.ID] = r.Operation
 	}
 	rm, _ := rmap.New(rules, 0)
 

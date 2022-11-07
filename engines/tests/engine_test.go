@@ -241,11 +241,11 @@ func readTestAsset(
 			}
 
 			templates = append(templates, &config.Template{
-				ID:       id,
-				Source:   template,
-				Document: doc,
-				Name:     meta.Name,
-				Tags:     meta.Tags,
+				ID:        id,
+				Source:    template,
+				Operation: doc,
+				Name:      meta.Name,
+				Tags:      meta.Tags,
 			})
 		}
 		if strings.HasSuffix(fn, ".yml") || strings.HasSuffix(fn, ".yaml") {
@@ -296,7 +296,7 @@ func TestMatchAllPartedQuery(t *testing.T) {
 		t.Run(td.ID, func(t *testing.T) {
 			rules := make(map[string]gqt.Doc, len(td.Templates))
 			for _, r := range td.Templates {
-				rules[r.ID] = r.Document
+				rules[r.ID] = r.Operation
 			}
 
 			p := gqlparse.NewParser()

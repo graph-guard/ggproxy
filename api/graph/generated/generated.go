@@ -65,9 +65,9 @@ type ComplexityRoot struct {
 		ForwardReduced    func(childComplexity int) int
 		ForwardURL        func(childComplexity int) int
 		ID                func(childComplexity int) int
-		ProxyURL        func(childComplexity int) int
 		Match             func(childComplexity int, query string, operationName *string, variablesJSON *string) int
 		MatchAll          func(childComplexity int, query string, operationName *string, variablesJSON *string) int
+		ProxyURL          func(childComplexity int) int
 		Statistics        func(childComplexity int) int
 		TemplatesDisabled func(childComplexity int) int
 		TemplatesEnabled  func(childComplexity int) int
@@ -223,13 +223,6 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Service.ID(childComplexity), true
 
-	case "Service.proxyURL":
-		if e.complexity.Service.ProxyURL == nil {
-			break
-		}
-
-		return e.complexity.Service.ProxyURL(childComplexity), true
-
 	case "Service.match":
 		if e.complexity.Service.Match == nil {
 			break
@@ -253,6 +246,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Service.MatchAll(childComplexity, args["query"].(string), args["operationName"].(*string), args["variablesJSON"].(*string)), true
+
+	case "Service.proxyURL":
+		if e.complexity.Service.ProxyURL == nil {
+			break
+		}
+
+		return e.complexity.Service.ProxyURL(childComplexity), true
 
 	case "Service.statistics":
 		if e.complexity.Service.Statistics == nil {

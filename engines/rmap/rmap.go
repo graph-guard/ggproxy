@@ -140,7 +140,7 @@ func (obj Object) Equal(x Object) bool {
 
 // New creates a new instance of RulesMap.
 // Accepts a rules list and a hash seed.
-func New(rules map[string]gqt.Operation, seed uint64) (*RulesMap, error) {
+func New(rules map[string]*gqt.Operation, seed uint64) (*RulesMap, error) {
 	rm := &RulesMap{
 		seed:                seed,
 		mask:                bitmask.New(),
@@ -270,17 +270,17 @@ func buildRulesMapSelections(
 				}
 			}
 		case *gqt.SelectionInlineFrag:
-			selPath := path + ".|" + selection.TypeName
+			selPath := path + ".|" + selection.TypeCondition.TypeName
 			if err := buildRulesMapSelections(
 				rm, selection.Selections, dependencies, mask, selPath, ruleIdx, combinationDepth,
 			); err != nil {
 				return err
 			}
-		case *gqt.ConstrMap:
-			rm.combinations = append(rm.combinations, int(selection.MaxItems))
+		case *gqt.SelectionMax:
+			rm.combinations = append(rm.combinations, int(selection.Limit)) // What's Map now??
 			rm.combinationCounters = append(rm.combinationCounters, 0)
 			if err := buildRulesMapSelections(
-				rm, selection.Items, dependencies, mask, path, ruleIdx, combinationDepth+1,
+				rm, selection.Options.Selections, dependencies, mask, path, ruleIdx, combinationDepth+1,
 			); err != nil {
 				return err
 			}
@@ -313,7 +313,7 @@ func buildRulesMapConstraints[T ConstraintInterface](
 
 		conPath := path + "." + constraint.Key()
 		switch cv := cv.(type) {
-		case gqt.ValueObject:
+		case gqt.Object:
 			l, err := buildRulesMapConstraints(
 				rm, cv.Fields, dependencies, mask, conPath, cond, ruleIdx, combinationDepth,
 			)
@@ -345,24 +345,29 @@ func buildRulesMapConstraints[T ConstraintInterface](
 			}
 			switch cid {
 			case ConstraintMap:
-				(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
-					Condition:    cond,
-					Constraint:   cid,
-					Mask:         mask,
-					Value:        buildRulesMapConstraintsElem(cv),
-					Combinations: c,
-				})
+				switch cv := cv.(type) {
+				case gqt.Expression:
+					(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
+						Condition:    cond,
+						Constraint:   cid,
+						Mask:         mask,
+						Value:        buildRulesMapConstraintsElem(cv),
+						Combinations: c,
+					})
+				default:
+					panic("incorrect map expression")
+				}
 			case ConstraintOr, ConstraintAnd:
 				(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
 					Condition:    cond,
 					Constraint:   cid,
 					Mask:         mask,
-					Value:        buildRulesMapConstraintsArray(cv.([]gqt.Constraint)),
+					Value:        buildRulesMapConstraintsArray(cv.([]gqt.Expression)),
 					Combinations: c,
 				})
 			default:
 				switch cv := cv.(type) {
-				case gqt.ValueArray:
+				case gqt.Array:
 					(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
 						Condition:    cond,
 						Constraint:   cid,
@@ -370,12 +375,12 @@ func buildRulesMapConstraints[T ConstraintInterface](
 						Value:        buildRulesMapConstraintsArray(cv.Items),
 						Combinations: c,
 					})
-				case gqt.EnumValue:
+				case gqt.Enum:
 					(*rm).rules[pathHash] = mergeVariants((*rm).rules[pathHash], Variant{
 						Condition:    cond,
 						Constraint:   cid,
 						Mask:         mask,
-						Value:        []byte(cv),
+						Value:        []byte(cv.Value),
 						Combinations: c,
 					})
 				default:
@@ -394,7 +399,7 @@ func buildRulesMapConstraints[T ConstraintInterface](
 	return leafs, nil
 }
 
-func buildRulesMapConstraintsElem(constraint gqt.Constraint) (el Elem) {
+func buildRulesMapConstraintsElem(constraint gqt.Expression) (el Elem) {
 	var cv any
 	var cid Constraint
 
@@ -402,31 +407,36 @@ func buildRulesMapConstraintsElem(constraint gqt.Constraint) (el Elem) {
 
 	switch cid {
 	case ConstraintMap:
-		el = Elem{
-			Constraint: cid,
-			Value:      buildRulesMapConstraintsElem(cv),
+		switch cv := cv.(type) {
+		case gqt.Expression:
+			el = Elem{
+				Constraint: cid,
+				Value:      buildRulesMapConstraintsElem(cv),
+			}
+		default:
+			panic("incorrect map expession")
 		}
 	case ConstraintOr, ConstraintAnd:
 		el = Elem{
 			Constraint: cid,
-			Value:      buildRulesMapConstraintsArray(cv.([]gqt.Constraint)),
+			Value:      buildRulesMapConstraintsArray(cv.([]gqt.Expression)),
 		}
 	default:
 		switch cv := cv.(type) {
-		case gqt.ValueObject:
+		case gqt.Object:
 			el = Elem{
 				Constraint: cid,
 				Value:      buildRulesMapConstraintsObject(cv.Fields),
 			}
-		case gqt.ValueArray:
+		case gqt.Array:
 			el = Elem{
 				Constraint: cid,
 				Value:      buildRulesMapConstraintsArray(cv.Items),
 			}
-		case gqt.EnumValue:
+		case gqt.Enum:
 			el = Elem{
 				Constraint: cid,
-				Value:      []byte(cv),
+				Value:      []byte(cv.Value),
 			}
 		default:
 			el = Elem{
@@ -440,7 +450,7 @@ func buildRulesMapConstraintsElem(constraint gqt.Constraint) (el Elem) {
 }
 
 func buildRulesMapConstraintsArray(
-	constraints []gqt.Constraint,
+	constraints []gqt.Expression,
 ) (arr Array) {
 	for _, constraint := range constraints {
 		arr = append(arr, buildRulesMapConstraintsElem(constraint))
@@ -450,11 +460,11 @@ func buildRulesMapConstraintsArray(
 }
 
 func buildRulesMapConstraintsObject(
-	constraints []gqt.ObjectField,
+	constraints []*gqt.ObjectField,
 ) (obj Object) {
 	obj = Object{}
 	for _, constraint := range constraints {
-		obj[constraint.Name] = buildRulesMapConstraintsElem(constraint.Value)
+		obj[constraint.Key()] = buildRulesMapConstraintsElem(constraint.Content())
 	}
 
 	return
@@ -504,58 +514,46 @@ func mergeVariants(variants []Variant, x Variant) []Variant {
 }
 
 // ConstraintIdAndValue returns constraint Id and Value.
-func ConstraintIdAndValue(c gqt.Constraint) (Constraint, any) {
+func ConstraintIdAndValue(c gqt.Expression) (Constraint, any) {
 	switch c := c.(type) {
-	case gqt.ConstraintOr:
-		return ConstraintOr, c.Constraints
-	case gqt.ConstraintAnd:
-		return ConstraintAnd, c.Constraints
-	case gqt.ConstraintMap:
+	case *gqt.ExprLogicalOr:
+		return ConstraintOr, c.Expressions
+	case *gqt.ExprLogicalAnd:
+		return ConstraintAnd, c.Expressions
+	case *gqt.ConstrMap:
 		return ConstraintMap, c.Constraint
-	case gqt.ConstraintAny:
+	case *gqt.ConstrAny:
 		return ConstraintAny, nil
-	case gqt.ConstraintValEqual:
-		if s, ok := c.Value.(string); ok {
-			return ConstraintValEqual, []byte(s)
+	case *gqt.ConstrEquals:
+		if s, ok := c.Value.(*gqt.String); ok {
+			return ConstraintValEqual, []byte(s.Value)
 		}
 		return ConstraintValEqual, c.Value
-	case gqt.ConstraintValNotEqual:
-		if s, ok := c.Value.(string); ok {
-			return ConstraintValNotEqual, []byte(s)
+	case *gqt.ConstrNotEquals:
+		if s, ok := c.Value.(*gqt.String); ok {
+			return ConstraintValNotEqual, []byte(s.Value)
 		}
 		return ConstraintValNotEqual, c.Value
-	case gqt.ConstraintValGreater:
+	case *gqt.ConstrGreater:
 		return ConstraintValGreater, c.Value
-	case gqt.ConstraintValLess:
+	case *gqt.ConstrLess:
 		return ConstraintValLess, c.Value
-	case gqt.ConstraintValGreaterOrEqual:
+	case *gqt.ConstrGreaterOrEqual:
 		return ConstraintValGreaterOrEqual, c.Value
-	case gqt.ConstraintValLessOrEqual:
+	case *gqt.ConstrLessOrEqual:
 		return ConstraintValLessOrEqual, c.Value
-	case gqt.ConstraintBytelenEqual:
+	case *gqt.ConstrLenEquals:
 		return ConstraintBytelenEqual, c.Value
-	case gqt.ConstraintBytelenNotEqual:
+	case *gqt.ConstrLenNotEquals:
 		return ConstraintBytelenNotEqual, c.Value
-	case gqt.ConstraintBytelenGreater:
+	case *gqt.ConstrLenGreater:
 		return ConstraintBytelenGreater, c.Value
-	case gqt.ConstraintBytelenLess:
+	case *gqt.ConstrLenLess:
 		return ConstraintBytelenLess, c.Value
-	case gqt.ConstraintBytelenGreaterOrEqual:
+	case *gqt.ConstrLenGreaterOrEqual:
 		return ConstraintBytelenGreaterOrEqual, c.Value
-	case gqt.ConstraintBytelenLessOrEqual:
+	case *gqt.ConstrLenLessOrEqual:
 		return ConstraintBytelenLessOrEqual, c.Value
-	case gqt.ConstraintLenEqual:
-		return ConstraintLenEqual, c.Value
-	case gqt.ConstraintLenNotEqual:
-		return ConstraintLenNotEqual, c.Value
-	case gqt.ConstraintLenGreater:
-		return ConstraintLenGreater, c.Value
-	case gqt.ConstraintLenLess:
-		return ConstraintLenLess, c.Value
-	case gqt.ConstraintLenGreaterOrEqual:
-		return ConstraintLenGreaterOrEqual, c.Value
-	case gqt.ConstraintLenLessOrEqual:
-		return ConstraintLenLessOrEqual, c.Value
 	default:
 		return ConstraintUnknown, nil
 	}

@@ -111,13 +111,13 @@ func (c *Service) Equal(d *Service) bool {
 }
 
 type Template struct {
-	ID       string
-	Source   []byte
-	Document gqt.Doc
-	Name     string
-	Tags     []string
-	Enabled  bool
-	FilePath string
+	ID        string
+	Source    []byte
+	Operation *gqt.Operation
+	Name      string
+	Tags      []string
+	Enabled   bool
+	FilePath  string
 }
 
 type serverConfig struct {
@@ -617,22 +617,28 @@ func readTemplate(file *os.File) (t *Template, err error) {
 		}
 	}
 
-	doc, errParser := gqt.Parse(template)
-	if errParser.IsErr() {
+	opr, _, errParser := gqt.Parse(template)
+
+	var es []string
+	for _, e := range errParser {
+		es = append(es, fmt.Sprintf("%d:%d: %s", e.Line, e.Column, e.Msg))
+	}
+
+	if len(es) > 0 {
 		return nil, &ErrorIllegal{
 			FilePath: filePath,
 			Feature:  "template",
-			Message:  errParser.Error(),
+			Message:  strings.Join(es, "\n"),
 		}
 	}
 
 	t = &Template{
-		ID:       id,
-		Source:   template,
-		Document: doc,
-		Name:     meta.Name,
-		Tags:     meta.Tags,
-		FilePath: filePath,
+		ID:        id,
+		Source:    template,
+		Operation: opr,
+		Name:      meta.Name,
+		Tags:      meta.Tags,
+		FilePath:  filePath,
 	}
 
 	return

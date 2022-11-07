@@ -272,9 +272,9 @@ func makeService(
 	}
 
 	{ // Initialize matcher engine
-		d := make(map[string]gqt.Doc, s.Templates.Len())
+		d := make(map[string]*gqt.Operation, s.Templates.Len())
 		s.Templates.Visit(func(key []byte, t *config.Template) (stop bool) {
-			d[t.ID] = t.Document
+			d[t.ID] = t.Operation
 			tm := &model.Template{
 				Service: service,
 				Stats:   proxyServer.GetTemplateStatistics(s.ID, t.ID),

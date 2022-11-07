@@ -740,7 +740,7 @@ func validFS(fn func(path string, conf *config.Config)) {
 			Name:   "Template A",
 			Tags:   []string{"tag_a"},
 			Source: lines(`query { foo }`),
-			Document: gqt.Doc{
+			Operation: gqt.Doc{
 				Query: []gqt.Selection{
 					gqt.SelectionField{
 						Name: "foo",
@@ -757,7 +757,7 @@ func validFS(fn func(path string, conf *config.Config)) {
 			ID:     "b",
 			Tags:   []string{"tag_b1", "tag_b2"},
 			Source: lines(`query { bar }`),
-			Document: gqt.Doc{
+			Operation: gqt.Doc{
 				Query: []gqt.Selection{
 					gqt.SelectionField{
 						Name: "bar",
@@ -786,7 +786,7 @@ func validFS(fn func(path string, conf *config.Config)) {
 		&config.Template{
 			ID:     "c",
 			Source: []byte(`query { maz }`),
-			Document: gqt.Doc{
+			Operation: gqt.Doc{
 				Query: []gqt.Selection{
 					gqt.SelectionField{
 						Name: "maz",
