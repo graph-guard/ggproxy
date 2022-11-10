@@ -543,17 +543,17 @@ func ConstraintIdAndValue(c gqt.Expression) (Constraint, any) {
 	case *gqt.ConstrLessOrEqual:
 		return ConstraintValLessOrEqual, c.Value
 	case *gqt.ConstrLenEquals:
-		return ConstraintBytelenEqual, c.Value
+		return ConstraintLenEqual, c.Value
 	case *gqt.ConstrLenNotEquals:
-		return ConstraintBytelenNotEqual, c.Value
+		return ConstraintLenNotEqual, c.Value
 	case *gqt.ConstrLenGreater:
-		return ConstraintBytelenGreater, c.Value
+		return ConstraintLenGreater, c.Value
 	case *gqt.ConstrLenLess:
-		return ConstraintBytelenLess, c.Value
+		return ConstraintLenLess, c.Value
 	case *gqt.ConstrLenGreaterOrEqual:
-		return ConstraintBytelenGreaterOrEqual, c.Value
+		return ConstraintLenGreaterOrEqual, c.Value
 	case *gqt.ConstrLenLessOrEqual:
-		return ConstraintBytelenLessOrEqual, c.Value
+		return ConstraintLenLessOrEqual, c.Value
 	default:
 		return ConstraintUnknown, nil
 	}
@@ -709,55 +709,47 @@ func CompareValues(constraint Constraint, a any, b any) bool {
 				return valb <= vala
 			}
 		}
-	case ConstraintBytelenEqual, ConstraintBytelenNotEqual,
-		ConstraintBytelenGreater, ConstraintBytelenLess,
-		ConstraintBytelenGreaterOrEqual, ConstraintBytelenLessOrEqual:
-		vala, ok := a.(uint)
-		if !ok {
-			return false
-		}
-		valb, ok := b.([]byte)
-		if !ok {
-			return false
-		}
-		switch constraint {
-		case ConstraintBytelenEqual:
-			return len(valb) == int(vala)
-		case ConstraintBytelenNotEqual:
-			return len(valb) != int(vala)
-		case ConstraintBytelenGreater:
-			return len(valb) > int(vala)
-		case ConstraintBytelenLess:
-			return len(valb) < int(vala)
-		case ConstraintBytelenGreaterOrEqual:
-			return len(valb) >= int(vala)
-		case ConstraintBytelenLessOrEqual:
-			return len(valb) <= int(vala)
-		}
 	case ConstraintLenEqual, ConstraintLenNotEqual,
 		ConstraintLenGreater, ConstraintLenLess,
 		ConstraintLenGreaterOrEqual, ConstraintLenLessOrEqual:
-		ca, ok := a.(uint)
+		length, ok := a.(uint)
 		if !ok {
 			return false
 		}
-		bi, ok := b.(*[]any)
-		if !ok {
-			return false
-		}
-		switch constraint {
-		case ConstraintLenEqual:
-			return len(*bi) == int(ca)
-		case ConstraintLenNotEqual:
-			return len(*bi) != int(ca)
-		case ConstraintLenGreater:
-			return len(*bi) > int(ca)
-		case ConstraintLenLess:
-			return len(*bi) < int(ca)
-		case ConstraintLenGreaterOrEqual:
-			return len(*bi) >= int(ca)
-		case ConstraintLenLessOrEqual:
-			return len(*bi) <= int(ca)
+
+		switch container := b.(type) {
+		case []byte:
+			switch constraint {
+			case ConstraintLenEqual:
+				return len(container) == int(length)
+			case ConstraintLenNotEqual:
+				return len(container) != int(length)
+			case ConstraintLenGreater:
+				return len(container) > int(length)
+			case ConstraintLenLess:
+				return len(container) < int(length)
+			case ConstraintLenGreaterOrEqual:
+				return len(container) >= int(length)
+			case ConstraintLenLessOrEqual:
+				return len(container) <= int(length)
+			}
+		case *[]any:
+			switch constraint {
+			case ConstraintLenEqual:
+				return len(*container) == int(length)
+			case ConstraintLenNotEqual:
+				return len(*container) != int(length)
+			case ConstraintLenGreater:
+				return len(*container) > int(length)
+			case ConstraintLenLess:
+				return len(*container) < int(length)
+			case ConstraintLenGreaterOrEqual:
+				return len(*container) >= int(length)
+			case ConstraintLenLessOrEqual:
+				return len(*container) <= int(length)
+			}
+		default:
+			panic(fmt.Errorf("unsupported container type; constraint: %d", constraint))
 		}
 	default:
 		panic(fmt.Errorf("wrong constraint-type pair; constraint: %d", constraint))
@@ -1039,12 +1031,6 @@ const (
 	ConstraintValLess
 	ConstraintValGreaterOrEqual
 	ConstraintValLessOrEqual
-	ConstraintBytelenEqual
-	ConstraintBytelenNotEqual
-	ConstraintBytelenGreater
-	ConstraintBytelenLess
-	ConstraintBytelenGreaterOrEqual
-	ConstraintBytelenLessOrEqual
 	ConstraintLenEqual
 	ConstraintLenNotEqual
 	ConstraintLenGreater
@@ -1054,29 +1040,23 @@ const (
 )
 
 var ConstraintLookup = map[Constraint]string{
-	None:                            "NoConstraint",
-	ConstraintOr:                    "ConstraintOr",
-	ConstraintAnd:                   "ConstraintAnd",
-	ConstraintAny:                   "ConstraintAny",
-	ConstraintMap:                   "ConstraintMap",
-	ConstraintTypeEqual:             "ConstraintTypeEqual",
-	ConstraintTypeNotEqual:          "ConstraintTypeNotEqual",
-	ConstraintValEqual:              "ConstraintValEqual",
-	ConstraintValNotEqual:           "ConstraintValNotEqual",
-	ConstraintValGreater:            "ConstraintValGreater",
-	ConstraintValLess:               "ConstraintValLess",
-	ConstraintValGreaterOrEqual:     "ConstraintValGreaterOrEqual",
-	ConstraintValLessOrEqual:        "ConstraintValLessOrEqual",
-	ConstraintBytelenEqual:          "ConstraintBytelenEqual",
-	ConstraintBytelenNotEqual:       "ConstraintBytelenNotEqual",
-	ConstraintBytelenGreater:        "ConstraintBytelenGreater",
-	ConstraintBytelenLess:           "ConstraintBytelenLess",
-	ConstraintBytelenGreaterOrEqual: "ConstraintBytelenGreaterOrEqual",
-	ConstraintBytelenLessOrEqual:    "ConstraintBytelenLessOrEqual",
-	ConstraintLenEqual:              "ConstraintLenEqual",
-	ConstraintLenNotEqual:           "ConstraintLenNotEqual",
-	ConstraintLenGreater:            "ConstraintLenGreater",
-	ConstraintLenLess:               "ConstraintLenLess",
-	ConstraintLenGreaterOrEqual:     "ConstraintLenGreaterOrEqual",
-	ConstraintLenLessOrEqual:        "ConstraintLenLessOrEqual",
+	None:                        "NoConstraint",
+	ConstraintOr:                "ConstraintOr",
+	ConstraintAnd:               "ConstraintAnd",
+	ConstraintAny:               "ConstraintAny",
+	ConstraintMap:               "ConstraintMap",
+	ConstraintTypeEqual:         "ConstraintTypeEqual",
+	ConstraintTypeNotEqual:      "ConstraintTypeNotEqual",
+	ConstraintValEqual:          "ConstraintValEqual",
+	ConstraintValNotEqual:       "ConstraintValNotEqual",
+	ConstraintValGreater:        "ConstraintValGreater",
+	ConstraintValLess:           "ConstraintValLess",
+	ConstraintValGreaterOrEqual: "ConstraintValGreaterOrEqual",
+	ConstraintValLessOrEqual:    "ConstraintValLessOrEqual",
+	ConstraintLenEqual:          "ConstraintLenEqual",
+	ConstraintLenNotEqual:       "ConstraintLenNotEqual",
+	ConstraintLenGreater:        "ConstraintLenGreater",
+	ConstraintLenLess:           "ConstraintLenLess",
+	ConstraintLenGreaterOrEqual: "ConstraintLenGreaterOrEqual",
+	ConstraintLenLessOrEqual:    "ConstraintLenLessOrEqual",
 }
