@@ -21,7 +21,7 @@
 build/
 dist/
 
-# clog configuration
+# github.com/romshark/clog configuration
 cmd/ggproxy/clog.toml
 
 # ggproxy config for debugging purposes
@@ -29,3 +29,6 @@ cmd/ggproxy/config
 
 # result of `go build` in cmd/ggproxy
 cmd/ggproxy/ggproxy
+
+# OS-specific files
+.DS_Store
