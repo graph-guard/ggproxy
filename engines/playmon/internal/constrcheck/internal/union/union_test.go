@@ -3,8 +3,8 @@ package union_test
 import (
 	"testing"
 
-	"github.com/graph-guard/constrcheck/internal/token"
-	"github.com/graph-guard/constrcheck/internal/union"
+	"github.com/graph-guard/ggproxy/engines/playmon/internal/constrcheck/internal/union"
+	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"
 )
@@ -96,21 +96,21 @@ func TestAreUnionsEqual(t *testing.T) {
 
 		{
 			Name: "same_type_tokens_int_equal",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenInt, Value: []byte("42")},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenInt, Value: []byte("42")},
 			}),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenInt, Value: []byte("42")},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenInt, Value: []byte("42")},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "same_type_tokens_int_diff",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenInt, Value: []byte("42")},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenInt, Value: []byte("42")},
 			}),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenInt, Value: []byte("43")},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenInt, Value: []byte("43")},
 			}),
 			Expect: false,
 		},
@@ -118,15 +118,15 @@ func TestAreUnionsEqual(t *testing.T) {
 		{
 			Name: "inf_int_tokens",
 			Left: union.Int(42),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenInt, Value: []byte("42")},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenInt, Value: []byte("42")},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "inf_tokens_int",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenInt, Value: []byte("42")},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenInt, Value: []byte("42")},
 			}),
 			Right:  union.Int(42),
 			Expect: true,
@@ -135,15 +135,15 @@ func TestAreUnionsEqual(t *testing.T) {
 		{
 			Name: "inf_float_tokens",
 			Left: union.Float(3.1415),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenFloat, Value: []byte("3.1415")},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenFloat, Value: []byte("3.1415")},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "inf_tokens_float",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenFloat, Value: []byte("3.1415")},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenFloat, Value: []byte("3.1415")},
 			}),
 			Right:  union.Float(3.1415),
 			Expect: true,
@@ -152,15 +152,15 @@ func TestAreUnionsEqual(t *testing.T) {
 		{
 			Name: "inf_string_tokens",
 			Left: union.String("okay"),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenStr, Value: []byte("okay")},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenStr, Value: []byte("okay")},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "inf_tokens_string",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenStr, Value: []byte("okay")},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenStr, Value: []byte("okay")},
 			}),
 			Right:  union.String("okay"),
 			Expect: true,
@@ -169,15 +169,15 @@ func TestAreUnionsEqual(t *testing.T) {
 		{
 			Name: "inf_enum_tokens",
 			Left: union.Enum("red"),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenEnumVal, Value: []byte("red")},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenEnumVal, Value: []byte("red")},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "inf_tokens_enum",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenEnumVal, Value: []byte("red")},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenEnumVal, Value: []byte("red")},
 			}),
 			Right:  union.Enum("red"),
 			Expect: true,
@@ -186,15 +186,15 @@ func TestAreUnionsEqual(t *testing.T) {
 		{
 			Name: "inf_true_tokens",
 			Left: union.True(),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenTrue},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenTrue},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "inf_tokens_true",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenTrue},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenTrue},
 			}),
 			Right:  union.True(),
 			Expect: true,
@@ -203,15 +203,15 @@ func TestAreUnionsEqual(t *testing.T) {
 		{
 			Name: "inf_false_tokens",
 			Left: union.False(),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenFalse},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenFalse},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "inf_tokens_false",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenFalse},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenFalse},
 			}),
 			Right:  union.False(),
 			Expect: true,
@@ -220,15 +220,15 @@ func TestAreUnionsEqual(t *testing.T) {
 		{
 			Name: "inf_null_tokens",
 			Left: union.Null(),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenNull},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenNull},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "inf_tokens_null",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenNull},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenNull},
 			}),
 			Right:  union.Null(),
 			Expect: true,
@@ -236,55 +236,55 @@ func TestAreUnionsEqual(t *testing.T) {
 
 		{
 			Name: "equal_tokens_array",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenArr},
-				{Type: gqlscan.TokenInt, Value: []byte("1")},
-				{Type: gqlscan.TokenInt, Value: []byte("23")},
-				{Type: gqlscan.TokenArr},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenArr},
+				{ID: gqlscan.TokenInt, Value: []byte("1")},
+				{ID: gqlscan.TokenInt, Value: []byte("23")},
+				{ID: gqlscan.TokenArr},
 			}),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenArr},
-				{Type: gqlscan.TokenInt, Value: []byte("1")},
-				{Type: gqlscan.TokenInt, Value: []byte("23")},
-				{Type: gqlscan.TokenArr},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenArr},
+				{ID: gqlscan.TokenInt, Value: []byte("1")},
+				{ID: gqlscan.TokenInt, Value: []byte("23")},
+				{ID: gqlscan.TokenArr},
 			}),
 			Expect: true,
 		},
 		{
 			Name: "not_equal_tokens_array",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenArr},
-				{Type: gqlscan.TokenInt, Value: []byte("1")},
-				{Type: gqlscan.TokenInt, Value: []byte("23")},
-				{Type: gqlscan.TokenArr},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenArr},
+				{ID: gqlscan.TokenInt, Value: []byte("1")},
+				{ID: gqlscan.TokenInt, Value: []byte("23")},
+				{ID: gqlscan.TokenArr},
 			}),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenArr},
-				{Type: gqlscan.TokenInt, Value: []byte("23")},
-				{Type: gqlscan.TokenInt, Value: []byte("1")},
-				{Type: gqlscan.TokenArr},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenArr},
+				{ID: gqlscan.TokenInt, Value: []byte("23")},
+				{ID: gqlscan.TokenInt, Value: []byte("1")},
+				{ID: gqlscan.TokenArr},
 			}),
 			Expect: false,
 		},
 		{
 			Name: "not_equal_tokens_array_empty",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenArr},
-				{Type: gqlscan.TokenInt, Value: []byte("1")},
-				{Type: gqlscan.TokenInt, Value: []byte("23")},
-				{Type: gqlscan.TokenArr},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenArr},
+				{ID: gqlscan.TokenInt, Value: []byte("1")},
+				{ID: gqlscan.TokenInt, Value: []byte("23")},
+				{ID: gqlscan.TokenArr},
 			}),
-			Right: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenArr},
-				{Type: gqlscan.TokenArr},
+			Right: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenArr},
+				{ID: gqlscan.TokenArr},
 			}),
 			Expect: false,
 		},
 
 		{
 			Name: "inf_tokens_null",
-			Left: union.Tokens([]token.Token{
-				{Type: gqlscan.TokenNull},
+			Left: union.Tokens([]gqlparse.Token{
+				{ID: gqlscan.TokenNull},
 			}),
 			Right:  union.Null(),
 			Expect: true,
