@@ -2,27 +2,28 @@ package config
 
 import (
 	"crypto/md5"
+	"encoding/base32"
 	"errors"
 	"fmt"
 	"io"
 	neturl "net/url"
 	"os"
 	"path/filepath"
-	"reflect"
 	"regexp"
 	"strings"
 
 	"github.com/dustin/go-humanize"
-	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/graph-guard/ggproxy/config/metadata"
-	"github.com/graph-guard/ggproxy/utilities/container/hamap"
-	"github.com/graph-guard/gqt"
+	gqt "github.com/graph-guard/gqt/v4"
+	gqlparser "github.com/vektah/gqlparser/v2"
+	gqlast "github.com/vektah/gqlparser/v2/ast"
 	yaml "gopkg.in/yaml.v3"
 )
 
-var ConfigFileExtension = regexp.MustCompile(`\.(yml|yaml)$`)
-var TemplateFileExtension = regexp.MustCompile(`\.gqt$`)
+var (
+	ConfigFileExtension   = regexp.MustCompile(`\.(yml|yaml)$`)
+	TemplateFileExtension = regexp.MustCompile(`\.gqt$`)
+)
 
 // MinReqBodySize defines the minimum accepted value for
 // `max-request-body-size` in bytes.
@@ -40,35 +41,8 @@ var msgMaxReqBodySizeTooSmall = fmt.Sprintf(
 type Config struct {
 	Proxy           ProxyServerConfig
 	API             *APIServerConfig
-	Services        *hamap.Map[[]byte, *Service]
+	Services        map[string]*Service
 	ServicesEnabled []*Service
-}
-
-func (c *Config) Equal(d *Config) bool {
-	eq := true
-	c.Services.Visit(func(key []byte, value *Service) (stop bool) {
-		v, ok := d.Services.Get(key)
-		if !ok {
-			eq = false
-			return true
-		}
-		if !v.Equal(value) {
-			eq = false
-			return true
-		}
-		return
-	})
-	if !eq {
-		return eq
-	}
-
-	less := func(a, b *Service) bool { return a.ID < b.ID }
-	eq = eq &&
-		reflect.DeepEqual(c.Proxy, d.Proxy) &&
-		reflect.DeepEqual(c.API, d.API) &&
-		cmp.Equal(c.ServicesEnabled, d.ServicesEnabled, cmpopts.SortSlices(less))
-
-	return eq
 }
 
 type ProxyServerConfig struct {
@@ -91,33 +65,22 @@ type Service struct {
 	ID               string
 	Path             string
 	ForwardURL       string
-	Templates        *hamap.Map[[]byte, *Template]
+	Schema           *gqlast.Schema
+	Templates        map[string]*Template
 	TemplatesEnabled []*Template
 	ForwardReduced   bool
 	Enabled          bool
 	FilePath         string
 }
 
-func (c *Service) Equal(d *Service) bool {
-	less := func(a, b *Template) bool { return a.ID < b.ID }
-	return c.ID == d.ID &&
-		c.Path == d.Path &&
-		c.ForwardURL == d.ForwardURL &&
-		c.ForwardReduced == d.ForwardReduced &&
-		c.Enabled == d.Enabled &&
-		c.FilePath == d.FilePath &&
-		reflect.DeepEqual(c.Templates, d.Templates) &&
-		cmp.Equal(c.TemplatesEnabled, d.TemplatesEnabled, cmpopts.SortSlices(less))
-}
-
 type Template struct {
-	ID       string
-	Source   []byte
-	Document gqt.Doc
-	Name     string
-	Tags     []string
-	Enabled  bool
-	FilePath string
+	ID          string
+	Source      []byte
+	GQTTemplate *gqt.Operation
+	Name        string
+	Tags        []string
+	Enabled     bool
+	FilePath    string
 }
 
 type serverConfig struct {
@@ -147,6 +110,7 @@ type serviceConfig struct {
 	ForwardReduced   bool   `yaml:"forward-reduced"`
 	TemplatesAll     string `yaml:"all-templates"`
 	TemplatesEnabled string `yaml:"enabled-templates"`
+	Schema           string `yaml:"schema"`
 }
 
 func New(path string) (c *Config, err error) {
@@ -154,14 +118,12 @@ func New(path string) (c *Config, err error) {
 	c = &Config{
 		Proxy:    ProxyServerConfig{},
 		API:      &APIServerConfig{},
-		Services: hamap.New[[]byte, *Service](0, nil),
+		Services: make(map[string]*Service),
 	}
-	err = c.readServerConfig(path)
-	if err != nil {
+	if err = c.readServerConfig(path); err != nil {
 		return nil, err
 	}
-
-	return
+	return c, nil
 }
 
 func (c *Config) readServerConfig(path string) (err error) {
@@ -343,14 +305,14 @@ func (c *Config) readAllServices(path string) (err error) {
 		if err != nil {
 			return err
 		}
-		original, ok := c.Services.Get(h)
+		original, ok := c.Services[string(h)]
 		if ok {
 			return &ErrorDuplicate{
 				Original:  original.FilePath,
 				Duplicate: s.FilePath,
 			}
 		}
-		c.Services.Set(h, s)
+		c.Services[string(h)] = s
 	}
 
 	return
@@ -381,7 +343,7 @@ func (c *Config) readEnabledServices(path string) (err error) {
 		if err != nil {
 			return err
 		}
-		s, ok := c.Services.Get(h)
+		s, ok := c.Services[string(h)]
 		if ok {
 			s.Enabled = true
 			c.ServicesEnabled = append(c.ServicesEnabled, s)
@@ -402,17 +364,28 @@ func readServiceConfig(file *os.File) (s *Service, err error) {
 	dirPath := filepath.Dir(file.Name())
 
 	sc := &serviceConfig{}
-	d := yaml.NewDecoder(file)
-	d.KnownFields(true)
-	if err := d.Decode(sc); err != nil {
-		return nil, &ErrorIllegal{
-			FilePath: filePath,
-			Feature:  "syntax",
-			Message:  err.Error(),
+	{
+		d := yaml.NewDecoder(file)
+		d.KnownFields(true)
+		if err := d.Decode(sc); err != nil {
+			return nil, &ErrorIllegal{
+				FilePath: filePath,
+				Feature:  "syntax",
+				Message:  err.Error(),
+			}
 		}
 	}
 
-	err = validateServiceConfig(sc, filePath)
+	if err := validateServiceConfig(sc, filePath); err != nil {
+		return nil, err
+	}
+
+	// TODO: Add support for multiple graphqls files
+	var schemaPath string
+	if sc.Schema != "" {
+		schemaPath = filepath.Join(dirPath, sc.Schema)
+	}
+	schema, gqtParser, err := s.readSchema(schemaPath)
 	if err != nil {
 		return nil, err
 	}
@@ -439,7 +412,8 @@ func readServiceConfig(file *os.File) (s *Service, err error) {
 
 	s = &Service{
 		ID:             id,
-		Templates:      hamap.New[[]byte, *Template](0, nil),
+		Schema:         schema,
+		Templates:      map[string]*Template{},
 		FilePath:       filePath,
 		Path:           sc.Path,
 		ForwardURL:     sc.ForwardURL,
@@ -447,7 +421,7 @@ func readServiceConfig(file *os.File) (s *Service, err error) {
 	}
 
 	// reading all templates
-	err = s.readAllTemplates(templatesAllPath)
+	err = s.readAllTemplates(templatesAllPath, gqtParser)
 	if err != nil {
 		return nil, err
 	}
@@ -504,7 +478,32 @@ func validateServiceConfig(sc *serviceConfig, path string) (err error) {
 	return
 }
 
-func (s *Service) readAllTemplates(path string) (err error) {
+func (s *Service) readSchema(path string) (*gqlast.Schema, *gqt.Parser, error) {
+	if path == "" {
+		p, err := gqt.NewParser(nil)
+		return nil, p, err
+	}
+
+	f, err := os.ReadFile(path)
+	if err != nil {
+		return nil, nil, fmt.Errorf("reading schema file: %w", err)
+	}
+
+	schema, err := gqlparser.LoadSchema(&gqlast.Source{
+		Name:  path,
+		Input: string(f),
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing schema: %w", err)
+	}
+
+	gqtParser, err := gqt.NewParser([]gqt.Source{
+		{Name: path, Content: string(f)},
+	})
+	return schema, gqtParser, err
+}
+
+func (s *Service) readAllTemplates(path string, p *gqt.Parser) (err error) {
 	dir, err := os.ReadDir(path)
 	if err != nil {
 		return fmt.Errorf("reading templates directory: %w", err)
@@ -528,19 +527,19 @@ func (s *Service) readAllTemplates(path string) (err error) {
 			return err
 		}
 
-		t, err := readTemplate(file)
+		t, err := readTemplate(file, p)
 		if err != nil {
 			return err
 		}
 
-		original, ok := s.Templates.Get(h)
+		original, ok := s.Templates[string(h)]
 		if ok {
 			return &ErrorDuplicate{
 				Original:  original.FilePath,
 				Duplicate: t.FilePath,
 			}
 		}
-		s.Templates.Set(h, t)
+		s.Templates[string(h)] = t
 	}
 
 	return
@@ -571,7 +570,7 @@ func (s *Service) readEnabledTemplates(path string) (err error) {
 		if err != nil {
 			return err
 		}
-		t, ok := s.Templates.Get(h)
+		t, ok := s.Templates[string(h)]
 		if ok {
 			t.Enabled = true
 			s.TemplatesEnabled = append(s.TemplatesEnabled, t)
@@ -587,7 +586,7 @@ func (s *Service) readEnabledTemplates(path string) (err error) {
 	return
 }
 
-func readTemplate(file *os.File) (t *Template, err error) {
+func readTemplate(file *os.File, p *gqt.Parser) (t *Template, err error) {
 	filePath := file.Name()
 
 	id := strings.ToLower(
@@ -617,22 +616,29 @@ func readTemplate(file *os.File) (t *Template, err error) {
 		}
 	}
 
-	doc, errParser := gqt.Parse(template)
-	if errParser.IsErr() {
+	doc, _, errs := p.Parse(template)
+	if errs != nil {
+		var msg strings.Builder
+		for i := range errs {
+			msg.WriteString(errs[i].Error())
+			if i+1 < len(errs) {
+				msg.WriteString("; ")
+			}
+		}
 		return nil, &ErrorIllegal{
 			FilePath: filePath,
 			Feature:  "template",
-			Message:  errParser.Error(),
+			Message:  msg.String(),
 		}
 	}
 
 	t = &Template{
-		ID:       id,
-		Source:   template,
-		Document: doc,
-		Name:     meta.Name,
-		Tags:     meta.Tags,
-		FilePath: filePath,
+		ID:          id,
+		Source:      template,
+		GQTTemplate: doc,
+		Name:        meta.Name,
+		Tags:        meta.Tags,
+		FilePath:    filePath,
 	}
 
 	return
@@ -724,9 +730,11 @@ func (e ErrorIllegal) Error() string {
 	return b.String()
 }
 
-var ErrPathNotAbsolute = errors.New("path is not starting with /")
-var ErrURLProtocolProblem = errors.New("protocol is not supported or undefined")
-var ErrURLNoHost = errors.New("host is not defined")
+var (
+	ErrPathNotAbsolute    = errors.New("path is not starting with /")
+	ErrURLProtocolProblem = errors.New("protocol is not supported or undefined")
+	ErrURLNoHost          = errors.New("host is not defined")
+)
 
 var ValidProtocolSchemes = []string{"http", "https"}
 
@@ -783,18 +791,15 @@ func openFile(path string) (*os.File, error) {
 	return f, nil
 }
 
-func calculateHash(file *os.File) (sum []byte, err error) {
+func calculateHash(file *os.File) (string, error) {
 	h := md5.New()
-
-	_, err = io.Copy(h, file)
-	if err != nil {
-		return nil, err
+	if _, err := io.Copy(h, file); err != nil {
+		return "", fmt.Errorf("copying file to md5 hash: %w", err)
 	}
-	_, err = file.Seek(0, io.SeekStart)
-	if err != nil {
-		return nil, err
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return "", fmt.Errorf("seeking start in file: %w", err)
 	}
-	sum = h.Sum(nil)
-
-	return
+	sum := h.Sum(nil)
+	s := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(sum)
+	return s, nil
 }

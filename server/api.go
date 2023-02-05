@@ -22,7 +22,7 @@ import (
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engines/rmap"
 	"github.com/graph-guard/ggproxy/gqlparse"
-	"github.com/graph-guard/gqt"
+	gqt "github.com/graph-guard/gqt/v4"
 	plog "github.com/phuslu/log"
 	"github.com/valyala/fasthttp"
 )
@@ -141,7 +141,6 @@ func (s *API) Serve(listener net.Listener) {
 		// TLS disabled
 		if listener != nil {
 			err = s.server.Serve(listener)
-
 		} else {
 			err = s.server.ListenAndServe()
 		}
@@ -241,14 +240,10 @@ func makeServices(
 	conf *config.Config,
 	proxyServer *Proxy,
 ) map[string]*model.Service {
-	m := make(
-		map[string]*model.Service,
-		conf.Services.Len(),
-	)
-	conf.Services.Visit(func(key []byte, s *config.Service) (stop bool) {
+	m := make(map[string]*model.Service, len(conf.Services))
+	for _, s := range conf.Services {
 		m[s.ID] = makeService(conf, s, proxyServer)
-		return
-	})
+	}
 	return m
 }
 
@@ -259,22 +254,22 @@ func makeService(
 ) *model.Service {
 	stats := proxyServer.GetServiceStatistics(s.ID)
 	service := &model.Service{
-		Stats: stats,
-		TemplatesByID: make(
-			map[string]*model.Template,
-			s.Templates.Len(),
+		Stats:            stats,
+		TemplatesByID:    make(map[string]*model.Template, len(s.Templates)),
+		ID:               s.ID,
+		ForwardURL:       s.ForwardURL,
+		Enabled:          s.Enabled,
+		TemplatesEnabled: make([]*model.Template, len(s.TemplatesEnabled)),
+		TemplatesDisabled: make(
+			[]*model.Template,
+			len(s.Templates)-len(s.TemplatesEnabled),
 		),
-		ID:                s.ID,
-		ForwardURL:        s.ForwardURL,
-		Enabled:           s.Enabled,
-		TemplatesEnabled:  make([]*model.Template, len(s.TemplatesEnabled)),
-		TemplatesDisabled: make([]*model.Template, s.Templates.Len()-len(s.TemplatesEnabled)),
 	}
 
 	{ // Initialize matcher engine
-		d := make(map[string]gqt.Doc, s.Templates.Len())
-		s.Templates.Visit(func(key []byte, t *config.Template) (stop bool) {
-			d[t.ID] = t.Document
+		d := make(map[string]*gqt.Operation, len(s.Templates))
+		for _, t := range s.Templates {
+			d[t.ID] = t.GQTTemplate
 			tm := &model.Template{
 				Service: service,
 				Stats:   proxyServer.GetTemplateStatistics(s.ID, t.ID),
@@ -286,8 +281,7 @@ func makeService(
 			}
 			service.TemplatesEnabled = append(service.TemplatesEnabled, tm)
 			service.TemplatesByID[t.ID] = tm
-			return
-		})
+		}
 
 		var err error
 		service.Matcher, err = rmap.New(d, 0)

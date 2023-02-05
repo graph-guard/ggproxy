@@ -12,7 +12,7 @@ import (
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/statistics"
 	"github.com/graph-guard/ggproxy/utilities/tokenwriter"
-	"github.com/graph-guard/gqt"
+	gqt "github.com/graph-guard/gqt/v4"
 	plog "github.com/phuslu/log"
 	"github.com/tidwall/gjson"
 	"github.com/valyala/fasthttp"
@@ -94,9 +94,9 @@ func NewProxy(
 			log:            log,
 			matcherpool: sync.Pool{
 				New: func() any {
-					d := make(map[string]gqt.Doc, len(s.TemplatesEnabled))
+					d := make(map[string]*gqt.Operation, len(s.TemplatesEnabled))
 					for _, t := range s.TemplatesEnabled {
-						d[t.ID] = t.Document
+						d[t.ID] = t.GQTTemplate
 					}
 					engine, err := rmap.New(d, 0)
 					if err != nil {
@@ -330,7 +330,6 @@ func (s *Proxy) Serve(listener net.Listener) {
 		// TLS disabled
 		if listener != nil {
 			err = s.server.Serve(listener)
-
 		} else {
 			err = s.server.ListenAndServe(s.config.Proxy.Host)
 		}
