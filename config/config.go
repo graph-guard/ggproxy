@@ -486,7 +486,10 @@ func (s *Service) readSchema(path string) (*gqlast.Schema, *gqt.Parser, error) {
 
 	f, err := os.ReadFile(path)
 	if err != nil {
-		return nil, nil, fmt.Errorf("reading schema file: %w", err)
+		return nil, nil, &ErrorMissing{
+			FilePath: path,
+			Feature:  "schema",
+		}
 	}
 
 	schema, err := gqlparser.LoadSchema(&gqlast.Source{
@@ -494,7 +497,11 @@ func (s *Service) readSchema(path string) (*gqlast.Schema, *gqt.Parser, error) {
 		Input: string(f),
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("parsing schema: %w", err)
+		return nil, nil, &ErrorIllegal{
+			FilePath: path,
+			Feature:  "schema",
+			Message:  fmt.Sprintf("invalid schema: %v", err.Error()),
+		}
 	}
 
 	gqtParser, err := gqt.NewParser([]gqt.Source{
@@ -791,6 +798,7 @@ func openFile(path string) (*os.File, error) {
 	return f, nil
 }
 
+// calculateHash returns a base32 encoded MD5 hash of file.
 func calculateHash(file *os.File) (string, error) {
 	h := md5.New()
 	if _, err := io.Copy(h, file); err != nil {

@@ -409,6 +409,37 @@ func TestReadConfigErrorInvalidForwardURLInvalidScheme(t *testing.T) {
 	})
 }
 
+func TestReadConfigErrorInvalidSchema(t *testing.T) {
+	validFS(t, func(basePath string, _ *config.Config) {
+		p := filepath.Join("all-services", "schema_a.graphqls")
+		createFiles(t, map[string]any{p: `type Query{ invalid }`}, nil, basePath)
+		c, err := config.New(filepath.Join(basePath, ServerConfigFileName))
+		require.Equal(t, &config.ErrorIllegal{
+			FilePath: filepath.Join(basePath, p),
+			Feature:  "schema",
+			Message: fmt.Sprintf(
+				`invalid schema: %s:1: Expected :, found }`,
+				filepath.Join(basePath, p),
+			),
+		}, err)
+		require.Nil(t, c)
+	})
+}
+
+func TestReadConfigErrorMissingSchema(t *testing.T) {
+	validFS(t, func(basePath string, _ *config.Config) {
+		p := filepath.Join(basePath, "all-services", "schema_a.graphqls")
+		err := os.Remove(p)
+		require.NoError(t, err)
+		c, err := config.New(filepath.Join(basePath, ServerConfigFileName))
+		require.Equal(t, &config.ErrorMissing{
+			FilePath: p,
+			Feature:  "schema",
+		}, err)
+		require.Nil(t, c)
+	})
+}
+
 func TestReadConfigErrorInvalidTemplate(t *testing.T) {
 	validFS(t, func(basePath string, _ *config.Config) {
 		p := filepath.Join("all-templates", "a", "invalid_template.gqt")
