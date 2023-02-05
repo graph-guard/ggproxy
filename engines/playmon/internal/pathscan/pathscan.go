@@ -1,5 +1,7 @@
 // Package pathscan provides a scanner that traverses token slices and
 // finds all paths of leaf nodes in a GraphQL operation.
+// Query operations always begin with "Q", mutation operations always begin
+// with "M" and subscription operations always begin with "S".
 //
 // Consider the following example:
 //
