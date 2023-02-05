@@ -1,0 +1,15 @@
+schema: >
+  type Query {f(
+    bool_f: Boolean!
+  ):Int}
+
+template: >
+  query {f(
+    bool_f: false,
+  )}
+
+inputs:
+  Query.f|bool_f:
+    match: false
+    tokens:
+      - Str: "false"

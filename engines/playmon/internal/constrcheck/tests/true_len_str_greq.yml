@@ -1,0 +1,15 @@
+schema: >
+  type Query { f(
+    greq: String!
+  ):Int }
+
+template: >
+  query { f(
+    greq: len >= 3,
+  ) }
+
+inputs:
+  Query.f|greq:
+    match: true
+    tokens:
+      - Str: "123" # eq

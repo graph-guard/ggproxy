@@ -1,0 +1,40 @@
+schema: >
+  type Query {
+    iface: Iface!
+  }
+  interface Iface {
+    i(x:Int!):Int!
+  }
+  type Foo implements Iface {
+    i(x:Int!):Int!
+  }
+  type Bar implements Iface {
+    i(x:Int!):Int!
+  }
+
+template: >
+  query {
+    iface {
+      i(x:>42)
+      ... on Foo {
+        i(x:>20)
+      }
+      ... on Bar {
+        i(x:>30)
+      }
+    }
+  }
+
+inputs:
+  Query.iface.i|x:
+    match: true
+    tokens:
+      - Int: 43
+  Query.iface&Foo.i|x:
+    match: true
+    tokens:
+      - Int: 21
+  Query.iface&Bar.i|x:
+    match: true
+    tokens:
+      - Int: 31

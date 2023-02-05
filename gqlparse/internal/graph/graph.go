@@ -16,7 +16,7 @@ func NewInspector() *Inspector {
 
 type Inspector struct {
 	ni    *hamap.Map[[]byte, int]
-	stack *stack.Stack[int]
+	stack stack.Stack[int]
 	n     int
 	cl    [MaxFragments]uint8
 	g     [MaxFragments][MaxFragments]bool

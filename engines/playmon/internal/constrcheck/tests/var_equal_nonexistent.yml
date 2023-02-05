@@ -1,0 +1,24 @@
+# Make sure that missing values are treated as `null`.
+schema: >
+  type Query { f(
+    v: Int
+    a: Int
+    b: Int
+  ):Int }
+
+template: >
+  query { f(
+    v = $v: *,
+    a: $v,
+    b: != $v,
+  ) }
+
+inputs:
+  Query.f|a:
+    match: true
+    tokens:
+      - Null:
+  Query.f|b:
+    match: true
+    tokens:
+      - Int: 42

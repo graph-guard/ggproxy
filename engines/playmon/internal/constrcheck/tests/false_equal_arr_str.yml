@@ -1,0 +1,39 @@
+schema: >
+  type Query {f(
+    strs1: [String!]!
+    strs2: [String!]!
+    strs3: [String!]!
+  ):String}
+
+template: >
+  query {f(
+    strs1: ["1","2","3"],
+    strs2: ["1","2","3"],
+    strs3: ["1","2","3"],
+  )}
+
+inputs:
+  Query.f|strs1:
+    match: false
+    tokens:
+      - Arr:
+      - Str: "1"
+      - Str: "2"
+      - ArrEnd:
+  Query.f|strs2:
+    match: false
+    tokens:
+      - Arr:
+      - Str: "1"
+      - Str: "2"
+      - Str: "3"
+      - Str: "4"
+      - ArrEnd:
+  Query.f|strs3:
+    match: false
+    tokens:
+      - Arr:
+      - Str: "3"
+      - Str: "2"
+      - Str: "1"
+      - ArrEnd:

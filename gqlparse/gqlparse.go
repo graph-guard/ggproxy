@@ -24,6 +24,13 @@ type Token struct {
 	Value []byte
 }
 
+func (t Token) String() string {
+	if t.Value == nil {
+		return t.ID.String()
+	}
+	return fmt.Sprintf("%s (%q)", t.ID.String(), string(t.Value))
+}
+
 // VariableIndex returns the index of the varible value if
 // its a variable index token, otherwise returns -1.
 func (t Token) VariableIndex() (index int) {
@@ -138,7 +145,7 @@ type Parser struct {
 	varsConstructed *segmented.Array[[]byte, Token]
 
 	// typeStack is used during variable default value parsing
-	typeStack *stack.Stack[typeUnion]
+	typeStack stack.Stack[typeUnion]
 
 	// operations holds index ranges of all operation definitions
 	operations []indexRange
@@ -289,8 +296,8 @@ func (r *Parser) Parse(
 			r.fragDefs.Set(i.Value(), fragDef{
 				indexRange: indexRange{
 					IndexStart: len(r.buffer) - 1,
-				}},
-			)
+				},
+			})
 		}
 		return false
 	}); serr.IsErr() {
@@ -569,8 +576,7 @@ func (e *ErrorSyntax) Error() string {
 	return fmt.Sprintf("syntax error: %s", e.ScanErr.Error())
 }
 
-type ErrorOprAnonNonExcl struct {
-}
+type ErrorOprAnonNonExcl struct{}
 
 func (e *ErrorOprAnonNonExcl) Error() string {
 	return "non-exclusive anonymous operation"
@@ -913,16 +919,18 @@ func WriteValue(w io.Writer, definition []Token) {
 	}
 }
 
-var strNotNull = []byte("!")
-var strSqrBrackLeft = []byte("[")
-var strSqrBrackRight = []byte("]")
-var strCurlBrackLeft = []byte("{")
-var strCurlBrackRight = []byte("}")
-var strColSp = []byte(":")
-var strComSp = []byte(",")
-var strTrue = []byte("true")
-var strFalse = []byte("false")
-var strNull = []byte("null")
+var (
+	strNotNull        = []byte("!")
+	strSqrBrackLeft   = []byte("[")
+	strSqrBrackRight  = []byte("]")
+	strCurlBrackLeft  = []byte("{")
+	strCurlBrackRight = []byte("}")
+	strColSp          = []byte(":")
+	strComSp          = []byte(",")
+	strTrue           = []byte("true")
+	strFalse          = []byte("false")
+	strNull           = []byte("null")
+)
 
 func (r *Parser) writeTypeToStack(t []Token, i int) (typeIndex indexRange) {
 	r.typeStack.Reset()

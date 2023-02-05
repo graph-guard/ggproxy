@@ -1,0 +1,46 @@
+schema: >
+  type Query {f(
+    intsDiff: [Int!]!
+    intsShort: [Int!]!
+    intsLong: [Int!]!
+    intsEmpty: [Int!]!
+  ):Int}
+
+template: >
+  query {f(
+    intsDiff: != [1,2,3],
+    intsShort: != [1,2,3],
+    intsLong: != [1,2,3],
+    intsEmpty: != [1,2,3],
+  )}
+
+inputs:
+  Query.f|intsDiff:
+    match: true
+    tokens:
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - Int: 5
+      - ArrEnd:
+  Query.f|intsShort:
+    match: true
+    tokens:
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - ArrEnd:
+  Query.f|intsLong:
+    match: true
+    tokens:
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - Int: 3
+      - Int: 3
+      - ArrEnd:
+  Query.f|intsEmpty:
+    match: true
+    tokens:
+      - Arr:
+      - ArrEnd:

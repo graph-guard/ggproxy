@@ -1,0 +1,33 @@
+schema: >
+  type Query { f(
+    gr:   Int!
+    le:   Int!
+    greq: Int!
+    leeq: Int!
+  ):Int }
+
+template: >
+  query { f(
+    gr:   > 1,
+    le:   < 20,
+    greq: >= 300,
+    leeq: <= 4000,
+  ) }
+
+inputs:
+  Query.f|gr:
+    match: true
+    tokens:
+      - Int: 2
+  Query.f|le:
+    match: true
+    tokens:
+      - Int: 19
+  Query.f|greq:
+    match: true
+    tokens:
+      - Int: 300
+  Query.f|leeq:
+    match: true
+    tokens:
+      - Int: 4000

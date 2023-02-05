@@ -1,0 +1,24 @@
+schema: >
+  type Query { f(
+    any: I!
+  ):Int }
+  input I {
+    x: Int!
+    y: Int!
+  }
+
+template: >
+  query { f(
+    any: *,
+  ) }
+
+inputs:
+  Query.f|any:
+    match: false
+    tokens: # {x:42,x:42}
+      - Obj:
+      - ObjField: "x"
+      - Int: 42
+      - ObjField: "x"
+      - Int: 42
+      - ObjEnd:

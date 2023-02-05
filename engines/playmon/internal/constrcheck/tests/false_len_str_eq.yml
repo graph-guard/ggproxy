@@ -1,0 +1,15 @@
+schema: >
+  type Query { f(
+    eq: String!
+  ):Int }
+
+template: >
+  query { f(
+    eq: len 0,
+  ) }
+
+inputs:
+  Query.f|eq:
+    match: false
+    tokens:
+      - Str: "1" # diff: +1

@@ -1,0 +1,21 @@
+schema: >
+  type Query { f(
+    a: String!
+    b: String!
+  ):Int }
+
+template: >
+  query { f(
+    a = $a: "okay",
+    b: $a,
+  ) }
+
+inputs:
+  Query.f|a:
+    match: true
+    tokens:
+      - Str: "okay"
+  Query.f|b:
+    match: true
+    tokens:
+      - Str: "okay"

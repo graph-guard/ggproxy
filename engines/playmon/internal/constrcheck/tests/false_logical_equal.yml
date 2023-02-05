@@ -1,0 +1,52 @@
+schema: >
+  type Query {f(
+    ints:    Boolean!
+    floats:  Boolean!
+    strings: Boolean!
+    enums:   Boolean!
+    bools1:  Boolean!
+    bools2:  Boolean!
+    arrs:    Boolean!
+  ):Int}
+  enum Color { red green blue }
+
+template: >
+  query {f(
+    ints:    10 == 11,
+    floats:  3.14 == 3.145,
+    strings: "foo" == "fo",
+    enums:   red == green,
+    bools1:  true == false,
+    bools2:  false == true,
+    arrs:    [1,2] == [1,2,3],
+  )}
+
+inputs:
+  Query.f|ints:
+    match: false
+    tokens:
+      - True:
+  Query.f|floats:
+    match: false
+    tokens:
+      - True:
+  Query.f|strings:
+    match: false
+    tokens:
+      - True:
+  Query.f|enums:
+    match: false
+    tokens:
+      - True:
+  Query.f|bools1:
+    match: false
+    tokens:
+      - True:
+  Query.f|bools2:
+    match: false
+    tokens:
+      - True:
+  Query.f|arrs:
+    match: false
+    tokens:
+      - True:

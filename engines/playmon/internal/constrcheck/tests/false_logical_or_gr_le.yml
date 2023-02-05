@@ -1,0 +1,15 @@
+schema: >
+  type Query {f(
+    x: Int!
+  ):Int}
+
+template: >
+  query {f(
+    x: <10 || >20,
+  )}
+
+inputs:
+  Query.f|x:
+    match: false
+    tokens:
+      - Int: 15

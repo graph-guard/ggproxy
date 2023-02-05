@@ -1,0 +1,19 @@
+schema: >
+  type Query {f(
+    strs: [String!]!
+  ):String}
+
+template: >
+  query {f(
+    strs: != ["1","2","3"],
+  )}
+
+inputs:
+  Query.f|strs:
+    match: false
+    tokens:
+      - Arr:
+      - Str: "1"
+      - Str: "2"
+      - Str: "3"
+      - ArrEnd:

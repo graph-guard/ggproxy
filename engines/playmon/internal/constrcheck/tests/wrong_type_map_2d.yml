@@ -1,0 +1,47 @@
+schema: >
+  type Query { f(
+    a:     [[Int!]!]!
+    b:     [[Int!]!]!
+    empty: [[Int!]!]!
+  ):Int }
+
+template: >
+  query { f(
+    a:     [...[...>0]],
+    b:     [...[...>0]],
+    empty: [...[...>0]],
+  ) }
+
+inputs:
+  Query.f|a:
+    match: false
+    tokens:
+      - Arr:
+      - Int: 6
+      - Int: 7
+      - Int: 8
+      - ArrEnd:
+  Query.f|b:
+    match: false
+    tokens:
+      - Arr:
+      
+      - Arr:
+      - Int: 10
+      - ArrEnd:
+      
+      - Null:
+      
+      - Arr:
+      - ArrEnd:
+
+      - ArrEnd:
+  Query.f|empty:
+    match: false
+    tokens:
+      - Arr:
+      - Arr:
+      - Arr:
+      - ArrEnd:
+      - ArrEnd:
+      - ArrEnd:

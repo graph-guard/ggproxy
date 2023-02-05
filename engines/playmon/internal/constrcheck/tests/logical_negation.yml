@@ -1,0 +1,46 @@
+schema: >
+  type Query { f(
+    neg_t: Boolean!
+    neg_f: Boolean!
+    
+    var_t: Boolean!
+    var_f: Boolean!
+    neg_var_t: Boolean!
+    neg_var_f: Boolean!
+  ):Int }
+
+template: >
+  query { f(
+    neg_t: !true,
+    neg_f: !false,
+    var_t=$var_t: true,
+    var_f=$var_f: false,
+    neg_var_t: !$var_t,
+    neg_var_f: !$var_f,
+  ) }
+
+inputs:
+  Query.f|neg_t:
+    match: true
+    tokens:
+      - False:
+  Query.f|neg_f:
+    match: true
+    tokens:
+      - True:
+  Query.f|var_t:
+    match: true
+    tokens:
+      - True:
+  Query.f|var_f:
+    match: true
+    tokens:
+      - False:
+  Query.f|neg_var_t:
+    match: true
+    tokens:
+      - False:
+  Query.f|neg_var_f:
+    match: true
+    tokens:
+      - True:

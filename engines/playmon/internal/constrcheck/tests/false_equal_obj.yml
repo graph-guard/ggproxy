@@ -1,0 +1,35 @@
+schema: >
+  type Query {f(
+    a: A!
+  ):Int}
+  input A { b: B! }
+  input B {
+    s: String!
+    i: Int!
+    optional: Boolean
+  }
+
+template: >
+  query {f(
+    a: {
+      b: {
+        s: "okay",
+        i: 42,
+        optional: *
+      }
+    }
+  )}
+
+inputs:
+  Query.f|a:
+    match: false
+    tokens: # {b:{s:"okay",i:24}}
+      - Obj:
+      - ObjField: "b"
+      - Obj:
+      - ObjField: "s"
+      - Str: "okay"
+      - ObjField: "i"
+      - Int: 24 # mismatch
+      - ObjEnd:
+      - ObjEnd:

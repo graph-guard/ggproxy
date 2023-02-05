@@ -1,0 +1,33 @@
+schema: >
+  type Query {f(
+    t: Float!
+    f: Float!
+    t2: Float
+    f2: Float
+  ):Int}
+
+template: >
+  query {f(
+    t: 3.14 / 3.14,
+    f: 3.14 / 3.14,
+    t2: 3.14 / 2,
+    f2: 3.14 / 2,
+  )}
+
+inputs:
+  Query.f|t:
+    match: true
+    tokens:
+      - Float: 1
+  Query.f|f:
+    match: false
+    tokens:
+      - Float: 1.5
+  Query.f|t2:
+    match: true
+    tokens:
+      - Float: 1.57
+  Query.f|f2:
+    match: false
+    tokens:
+      - Float: 1.58

@@ -1,0 +1,15 @@
+schema: >
+  type Query {f(
+    int: Int!
+  ):Int}
+
+template: >
+  query {f(
+    int: 42,
+  )}
+
+inputs:
+  Query.f|int:
+    match: false
+    tokens:
+      - Int: 142

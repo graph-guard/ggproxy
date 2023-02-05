@@ -1,0 +1,15 @@
+schema: >
+  type Query { f(
+    neq: String!
+  ):Int }
+
+template: >
+  query { f(
+    neq: len != 0,
+  ) }
+
+inputs:
+  Query.f|neq:
+    match: false
+    tokens:
+      - StrBlock: "" # eq

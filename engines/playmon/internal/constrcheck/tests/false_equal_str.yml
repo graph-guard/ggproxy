@@ -1,0 +1,15 @@
+schema: >
+  type Query {f(
+    string: String!
+  ):Int}
+
+template: >
+  query {f(
+    string: "text",
+  )}
+
+inputs:
+  Query.f|string:
+    match: false
+    tokens:
+      - Str: "tex"

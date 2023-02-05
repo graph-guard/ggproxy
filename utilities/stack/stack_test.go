@@ -27,17 +27,26 @@ func TestPop(t *testing.T) {
 	st.Push(0)
 	st.Push(1)
 	st.Push(-1)
-	require.Equal(t, int64(-1), st.Pop())
+	require.Equal(t, int64(-1), st.TopPop())
 	st.Pop()
 	st.Pop()
-	require.Equal(t, int64(0), st.Pop())
+	require.Equal(t, int64(0), st.TopPop())
+}
+
+func TestTopPopPush(t *testing.T) {
+	st := stack.New[float64](2)
+	st.Push(0.0)
+	require.Equal(t, 0.0, st.TopPopPush(-1))
+	require.Equal(t, -1.0, st.TopPop())
 }
 
 func TestPopPush(t *testing.T) {
 	st := stack.New[float64](2)
 	st.Push(0.0)
-	require.Equal(t, 0.0, st.PopPush(-1))
-	require.Equal(t, -1.0, st.Pop())
+	st.PopPush(-1)
+	require.Equal(t, -1.0, st.Top())
+	st.PopPush(3.14)
+	require.Equal(t, 3.14, st.Top())
 }
 
 func TestTop(t *testing.T) {
@@ -62,8 +71,8 @@ func TestTopOffsetFn(t *testing.T) {
 		require.Equal(t, 0, *i)
 		*i = 10
 	})
-	require.Equal(t, 20, st.Pop())
-	require.Equal(t, 10, st.Pop())
+	require.Equal(t, 20, st.TopPop())
+	st.Pop() // 10
 	require.Equal(t, 0, st.Top())
 }
 

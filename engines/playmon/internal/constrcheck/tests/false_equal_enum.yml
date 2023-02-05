@@ -1,0 +1,16 @@
+schema: >
+  type Query {f(
+    enum: Color!
+  ):Int}
+  enum Color { red green blue }
+
+template: >
+  query {f(
+    enum: green,
+  )}
+
+inputs:
+  Query.f|enum:
+    match: false
+    tokens:
+      - EnumVal: "red"
