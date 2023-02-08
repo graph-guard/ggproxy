@@ -40,14 +40,6 @@ func (t Token) VariableIndex() (index int) {
 	return -1
 }
 
-// MakeVariableIndexToken creates a variable index token.
-func MakeVariableIndexToken(index int, name string) Token {
-	return Token{
-		ID:    gqlscan.Token(TokenTypeValIndexOffset + index),
-		Value: []byte(name),
-	}
-}
-
 // TokenTypeValIndexOffset defines the offset that needs to be subtracted
 // from Token.ID in order to get the index of the value when Token.ID is > 99
 const TokenTypeValIndexOffset = 100

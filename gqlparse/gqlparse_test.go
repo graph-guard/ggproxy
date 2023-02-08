@@ -32,7 +32,7 @@ var testdata = []decl.Declaration[TestSuccess]{
 			Token(gqlscan.TokenField, "hero"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "episode"),
-			gqlparse.MakeVariableIndexToken(0, "e"),
+			MakeVariableIndexToken(0, "e"),
 			Token(gqlscan.TokenArgListEnd),
 			Token(gqlscan.TokenSet),
 			Token(gqlscan.TokenField, "id"),
@@ -72,7 +72,7 @@ var testdata = []decl.Declaration[TestSuccess]{
 
 			// $v
 			Token(gqlscan.TokenArgName, "a"),
-			gqlparse.MakeVariableIndexToken(0, "v"),
+			MakeVariableIndexToken(0, "v"),
 
 			Token(gqlscan.TokenArgListEnd),
 			Token(gqlscan.TokenSetEnd),
@@ -176,7 +176,7 @@ var testdata = []decl.Declaration[TestSuccess]{
 			Token(gqlscan.TokenField, "foo"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "bar"),
-			gqlparse.MakeVariableIndexToken(0, "v"),
+			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
 
 			Token(gqlscan.TokenSetEnd),
@@ -208,25 +208,25 @@ var testdata = []decl.Declaration[TestSuccess]{
 			Token(gqlscan.TokenField, "foo"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "bar"),
-			gqlparse.MakeVariableIndexToken(0, "v"),
+			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
 
 			Token(gqlscan.TokenField, "bar"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "baz"),
-			gqlparse.MakeVariableIndexToken(0, "v"),
+			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
 
 			Token(gqlscan.TokenField, "bar"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "baz"),
-			gqlparse.MakeVariableIndexToken(0, "v"),
+			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
 
 			Token(gqlscan.TokenField, "baz"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "fuz"),
-			gqlparse.MakeVariableIndexToken(0, "v"),
+			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
 
 			Token(gqlscan.TokenSetEnd),
@@ -529,71 +529,71 @@ var testdata = []decl.Declaration[TestSuccess]{
 
 			// $v_s: String! = """default value""",
 			Token(gqlscan.TokenArgName, "a1"),
-			gqlparse.MakeVariableIndexToken(0, "v_s"),
+			MakeVariableIndexToken(0, "v_s"),
 
 			// $v_i: Int! = 42,
 			Token(gqlscan.TokenArgName, "a2"),
-			gqlparse.MakeVariableIndexToken(1, "v_i"),
+			MakeVariableIndexToken(1, "v_i"),
 
 			// $v_f: Float! = 3.14,
 			Token(gqlscan.TokenArgName, "a3"),
-			gqlparse.MakeVariableIndexToken(2, "v_f"),
+			MakeVariableIndexToken(2, "v_f"),
 
 			// $v_b: Boolean! = true,
 			Token(gqlscan.TokenArgName, "a4"),
-			gqlparse.MakeVariableIndexToken(3, "v_b"),
+			MakeVariableIndexToken(3, "v_b"),
 
 			// $v_d: ID! = "default ID",
 			Token(gqlscan.TokenArgName, "a5"),
-			gqlparse.MakeVariableIndexToken(4, "v_d"),
+			MakeVariableIndexToken(4, "v_d"),
 
 			// $v_o: InputObj! = {foo: "bar"},
 			Token(gqlscan.TokenArgName, "a6"),
-			gqlparse.MakeVariableIndexToken(5, "v_o"),
+			MakeVariableIndexToken(5, "v_o"),
 
 			// $v_so: String = null,
 			Token(gqlscan.TokenArgName, "a7"),
-			gqlparse.MakeVariableIndexToken(6, "v_so"),
+			MakeVariableIndexToken(6, "v_so"),
 
 			// $v_io: Int = null,
 			Token(gqlscan.TokenArgName, "a8"),
-			gqlparse.MakeVariableIndexToken(7, "v_io"),
+			MakeVariableIndexToken(7, "v_io"),
 
 			// $v_fo: Float = null,
 			Token(gqlscan.TokenArgName, "a9"),
-			gqlparse.MakeVariableIndexToken(8, "v_fo"),
+			MakeVariableIndexToken(8, "v_fo"),
 
 			// $v_bo: Boolean = null,
 			Token(gqlscan.TokenArgName, "a10"),
-			gqlparse.MakeVariableIndexToken(9, "v_bo"),
+			MakeVariableIndexToken(9, "v_bo"),
 
 			// $v_do: ID = null,
 			Token(gqlscan.TokenArgName, "a11"),
-			gqlparse.MakeVariableIndexToken(10, "v_do"),
+			MakeVariableIndexToken(10, "v_do"),
 
 			// $v_oo: InputObj = null,
 			Token(gqlscan.TokenArgName, "a12"),
-			gqlparse.MakeVariableIndexToken(11, "v_oo"),
+			MakeVariableIndexToken(11, "v_oo"),
 
 			// $v_aon: [String] = null,
 			Token(gqlscan.TokenArgName, "a13"),
-			gqlparse.MakeVariableIndexToken(12, "v_aon"),
+			MakeVariableIndexToken(12, "v_aon"),
 
 			// $v_aoy: [String] = [],
 			Token(gqlscan.TokenArgName, "a14"),
-			gqlparse.MakeVariableIndexToken(13, "v_aoy"),
+			MakeVariableIndexToken(13, "v_aoy"),
 
 			// $v_a_so: [String]! = ["okay", null],
 			Token(gqlscan.TokenArgName, "a15"),
-			gqlparse.MakeVariableIndexToken(14, "v_a_so"),
+			MakeVariableIndexToken(14, "v_a_so"),
 
 			// $v_a_ao_so: [[String]]! = [["okay", null], [], null],
 			Token(gqlscan.TokenArgName, "a16"),
-			gqlparse.MakeVariableIndexToken(15, "v_a_ao_so"),
+			MakeVariableIndexToken(15, "v_a_ao_so"),
 
 			// $v_a_io: [InputObj]! = [{a: "1", b: null, c: 42, d: false}, null],
 			Token(gqlscan.TokenArgName, "a17"),
-			gqlparse.MakeVariableIndexToken(16, "v_a_io"),
+			MakeVariableIndexToken(16, "v_a_io"),
 
 			Token(gqlscan.TokenArgListEnd),
 			Token(gqlscan.TokenSetEnd),
@@ -847,71 +847,71 @@ var testdata = []decl.Declaration[TestSuccess]{
 
 			// $v_s: String! = """default value""",
 			Token(gqlscan.TokenArgName, "a1"),
-			gqlparse.MakeVariableIndexToken(0, "v_s"),
+			MakeVariableIndexToken(0, "v_s"),
 
 			// $v_i: Int! = 42,
 			Token(gqlscan.TokenArgName, "a2"),
-			gqlparse.MakeVariableIndexToken(1, "v_i"),
+			MakeVariableIndexToken(1, "v_i"),
 
 			// $v_f: Float! = 3.14,
 			Token(gqlscan.TokenArgName, "a3"),
-			gqlparse.MakeVariableIndexToken(2, "v_f"),
+			MakeVariableIndexToken(2, "v_f"),
 
 			// $v_b: Boolean! = true,
 			Token(gqlscan.TokenArgName, "a4"),
-			gqlparse.MakeVariableIndexToken(3, "v_b"),
+			MakeVariableIndexToken(3, "v_b"),
 
 			// $v_d: ID! = "default ID",
 			Token(gqlscan.TokenArgName, "a5"),
-			gqlparse.MakeVariableIndexToken(4, "v_d"),
+			MakeVariableIndexToken(4, "v_d"),
 
 			// $v_o: InputObj! = {foo: "bar"},
 			Token(gqlscan.TokenArgName, "a6"),
-			gqlparse.MakeVariableIndexToken(5, "v_o"),
+			MakeVariableIndexToken(5, "v_o"),
 
 			// $v_so: String = null,
 			Token(gqlscan.TokenArgName, "a7"),
-			gqlparse.MakeVariableIndexToken(6, "v_so"),
+			MakeVariableIndexToken(6, "v_so"),
 
 			// $v_io: Int = null,
 			Token(gqlscan.TokenArgName, "a8"),
-			gqlparse.MakeVariableIndexToken(7, "v_io"),
+			MakeVariableIndexToken(7, "v_io"),
 
 			// $v_fo: Float = null,
 			Token(gqlscan.TokenArgName, "a9"),
-			gqlparse.MakeVariableIndexToken(8, "v_fo"),
+			MakeVariableIndexToken(8, "v_fo"),
 
 			// $v_bo: Boolean = null,
 			Token(gqlscan.TokenArgName, "a10"),
-			gqlparse.MakeVariableIndexToken(9, "v_bo"),
+			MakeVariableIndexToken(9, "v_bo"),
 
 			// $v_do: ID = null,
 			Token(gqlscan.TokenArgName, "a11"),
-			gqlparse.MakeVariableIndexToken(10, "v_do"),
+			MakeVariableIndexToken(10, "v_do"),
 
 			// $v_oo: InputObj = null,
 			Token(gqlscan.TokenArgName, "a12"),
-			gqlparse.MakeVariableIndexToken(11, "v_oo"),
+			MakeVariableIndexToken(11, "v_oo"),
 
 			// $v_aon: [String] = null,
 			Token(gqlscan.TokenArgName, "a13"),
-			gqlparse.MakeVariableIndexToken(12, "v_aon"),
+			MakeVariableIndexToken(12, "v_aon"),
 
 			// $v_aoy: [String] = [],
 			Token(gqlscan.TokenArgName, "a14"),
-			gqlparse.MakeVariableIndexToken(13, "v_aoy"),
+			MakeVariableIndexToken(13, "v_aoy"),
 
 			// $v_a_so: [String]! = ["okay", null],
 			Token(gqlscan.TokenArgName, "a15"),
-			gqlparse.MakeVariableIndexToken(14, "v_a_so"),
+			MakeVariableIndexToken(14, "v_a_so"),
 
 			// $v_a_ao_so: [[String]]! = [["okay", null], [], null],
 			Token(gqlscan.TokenArgName, "a16"),
-			gqlparse.MakeVariableIndexToken(15, "v_a_ao_so"),
+			MakeVariableIndexToken(15, "v_a_ao_so"),
 
 			// $v_a_io: [InputObj]! = [{a: "1", b: null, c: 42, d: false}, null],
 			Token(gqlscan.TokenArgName, "a17"),
-			gqlparse.MakeVariableIndexToken(16, "v_a_io"),
+			MakeVariableIndexToken(16, "v_a_io"),
 
 			Token(gqlscan.TokenArgListEnd),
 			Token(gqlscan.TokenSetEnd),
@@ -1900,4 +1900,12 @@ type TestWriter struct{ t *testing.T }
 func (t *TestWriter) Errorf(format string, v ...any) {
 	t.t.Helper()
 	t.t.Errorf(format, v...)
+}
+
+// MakeVariableIndexToken creates a variable index token.
+func MakeVariableIndexToken(index int, name string) gqlparse.Token {
+	return gqlparse.Token{
+		ID:    gqlscan.Token(gqlparse.TokenTypeValIndexOffset + index),
+		Value: []byte(name),
+	}
 }
