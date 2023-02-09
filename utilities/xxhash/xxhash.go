@@ -1,5 +1,6 @@
-// Package xxhash borrows code from github.com/pierrec/xxHash/xxHash64
-// and adapts it to the needs of the matcher.
+// Package xxhash provides XXH64 hashing capabilities.
+//
+// Forked from github.com/pierrec/xxHash.
 package xxhash
 
 const (
@@ -60,7 +61,7 @@ func Write[B []byte | string](h *Hash, input B) {
 	// Causes compiler to work directly from registers instead of stack:
 	v1, v2, v3, v4 := h.v1, h.v2, h.v3, h.v4
 	for n := n - 32; p <= n; p += 32 {
-		sub := input[p:][:32] //BCE hint for compiler
+		sub := input[p:][:32] // BCE hint for compiler
 		v1 = rol31(v1+u64(sub[:])*prime64_2) * prime64_1
 		v2 = rol31(v2+u64(sub[8:])*prime64_2) * prime64_1
 		v3 = rol31(v3+u64(sub[16:])*prime64_2) * prime64_1
@@ -104,7 +105,7 @@ func Write8(h *Hash, input [8]byte) {
 	// Causes compiler to work directly from registers instead of stack:
 	v1, v2, v3, v4 := h.v1, h.v2, h.v3, h.v4
 	for n := n - 32; p <= n; p += 32 {
-		sub := input[p:][:32] //BCE hint for compiler
+		sub := input[p:][:32] // BCE hint for compiler
 		v1 = rol31(v1+u64(sub[:])*prime64_2) * prime64_1
 		v2 = rol31(v2+u64(sub[8:])*prime64_2) * prime64_1
 		v3 = rol31(v3+u64(sub[16:])*prime64_2) * prime64_1

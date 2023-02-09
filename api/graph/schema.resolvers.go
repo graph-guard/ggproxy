@@ -72,7 +72,7 @@ func (r *serviceResolver) MatchAll(ctx context.Context, obj *model.Service, quer
 		) {
 			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
 			startMatching := time.Now()
-			obj.Matcher.MatchAll(
+			obj.Engine.MatchAll(
 				varVals,
 				operation[0].ID,
 				selectionSet,
@@ -127,7 +127,7 @@ func (r *serviceResolver) Match(ctx context.Context, obj *model.Service, query s
 		) {
 			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
 			startMatching := time.Now()
-			if id := obj.Matcher.Match(varVals, operation[0].ID, selectionSet); id != "" {
+			if id := obj.Engine.Match(varVals, operation[0].ID, selectionSet); id != "" {
 				m.Templates = []*model.Template{obj.TemplatesByID[id]}
 			}
 			m.TimeMatchingNs = nsToF64(time.Since(startMatching).Nanoseconds())
@@ -188,6 +188,8 @@ func (r *Resolver) Service() generated.ServiceResolver { return &serviceResolver
 // Template returns generated.TemplateResolver implementation.
 func (r *Resolver) Template() generated.TemplateResolver { return &templateResolver{r} }
 
-type queryResolver struct{ *Resolver }
-type serviceResolver struct{ *Resolver }
-type templateResolver struct{ *Resolver }
+type (
+	queryResolver    struct{ *Resolver }
+	serviceResolver  struct{ *Resolver }
+	templateResolver struct{ *Resolver }
+)

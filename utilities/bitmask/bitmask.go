@@ -1,25 +1,11 @@
-//go:build go1.10
-// +build go1.10
-
-// Package bitmask provides a bit array implementation.
+// Package bitmask provides a bit array/mask implementation.
 //
-// # Bit set
+// Forked from github.com/yourbasic/bit.
 //
 // A bit set, or bit array, is an efficient set data structure
 // that consists of an array of 64-bit words. Because it uses
 // bit-level parallelism, limits memory access, and efficiently uses
 // the data cache, a bit set often outperforms other data structures.
-//
-// # Tutorial
-//
-// The Basics example shows how to create, combine, compare and
-// print bit sets.
-//
-// Primes contains a short and simple, but still efficient,
-// implementation of a prime number sieve.
-//
-// Union is a more advanced example demonstrating how to build
-// an efficient variadic Union function using the SetOr method.
 package bitmask
 
 import (
@@ -408,30 +394,6 @@ func (s *Set) DeleteRange(m, n int) *Set {
 	d[high] &^= bitMask(0, n&mask)
 	s.trim()
 	return s
-}
-
-// And creates a new set that consists of all elements that belong
-// to both s1 and s2.
-func (s *Set) And(s1 *Set) *Set {
-	return new(Set).SetAnd(s1, s1)
-}
-
-// Or creates a new set that contains all elements that belong
-// to either s1 or s2.
-func (s *Set) Or(s1 *Set) *Set {
-	return new(Set).SetOr(s, s1)
-}
-
-// Xor creates a new set that contains all elements that belong
-// to either s1 or s2, but not to both.
-func (s *Set) Xor(s1 *Set) *Set {
-	return new(Set).SetXor(s, s1)
-}
-
-// AndNot creates a new set that consists of all elements that belong
-// to s1, but not to s2.
-func (s *Set) AndNot(s1 *Set) *Set {
-	return new(Set).SetAndNot(s, s1)
 }
 
 // Set sets s to s1 and then returns a pointer to the updated set s.

@@ -3,7 +3,7 @@ package union_test
 import (
 	"testing"
 
-	"github.com/graph-guard/ggproxy/engines/playmon/internal/constrcheck/internal/union"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/constrcheck/internal/union"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"

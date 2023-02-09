@@ -1,0 +1,20 @@
+---
+name: "B"
+---
+query {
+    hero(episode: EMPIRE || JEDI) {
+        id
+        name
+        appearsIn
+        friends {
+            id
+            name
+            appearsIn
+            friends {
+                id
+                name
+                appearsIn
+            }
+        }
+    }
+}

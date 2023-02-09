@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/graph-guard/ggproxy/engines/playmon/internal/constrcheck"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/constrcheck"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqlscan"
 	"github.com/graph-guard/gqt/v4"

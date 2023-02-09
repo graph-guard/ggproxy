@@ -1,12 +1,12 @@
 package model
 
 import (
-	"github.com/graph-guard/ggproxy/engines/rmap"
+	"github.com/graph-guard/ggproxy/engine/playmon"
 	"github.com/graph-guard/ggproxy/statistics"
 )
 
 type Service struct {
-	Matcher       *rmap.RulesMap
+	Engine        *playmon.Engine
 	TemplatesByID map[string]*Template
 	Stats         *statistics.ServiceSync
 

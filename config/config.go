@@ -144,8 +144,7 @@ func (c *Config) readServerConfig(path string) (err error) {
 		}
 	}
 
-	err = validateServerConfig(sc, path)
-	if err != nil {
+	if err := validateServerConfig(sc, path); err != nil {
 		return err
 	}
 
@@ -181,14 +180,12 @@ func (c *Config) readServerConfig(path string) (err error) {
 	}
 
 	// reading all services
-	err = c.readAllServices(servicesAllPath)
-	if err != nil {
+	if err := c.readAllServices(servicesAllPath); err != nil {
 		return err
 	}
 
 	// reading enabled services
-	err = c.readEnabledServices(servicesEnabledPath)
-	if err != nil {
+	if err := c.readEnabledServices(servicesEnabledPath); err != nil {
 		return err
 	}
 

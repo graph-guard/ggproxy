@@ -2,13 +2,12 @@ package server
 
 import (
 	"crypto/tls"
-	"fmt"
 	"net"
 	"sync"
 	"time"
 
 	"github.com/graph-guard/ggproxy/config"
-	"github.com/graph-guard/ggproxy/engines/rmap"
+	"github.com/graph-guard/ggproxy/engine/playmon"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/statistics"
 	"github.com/graph-guard/ggproxy/utilities/tokenwriter"
@@ -32,14 +31,14 @@ type service struct {
 	forwardURL         string
 	forwardReduced     bool
 	log                plog.Logger
-	matcherpool        sync.Pool
+	enginePool         sync.Pool
 	statistics         *statistics.ServiceSync
 	templateStatistics map[string]*statistics.TemplateSync
 }
 
-type matcher struct {
+type engine struct {
 	Parser *gqlparse.Parser
-	Engine *rmap.RulesMap
+	Engine *playmon.Engine
 }
 
 func NewProxy(
@@ -92,23 +91,17 @@ func NewProxy(
 			forwardURL:     s.ForwardURL,
 			forwardReduced: s.ForwardReduced,
 			log:            log,
-			matcherpool: sync.Pool{
+			enginePool: sync.Pool{
 				New: func() any {
 					d := make(map[string]*gqt.Operation, len(s.TemplatesEnabled))
 					for _, t := range s.TemplatesEnabled {
 						d[t.ID] = t.GQTTemplate
 					}
-					engine, err := rmap.New(d, 0)
-					if err != nil {
-						panic(fmt.Errorf(
-							"initializing engine for service %q: %w",
-							s.ID, err,
-						))
-					}
-					parser := gqlparse.NewParser()
-					return &matcher{
-						Parser: parser,
-						Engine: engine,
+					p := gqlparse.NewParser()
+					e := playmon.New(s)
+					return &engine{
+						Parser: p,
+						Engine: e,
 					}
 				},
 			},
@@ -116,16 +109,16 @@ func NewProxy(
 			templateStatistics: templateStatistics,
 		}
 
-		// Warm up matcher pool
+		// Warm up engine pool
 		func() {
 			// n := runtime.NumCPU()
 			n := 1
-			m := make([]*matcher, n)
+			m := make([]*engine, n)
 			for i := 0; i < n; i++ {
-				m[i] = services[s.Path].matcherpool.Get().(*matcher)
+				m[i] = services[s.Path].enginePool.Get().(*engine)
 			}
 			for i := 0; i < n; i++ {
-				services[s.Path].matcherpool.Put(m[i])
+				services[s.Path].enginePool.Put(m[i])
 			}
 		}()
 	}
@@ -190,8 +183,8 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 		return
 	}
 
-	m := service.matcherpool.Get().(*matcher)
-	defer service.matcherpool.Put(m)
+	m := service.enginePool.Get().(*engine)
+	defer service.enginePool.Put(m)
 
 	m.Parser.Parse(
 		query, operationName, variablesJSON,

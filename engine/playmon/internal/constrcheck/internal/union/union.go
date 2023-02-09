@@ -1,7 +1,7 @@
 package union
 
 import (
-	"github.com/graph-guard/ggproxy/engines/playmon/internal/constrcheck/internal/unsafe"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/constrcheck/internal/unsafe"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/atoi"
 	"github.com/graph-guard/gqlscan"

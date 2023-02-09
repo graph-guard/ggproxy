@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
-	"fmt"
 	stdlog "log"
 	"net"
 	"net/http"
@@ -20,7 +19,7 @@ import (
 	"github.com/graph-guard/ggproxy/api/graph/generated"
 	"github.com/graph-guard/ggproxy/api/graph/model"
 	"github.com/graph-guard/ggproxy/config"
-	"github.com/graph-guard/ggproxy/engines/rmap"
+	"github.com/graph-guard/ggproxy/engine/playmon"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	gqt "github.com/graph-guard/gqt/v4"
 	plog "github.com/phuslu/log"
@@ -266,14 +265,13 @@ func makeService(
 		),
 	}
 
-	{ // Initialize matcher engine
+	{ // Initialize engine
 		d := make(map[string]*gqt.Operation, len(s.Templates))
 		for _, t := range s.Templates {
 			d[t.ID] = t.GQTTemplate
 			tm := &model.Template{
 				Service: service,
 				Stats:   proxyServer.GetTemplateStatistics(s.ID, t.ID),
-
 				ID:      t.ID,
 				Tags:    t.Tags,
 				Source:  string(t.Source),
@@ -283,14 +281,7 @@ func makeService(
 			service.TemplatesByID[t.ID] = tm
 		}
 
-		var err error
-		service.Matcher, err = rmap.New(d, 0)
-		if err != nil {
-			panic(fmt.Errorf(
-				"initializing matcher for service %q: %w",
-				s.ID, err,
-			))
-		}
+		service.Engine = playmon.New(s)
 	}
 
 	{ // Set proxy URL

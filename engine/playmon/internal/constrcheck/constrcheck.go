@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/graph-guard/ggproxy/engines/playmon/internal/constrcheck/internal/union"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/constrcheck/internal/union"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/atoi"
 	"github.com/graph-guard/gqlscan"
@@ -24,7 +24,7 @@ type Checker struct {
 	schema    *gqlast.Schema
 	checkers  map[string]check
 
-	inputs map[string][]gqlparse.Token
+	variableValues map[string][]gqlparse.Token
 
 	inputValue   []gqlparse.Token
 	checkedValue []gqlparse.Token
@@ -123,8 +123,8 @@ func (m *Checker) pushStackBool(v bool) {
 
 // Init initializes the checker with inputs to validate a request.
 // Init must be used before making calls to Check in the context of a request.
-func (m *Checker) Init(inputs map[string][]gqlparse.Token) {
-	m.inputs = inputs
+func (m *Checker) Init(variableValues map[string][]gqlparse.Token) {
+	m.variableValues = variableValues
 }
 
 // Check returns true if the value for the given path is accepted,
@@ -135,7 +135,7 @@ func (m *Checker) Check(path string) bool {
 	if c == nil {
 		return false
 	}
-	v := m.inputs[path]
+	v := m.variableValues[path]
 	m.inputValue, m.checkedValue = v, v
 	return c(m)
 }
@@ -157,7 +157,7 @@ func (m *Checker) resolveExpr(e gqt.Expression) union.Type {
 		return union.TypeArray
 	case *gqt.Variable:
 		p := MakePath(e.Declaration.Parent)
-		if s := m.inputs[p]; s != nil {
+		if s := m.variableValues[p]; s != nil {
 			m.stack = append(m.stack, union.Tokens(s))
 			return union.TypeTokens
 		}
@@ -420,6 +420,22 @@ func (m *Checker) resolveExpr(e gqt.Expression) union.Type {
 	panic(fmt.Errorf("unhandled value expression type: %T", e))
 }
 
+func (m *Checker) PathsLen() int { return len(m.checkers) }
+
+func (m *Checker) VisitPaths(fn func(path string) (stop bool)) {
+	for path := range m.checkers {
+		if fn(path) {
+			return
+		}
+	}
+}
+
+func (m *Checker) VisitPathsAll(fn func(path string)) {
+	for path := range m.checkers {
+		fn(path)
+	}
+}
+
 // New creates a constraint checker instance for each path of o.
 func New(o *gqt.Operation, s *gqlast.Schema) *Checker {
 	m := &Checker{
@@ -452,9 +468,15 @@ func New(o *gqt.Operation, s *gqlast.Schema) *Checker {
 		})
 	}
 
+	// TODO: move path scanner out of this package
 	traverse(o, func(e gqt.Expression) (stop, skipChildren bool) {
 		switch e := e.(type) {
 		case *gqt.SelectionField:
+			if len(e.Arguments) < 1 && len(e.Selections) < 1 {
+				p := MakePath(e)
+				m.checkers[p] = nil
+				break
+			}
 			for _, a := range e.Arguments {
 				var expect *gqlast.Type
 				if a.Def != nil {
@@ -1145,36 +1167,6 @@ func Designation(e gqt.Expression) string {
 		return b.String()
 	}
 	panic(fmt.Sprintf("unhandled expression: %T", e))
-}
-
-// MakePath generates a path for the given expression.
-// For example the path "Query.a1.a2|arg" denotes the argument "arg"
-// of the field "a2" inside the field "a1" of the Query type.
-func MakePath(e gqt.Expression) string {
-	var p []gqt.Expression // Reversed path
-	for ; e != nil; e = e.GetParent() {
-		p = append(p, e)
-	}
-	var s strings.Builder
-	for i := len(p) - 1; i >= 0; i-- {
-		switch v := p[i].(type) {
-		case *gqt.SelectionInlineFrag:
-			_ = s.WriteByte('&')
-			_, _ = s.WriteString(v.TypeCondition.TypeName)
-		case *gqt.SelectionField:
-			_ = s.WriteByte('.')
-			_, _ = s.WriteString(v.Name.Name)
-		case *gqt.ObjectField:
-			_ = s.WriteByte('/')
-			_, _ = s.WriteString(v.Name.Name)
-		case *gqt.Argument:
-			_ = s.WriteByte('|')
-			_, _ = s.WriteString(v.Name.Name)
-		case *gqt.Operation:
-			_, _ = s.WriteString(v.Type.String())
-		}
-	}
-	return s.String()
 }
 
 func (m *Checker) expectOrNum(expect *gqlast.Type) (wrongType bool) {
