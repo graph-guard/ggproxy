@@ -39,22 +39,28 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/travgqt"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/stack"
 	gqlscan "github.com/graph-guard/gqlscan"
 	gqt "github.com/graph-guard/gqt/v4"
+
+	"golang.org/x/exp/slices"
 )
 
 // PathScanner is reset in every call to InTokens
 type PathScanner struct {
-	pathBuf []byte
-	stack   stack.Stack[int]
+	valPathBuf        []byte
+	valStack          stack.Stack[int]
+	argBuf            [][]byte
+	structuralPathBuf []byte
+	structuralStack   stack.Stack[int]
 }
 
 func New(preallocateStack, preallocatePathBuffer int) *PathScanner {
 	return &PathScanner{
-		pathBuf: make([]byte, 0, preallocatePathBuffer),
-		stack:   stack.New[int](preallocateStack),
+		structuralPathBuf: make([]byte, 0, preallocatePathBuffer),
+		structuralStack:   stack.New[int](preallocateStack),
 	}
 }
 
@@ -71,7 +77,8 @@ const (
 )
 
 // InTokens calls onStructural for every encountered structural path,
-// and onVariable for every encountered variable.
+// onArg for every argument and onGQTVarVal for every encountered
+// GQT variable value.
 // operation is expected to be an operation initialization token and
 // is used to determine whether the path should start with
 // "Q" (query), "M" (mutation) or "S" (subscription).
@@ -84,89 +91,185 @@ const (
 func (s *PathScanner) InTokens(
 	operation gqlscan.Token,
 	tokens []gqlparse.Token,
-	gqtVarPaths map[string]struct{},
-	onStructural, onVariable func(path []byte, i int) (stop bool),
+	gqtVarPaths map[string]int,
+	onStructural func(path []byte) (stop bool),
+	onArg, onGQTVarVal func(path []byte, i int) (stop bool),
 ) {
-	s.pathBuf = s.pathBuf[:0]
-	s.stack.Reset()
+	s.valPathBuf = s.valPathBuf[:0]
+	s.valStack.Reset()
+	s.structuralPathBuf = s.structuralPathBuf[:0]
+	s.structuralStack.Reset()
 
 	switch operation {
 	case gqlscan.TokenDefQry:
-		s.stackPushByte(initQuery)
+		s.valPathBuf = append(s.valPathBuf, initQuery)
+		s.structuralPathBuf = append(s.structuralPathBuf, initQuery)
 	case gqlscan.TokenDefMut:
-		s.stackPushByte(initMutation)
+		s.valPathBuf = append(s.valPathBuf, initMutation)
+		s.structuralPathBuf = append(s.structuralPathBuf, initMutation)
 	case gqlscan.TokenDefSub:
-		s.stackPushByte(initSubscription)
+		s.valPathBuf = append(s.valPathBuf, initSubscription)
+		s.structuralPathBuf = append(s.structuralPathBuf, initSubscription)
 	default:
 		panic(fmt.Errorf("unexpected operation: %v", operation))
 	}
-	for i, level := 0, 1; i < len(tokens); i++ {
+	for i, level := 0, 0; i < len(tokens); i++ {
 		switch tokens[i].ID {
 		case gqlscan.TokenSet:
 			level++
 		case gqlscan.TokenSetEnd:
 			level--
-			s.stackPop()
+			s.structuralPop()
+			s.valPop()
 		case gqlscan.TokenFragInline:
-			if level > s.stack.Len() {
-				s.stackPushWithDiv(divTypeCond, tokens[i].Value)
-				break
+			if level <= s.structuralStack.Len() {
+				s.structuralPop()
+				s.valPop()
 			}
-			s.stackPop()
-			s.stackPushWithDiv(divTypeCond, tokens[i].Value)
+			s.structuralWithDiv(divTypeCond, tokens[i].Value)
+			s.valWithDiv(divTypeCond, tokens[i].Value)
 		case gqlscan.TokenField:
-			if level > s.stack.Len() {
-				s.stackPushWithDiv(divSel, tokens[i].Value)
-			} else {
-				s.stackPop()
-				s.stackPushWithDiv(divSel, tokens[i].Value)
+			if level <= s.structuralStack.Len() {
+				s.structuralPop()
+				s.valPop()
 			}
-			if t := tokens[i+1].ID; t == gqlscan.TokenArgList ||
-				t == gqlscan.TokenSet {
-				continue
+			s.valWithDiv(divSel, tokens[i].Value)
+			s.structuralPathBuf = append(s.structuralPathBuf, divSel)
+			s.structuralPathBuf = append(s.structuralPathBuf, tokens[i].Value...)
+			l := len(tokens[i].Value) + 1
+
+			switch tokens[i+1].ID {
+			case gqlscan.TokenArgList:
+				s.argBuf = s.argBuf[:0]
+				// Collect and sort arguments
+				level++
+				for i += 2; tokens[i].ID != gqlscan.TokenArgListEnd; i++ {
+					switch tokens[i].ID {
+					case gqlscan.TokenArgName:
+						if level <= s.valStack.Len() {
+							s.valPop()
+						}
+						s.argBuf = append(s.argBuf, tokens[i].Value)
+						s.valWithDiv(divArgList, tokens[i].Value)
+						onArg(s.valPathBuf, i)
+						if _, ok := gqtVarPaths[string(s.valPathBuf)]; ok {
+							if onGQTVarVal(s.valPathBuf, i+1) {
+								return
+							}
+						}
+					case gqlscan.TokenObj:
+						if tokens[i+1].ID == gqlscan.TokenObjEnd {
+							// Empty object
+							i++
+							break
+						}
+						level++
+					case gqlscan.TokenObjEnd:
+						level--
+						s.valPop()
+					case gqlscan.TokenObjField:
+						if level <= s.valStack.Len() {
+							s.valPop()
+						}
+						s.valWithDiv(divObjField, tokens[i].Value)
+						if _, ok := gqtVarPaths[string(s.valPathBuf)]; ok {
+							if onGQTVarVal(s.valPathBuf, i+1) {
+								return
+							}
+						}
+					}
+				}
+				level--
+				s.valPop() // Pop last argument
+				slices.SortFunc(s.argBuf, func(i, j []byte) bool {
+					return bytes.Compare(i, j) < 0
+				})
+
+				// Write args to path
+				s.structuralPathBuf = append(s.structuralPathBuf, divArgList)
+				l++
+				for i := range s.argBuf {
+					s.structuralPathBuf = append(s.structuralPathBuf, s.argBuf[i]...)
+					s.structuralPathBuf = append(s.structuralPathBuf, divArg)
+					l += len(s.argBuf[i]) + 1
+				}
+				s.structuralStack.Push(l)
+
+				// Check for leaf
+				if tokens[i+1].ID != gqlscan.TokenSet {
+					if onStructural(s.structuralPathBuf) {
+						return
+					}
+					s.structuralPop()
+					s.valPop()
+					continue
+				}
+			case gqlscan.TokenSet:
+				s.structuralStack.Push(l)
+			default:
+				s.structuralStack.Push(l)
+				if onStructural(s.structuralPathBuf) {
+					return
+				}
+				s.structuralPop()
+				s.valPop()
 			}
-			if onStructural(s.pathBuf, i) {
-				return
-			}
-		case gqlscan.TokenArgName:
-			s.stackPushWithDiv(divArgList, tokens[i].Value)
-			if onStructural(s.pathBuf, i) {
-				return
-			}
-			s.stackPop()
 		}
 	}
 }
 
-func (s *PathScanner) stackPushByte(element byte) {
-	s.stack.Push(1)
-	s.pathBuf = append(s.pathBuf, element)
+func (s *PathScanner) valByte(element byte) {
+	s.valStack.Push(1)
+	s.valPathBuf = append(s.valPathBuf, element)
 }
 
-func (s *PathScanner) stackPushWithDiv(div byte, element []byte) {
-	s.stack.Push(1 + len(element))
-	s.pathBuf = append(s.pathBuf, div)
-	s.pathBuf = append(s.pathBuf, element...)
+func (s *PathScanner) valWithDiv(div byte, element []byte) {
+	s.valStack.Push(1 + len(element))
+	s.valPathBuf = append(s.valPathBuf, div)
+	s.valPathBuf = append(s.valPathBuf, element...)
 }
 
-func (s *PathScanner) stackPop() {
-	t := s.stack.Top()
-	s.pathBuf = s.pathBuf[:len(s.pathBuf)-t]
-	s.stack.Pop()
+func (s *PathScanner) valPop() {
+	t := s.valStack.Top()
+	s.valPathBuf = s.valPathBuf[:len(s.valPathBuf)-t]
+	s.valStack.Pop()
+}
+
+func (s *PathScanner) structuralByte(element byte) {
+	s.structuralStack.Push(1)
+	s.structuralPathBuf = append(s.structuralPathBuf, element)
+}
+
+func (s *PathScanner) structuralWithDiv(div byte, element []byte) {
+	s.structuralStack.Push(1 + len(element))
+	s.structuralPathBuf = append(s.structuralPathBuf, div)
+	s.structuralPathBuf = append(s.structuralPathBuf, element...)
+}
+
+func (s *PathScanner) structuralPop() {
+	t := s.structuralStack.Top()
+	s.structuralPathBuf = s.structuralPathBuf[:len(s.structuralPathBuf)-t]
+	s.structuralStack.Pop()
 }
 
 // InAST calls onStructural for every structural path that can be used for
 // (sub)matching. onVariable is called for every path to an argument or an
-// object field that has a variable associated.
+// object field that has a variable associated. onArg is called for every
+// argument.
 func InAST(
 	o *gqt.Operation,
 	onStructural func(path []byte, e gqt.Expression) (stop bool),
+	onArg func(path []byte, e gqt.Expression) (stop bool),
 	onVariable func(path []byte, e gqt.Expression) (stop bool),
 ) {
-	traverse(o, func(e gqt.Expression) (stop, skipChildren bool) {
+	travgqt.Traverse(o, func(e gqt.Expression) (stop, skipChildren bool) {
 		switch e := e.(type) {
 		case *gqt.SelectionField:
 			for _, a := range e.Arguments {
+				p := makePathVar(a)
+				if onArg(p, a) {
+					return true, true
+				}
 				if a.AssociatedVariable != nil {
 					p := makePathVar(a)
 					if onVariable(p, e) {
@@ -193,142 +296,6 @@ func InAST(
 	})
 }
 
-// traverse returns true after BFS-traversing the entire tree under e
-// calling onExpression for every discovered expression.
-func traverse(
-	e gqt.Expression,
-	onExpression func(gqt.Expression) (stop, skipChildren bool),
-) (stopped bool) {
-	stack := make([]gqt.Expression, 0, 64)
-	push := func(expression gqt.Expression) {
-		stack = append(stack, expression)
-	}
-
-	push(e)
-	for len(stack) > 0 {
-		top := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		stop, skipChildren := onExpression(top)
-		if stop {
-			return true
-		} else if skipChildren {
-			continue
-		}
-
-		switch e := top.(type) {
-		case *gqt.Operation:
-			for _, f := range e.Selections {
-				push(f)
-			}
-		case *gqt.SelectionInlineFrag:
-			for _, f := range e.Selections {
-				push(f)
-			}
-		case *gqt.SelectionField:
-			for _, f := range e.Selections {
-				push(f)
-			}
-			for _, a := range e.Arguments {
-				push(a)
-			}
-		case *gqt.SelectionMax:
-			for _, f := range e.Options.Selections {
-				push(f)
-			}
-		case *gqt.Argument:
-			push(e.Constraint)
-		case *gqt.ConstrEquals:
-			push(e.Value)
-		case *gqt.ConstrNotEquals:
-			push(e.Value)
-		case *gqt.ConstrGreater:
-			push(e.Value)
-		case *gqt.ConstrGreaterOrEqual:
-			push(e.Value)
-		case *gqt.ConstrLess:
-			push(e.Value)
-		case *gqt.ConstrLessOrEqual:
-			push(e.Value)
-		case *gqt.ConstrLenEquals:
-			push(e.Value)
-		case *gqt.ConstrLenNotEquals:
-			push(e.Value)
-		case *gqt.ConstrLenGreater:
-			push(e.Value)
-		case *gqt.ConstrLenLess:
-			push(e.Value)
-		case *gqt.ConstrLenGreaterOrEqual:
-			push(e.Value)
-		case *gqt.ConstrLenLessOrEqual:
-			push(e.Value)
-		case *gqt.ConstrMap:
-			push(e.Constraint)
-		case *gqt.ExprParentheses:
-			push(e.Expression)
-		case *gqt.ExprEqual:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprNotEqual:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprLogicalNegation:
-			push(e.Expression)
-		case *gqt.ExprNumericNegation:
-			push(e.Expression)
-		case *gqt.ExprLogicalOr:
-			for _, e := range e.Expressions {
-				push(e)
-			}
-		case *gqt.ExprLogicalAnd:
-			for _, e := range e.Expressions {
-				push(e)
-			}
-		case *gqt.ExprAddition:
-			push(e.AddendLeft)
-			push(e.AddendRight)
-		case *gqt.ExprSubtraction:
-			push(e.Minuend)
-			push(e.Subtrahend)
-		case *gqt.ExprMultiplication:
-			push(e.Multiplicant)
-			push(e.Multiplicator)
-		case *gqt.ExprDivision:
-			push(e.Dividend)
-			push(e.Divisor)
-		case *gqt.ExprModulo:
-			push(e.Dividend)
-			push(e.Divisor)
-		case *gqt.ExprGreater:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprGreaterOrEqual:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprLess:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprLessOrEqual:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.Array:
-			for _, i := range e.Items {
-				push(i)
-			}
-		case *gqt.Object:
-			for _, f := range e.Fields {
-				push(f)
-			}
-		case *gqt.ObjectField:
-			push(e.Constraint)
-		case *gqt.Number, *gqt.True, *gqt.False, *gqt.Null,
-			*gqt.Enum, *gqt.String, *gqt.ConstrAny, *gqt.Variable:
-		default:
-			panic(fmt.Errorf("unhandled type: %T", top))
-		}
-	}
-	return false
-}
-
 // makePathStructural generates a structural path for the given expression.
 func makePathStructural(e *gqt.SelectionField) []byte {
 	var p []gqt.Expression // Reversed path
@@ -353,9 +320,7 @@ func makePathStructural(e *gqt.SelectionField) []byte {
 				sort.Strings(argNames)
 				for i := range argNames {
 					_, _ = s.WriteString(argNames[i])
-					if i+1 < len(argNames) {
-						_ = s.WriteByte(divArg)
-					}
+					_ = s.WriteByte(divArg)
 				}
 			}
 		case *gqt.Operation:

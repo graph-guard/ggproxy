@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/constrcheck/internal/union"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/pathscan"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/atoi"
 	"github.com/graph-guard/gqlscan"
@@ -23,44 +24,48 @@ type Checker struct {
 	operation *gqt.Operation
 	schema    *gqlast.Schema
 	checkers  map[string]check
+	pathByVar map[*gqt.Variable]string
 
+	// variableValues keys will be set at initialization
+	// but values must be set before every call to Check.
 	variableValues map[string][]gqlparse.Token
 
-	inputValue   []gqlparse.Token
+	// inputValue is set before every call to Check.
+	inputValue []gqlparse.Token
+	// checkedValue is set before every call to Check.
 	checkedValue []gqlparse.Token
-	stack        []union.Union
+
+	// stack is reset in every call to Check.
+	stack []union.Union
 }
 
-// // Paths executes fn for every path the checker is aware of.
-// // Returns true immediatelly if any call to fn returns true.
-// func (m *Checker) Paths(fn func(string) (stop bool)) (stopped bool) {
-// 	for p := range m.checkers {
-// 		if fn(p) {
-// 			return true
-// 		}
-// 	}
-// 	return false
-// }
-
-func (m *Checker) stackTopType() union.Type {
-	return m.stack[len(m.stack)-1].Type()
+func (c *Checker) SetVariableValue(path []byte, value []gqlparse.Token) {
+	c.variableValues[string(path)] = value
 }
 
-func (m *Checker) popStack() union.Union {
-	t := m.stack[len(m.stack)-1]
-	m.stack = m.stack[:len(m.stack)-1]
+func (c *Checker) Init(inputValue []gqlparse.Token) {
+	c.inputValue = inputValue
+}
+
+func (c *Checker) stackTopType() union.Type {
+	return c.stack[len(c.stack)-1].Type()
+}
+
+func (c *Checker) popStack() union.Union {
+	t := c.stack[len(c.stack)-1]
+	c.stack = c.stack[:len(c.stack)-1]
 	return t
 }
 
-func (m *Checker) popStackArrays() (left, right []union.Union) {
-	if m.stack[len(m.stack)-1].Type() != union.TypeArray {
+func (c *Checker) popStackArrays() (left, right []union.Union) {
+	if c.stack[len(c.stack)-1].Type() != union.TypeArray {
 		return
 	}
-	i := len(m.stack) - 2
-	var c int
+	i := len(c.stack) - 2
+	var count int
 LOOP_R:
-	for l := 1; i > 0; i, c = i-1, c+1 {
-		switch m.stack[i].Type() {
+	for l := 1; i > 0; i, count = i-1, count+1 {
+		switch c.stack[i].Type() {
 		case union.TypeArray:
 			l++
 		case union.TypeArrayEnd:
@@ -70,18 +75,18 @@ LOOP_R:
 			}
 		}
 	}
-	right = m.stack[i+1 : len(m.stack)-1]
+	right = c.stack[i+1 : len(c.stack)-1]
 
 	i--
 	iv := i
-	if m.stack[i].Type() != union.TypeArray {
+	if c.stack[i].Type() != union.TypeArray {
 		return
 	}
-	c = 0
+	count = 0
 	i--
 LOOP_L:
-	for l := 1; i > 0; i, c = i-1, c+1 {
-		switch m.stack[i].Type() {
+	for l := 1; i > 0; i, count = i-1, count+1 {
+		switch c.stack[i].Type() {
 		case union.TypeArray:
 			l++
 		case union.TypeArrayEnd:
@@ -92,52 +97,46 @@ LOOP_L:
 		}
 	}
 
-	left = m.stack[i+1 : iv]
-	m.stack = m.stack[:i]
+	left = c.stack[i+1 : iv]
+	c.stack = c.stack[:i]
 	return left, right
 }
 
-func (m *Checker) pushStackArray() {
-	m.stack = append(m.stack, union.Array())
+func (c *Checker) pushStackArray() {
+	c.stack = append(c.stack, union.Array())
 }
 
-func (m *Checker) pushStackArrayEnd() {
-	m.stack = append(m.stack, union.ArrayEnd())
+func (c *Checker) pushStackArrayEnd() {
+	c.stack = append(c.stack, union.ArrayEnd())
 }
 
-func (m *Checker) pushStackInt(v int32) {
-	m.stack = append(m.stack, union.Int(v))
+func (c *Checker) pushStackInt(v int32) {
+	c.stack = append(c.stack, union.Int(v))
 }
 
-func (m *Checker) pushStackFloat(v float64) {
-	m.stack = append(m.stack, union.Float(v))
+func (c *Checker) pushStackFloat(v float64) {
+	c.stack = append(c.stack, union.Float(v))
 }
 
-func (m *Checker) pushStackBool(v bool) {
+func (c *Checker) pushStackBool(v bool) {
 	if v {
-		m.stack = append(m.stack, union.True())
+		c.stack = append(c.stack, union.True())
 		return
 	}
-	m.stack = append(m.stack, union.False())
-}
-
-// Init initializes the checker with inputs to validate a request.
-// Init must be used before making calls to Check in the context of a request.
-func (m *Checker) Init(variableValues map[string][]gqlparse.Token) {
-	m.variableValues = variableValues
+	c.stack = append(c.stack, union.False())
 }
 
 // Check returns true if the value for the given path is accepted,
 // otherwise returns false.
-func (m *Checker) Check(path string) bool {
-	m.stack = m.stack[:0]
-	c := m.checkers[path]
-	if c == nil {
+func (c *Checker) Check(path string) bool {
+	c.stack = c.stack[:0]
+	cf := c.checkers[path]
+	if cf == nil {
 		return false
 	}
-	v := m.variableValues[path]
-	m.inputValue, m.checkedValue = v, v
-	return c(m)
+	v := c.variableValues[path]
+	c.inputValue, c.checkedValue = v, v
+	return cf(c)
 }
 
 // check is a constraint check function which returns true
@@ -146,352 +145,318 @@ func (m *Checker) Check(path string) bool {
 type check func(*Checker) (match bool)
 
 // resolveExpr resolves expression e into a union and pushes it onto the stack.
-func (m *Checker) resolveExpr(e gqt.Expression) union.Type {
+func (c *Checker) resolveExpr(e gqt.Expression) union.Type {
 	switch e := e.(type) {
 	case *gqt.Array:
-		m.pushStackArrayEnd()
+		c.pushStackArrayEnd()
 		for i := len(e.Items) - 1; i >= 0; i-- {
-			m.resolveExpr(e.Items[i].(*gqt.ConstrEquals).Value)
+			c.resolveExpr(e.Items[i].(*gqt.ConstrEquals).Value)
 		}
-		m.pushStackArray()
+		c.pushStackArray()
 		return union.TypeArray
 	case *gqt.Variable:
-		p := MakePath(e.Declaration.Parent)
-		if s := m.variableValues[p]; s != nil {
-			m.stack = append(m.stack, union.Tokens(s))
-			return union.TypeTokens
+		p, ok := c.pathByVar[e]
+		if !ok {
+			if s := c.variableValues[p]; s != nil {
+				c.stack = append(c.stack, union.Tokens(s))
+				return union.TypeTokens
+			}
 		}
-		m.stack = append(m.stack, union.Null())
+		c.stack = append(c.stack, union.Null())
 		return union.TypeNull
 	case *gqt.Number:
 		if i, ok := e.Int(); ok {
-			m.stack = append(m.stack, union.Int(int32(i)))
+			c.stack = append(c.stack, union.Int(int32(i)))
 			return union.TypeInt
 		}
 		f, _ := e.Float()
-		m.stack = append(m.stack, union.Float(f))
+		c.stack = append(c.stack, union.Float(f))
 		return union.TypeFloat
 	case *gqt.True:
-		m.stack = append(m.stack, union.True())
+		c.stack = append(c.stack, union.True())
 		return union.TypeBoolean
 	case *gqt.False:
-		m.stack = append(m.stack, union.False())
+		c.stack = append(c.stack, union.False())
 		return union.TypeBoolean
 	case *gqt.Enum:
-		m.stack = append(m.stack, union.Enum(e.Value))
+		c.stack = append(c.stack, union.Enum(e.Value))
 		return union.TypeEnum
 	case *gqt.String:
-		m.stack = append(m.stack, union.String(e.Value))
+		c.stack = append(c.stack, union.String(e.Value))
 		return union.TypeString
 	case *gqt.Null:
 		return union.TypeNull
 	case *gqt.ExprAddition:
-		m.resolveExpr(e.AddendLeft)
-		m.resolveExpr(e.AddendRight)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.AddendLeft)
+		c.resolveExpr(e.AddendRight)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackInt(l + r)
+			c.pushStackInt(l + r)
 			return union.TypeInt
 		}
 		{
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackFloat(l + r)
+			c.pushStackFloat(l + r)
 		}
 		return union.TypeFloat
 	case *gqt.ExprSubtraction:
-		m.resolveExpr(e.Minuend)
-		m.resolveExpr(e.Subtrahend)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.Minuend)
+		c.resolveExpr(e.Subtrahend)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackInt(l - r)
+			c.pushStackInt(l - r)
 			return union.TypeInt
 		}
 		{
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackFloat(l - r)
+			c.pushStackFloat(l - r)
 		}
 		return union.TypeFloat
 	case *gqt.ExprMultiplication:
-		m.resolveExpr(e.Multiplicant)
-		m.resolveExpr(e.Multiplicator)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.Multiplicant)
+		c.resolveExpr(e.Multiplicator)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackInt(l * r)
+			c.pushStackInt(l * r)
 			return union.TypeInt
 		}
 		{
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackFloat(l * r)
+			c.pushStackFloat(l * r)
 		}
 		return union.TypeFloat
 	case *gqt.ExprDivision:
-		m.resolveExpr(e.Dividend)
-		m.resolveExpr(e.Divisor)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.Dividend)
+		c.resolveExpr(e.Divisor)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackInt(l / r)
+			c.pushStackInt(l / r)
 			return union.TypeInt
 		}
 		{
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackFloat(l / r)
+			c.pushStackFloat(l / r)
 		}
 		return union.TypeFloat
 	case *gqt.ExprModulo:
-		m.resolveExpr(e.Dividend)
-		m.resolveExpr(e.Divisor)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.Dividend)
+		c.resolveExpr(e.Divisor)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackInt(l % r)
+			c.pushStackInt(l % r)
 			return union.TypeInt
 		}
 		{
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackFloat(math.Mod(l, r))
+			c.pushStackFloat(math.Mod(l, r))
 		}
 		return union.TypeFloat
 	case *gqt.ExprNumericNegation:
-		m.resolveExpr(e.Expression)
-		i := m.popStack()
+		c.resolveExpr(e.Expression)
+		i := c.popStack()
 		switch i.Type() {
 		case union.TypeFloat:
 			i, _ := i.Float()
-			m.pushStackFloat(-i)
+			c.pushStackFloat(-i)
 			return union.TypeFloat
 		case union.TypeInt:
 			i, _ := i.Int()
-			m.pushStackInt(-i)
+			c.pushStackInt(-i)
 			return union.TypeInt
 		case union.TypeTokens:
 			switch i.Tokens()[0].ID {
 			case gqlscan.TokenInt:
 				i := atoi.MustI32(i.Tokens()[0].Value)
-				m.pushStackInt(-i)
+				c.pushStackInt(-i)
 				return union.TypeInt
 			case gqlscan.TokenFloat:
 				f := atoi.MustF64(i.Tokens()[0].Value)
-				m.pushStackFloat(-f)
+				c.pushStackFloat(-f)
 				return union.TypeFloat
 			}
 			panic(fmt.Errorf("unexpected token type: %q", i.Tokens()[0].ID.String()))
 		}
 		panic(fmt.Errorf("unexpected union type: %q", i.Type().String()))
 	case *gqt.ExprEqual:
-		m.resolveExpr(e.Left)
-		m.resolveExpr(e.Right)
+		c.resolveExpr(e.Left)
+		c.resolveExpr(e.Right)
 		equal := false
-		if m.stackTopType() == union.TypeArray {
-			left, right := m.popStackArrays()
+		if c.stackTopType() == union.TypeArray {
+			left, right := c.popStackArrays()
 			equal = unionsEqual(left, right)
 		} else {
-			r := m.popStack()
-			l := m.popStack()
+			r := c.popStack()
+			l := c.popStack()
 			equal = union.Equal(l, r)
 		}
-		m.pushStackBool(equal)
+		c.pushStackBool(equal)
 		return union.TypeBoolean
 	case *gqt.ExprNotEqual:
-		m.resolveExpr(e.Left)
-		m.resolveExpr(e.Right)
+		c.resolveExpr(e.Left)
+		c.resolveExpr(e.Right)
 		notEqual := false
-		if m.stackTopType() == union.TypeArray {
-			left, right := m.popStackArrays()
+		if c.stackTopType() == union.TypeArray {
+			left, right := c.popStackArrays()
 			notEqual = !unionsEqual(left, right)
 		} else {
-			r := m.popStack()
-			l := m.popStack()
+			r := c.popStack()
+			l := c.popStack()
 			notEqual = !union.Equal(l, r)
 		}
-		m.pushStackBool(notEqual)
+		c.pushStackBool(notEqual)
 		return union.TypeBoolean
 	case *gqt.ExprLogicalNegation:
-		m.resolveExpr(e.Expression)
-		u := m.popStack()
+		c.resolveExpr(e.Expression)
+		u := c.popStack()
 		b, _ := u.Bool()
-		m.pushStackBool(!b)
+		c.pushStackBool(!b)
 		return union.TypeBoolean
 	case *gqt.ExprGreater:
-		m.resolveExpr(e.Left)
-		m.resolveExpr(e.Right)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.Left)
+		c.resolveExpr(e.Right)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackBool(l > r)
+			c.pushStackBool(l > r)
 		} else {
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackBool(l > r)
+			c.pushStackBool(l > r)
 		}
 		return union.TypeBoolean
 	case *gqt.ExprLess:
-		m.resolveExpr(e.Left)
-		m.resolveExpr(e.Right)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.Left)
+		c.resolveExpr(e.Right)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackBool(l < r)
+			c.pushStackBool(l < r)
 		} else {
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackBool(l < r)
+			c.pushStackBool(l < r)
 		}
 		return union.TypeBoolean
 	case *gqt.ExprGreaterOrEqual:
-		m.resolveExpr(e.Left)
-		m.resolveExpr(e.Right)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.Left)
+		c.resolveExpr(e.Right)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackBool(l >= r)
+			c.pushStackBool(l >= r)
 		} else {
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackBool(l >= r)
+			c.pushStackBool(l >= r)
 		}
 		return union.TypeBoolean
 	case *gqt.ExprLessOrEqual:
-		m.resolveExpr(e.Left)
-		m.resolveExpr(e.Right)
-		r := m.popStack()
-		l := m.popStack()
+		c.resolveExpr(e.Left)
+		c.resolveExpr(e.Right)
+		r := c.popStack()
+		l := c.popStack()
 		if l.Type() == union.TypeInt && r.Type() == union.TypeInt {
 			l, _ := l.Int()
 			r, _ := r.Int()
-			m.pushStackBool(l <= r)
+			c.pushStackBool(l <= r)
 		} else {
 			l, _ := l.Float()
 			r, _ := r.Float()
-			m.pushStackBool(l <= r)
+			c.pushStackBool(l <= r)
 		}
 		return union.TypeBoolean
 	case *gqt.ExprLogicalOr:
 		for _, x := range e.Expressions {
-			m.resolveExpr(x)
-			u := m.popStack()
+			c.resolveExpr(x)
+			u := c.popStack()
 			b, _ := u.Bool()
 			if b {
-				m.pushStackBool(true)
+				c.pushStackBool(true)
 				return union.TypeBoolean
 			}
 		}
-		m.pushStackBool(false)
+		c.pushStackBool(false)
 		return union.TypeBoolean
 	case *gqt.ExprLogicalAnd:
 		for _, x := range e.Expressions {
-			m.resolveExpr(x)
-			u := m.popStack()
+			c.resolveExpr(x)
+			u := c.popStack()
 			b, _ := u.Bool()
 			if !b {
-				m.pushStackBool(false)
+				c.pushStackBool(false)
 				return union.TypeBoolean
 			}
 		}
-		m.pushStackBool(true)
+		c.pushStackBool(true)
 		return union.TypeBoolean
 	case *gqt.ExprParentheses:
-		return m.resolveExpr(e.Expression)
+		return c.resolveExpr(e.Expression)
 	}
 	panic(fmt.Errorf("unhandled value expression type: %T", e))
 }
 
-func (m *Checker) PathsLen() int { return len(m.checkers) }
-
-func (m *Checker) VisitPaths(fn func(path string) (stop bool)) {
-	for path := range m.checkers {
-		if fn(path) {
-			return
-		}
-	}
-}
-
-func (m *Checker) VisitPathsAll(fn func(path string)) {
-	for path := range m.checkers {
-		fn(path)
-	}
-}
-
 // New creates a constraint checker instance for each path of o.
 func New(o *gqt.Operation, s *gqlast.Schema) *Checker {
-	m := &Checker{
-		operation: o,
-		schema:    s,
-		checkers:  make(map[string]check),
-		stack:     make([]union.Union, 1024),
+	c := &Checker{
+		operation:      o,
+		schema:         s,
+		checkers:       make(map[string]check),
+		stack:          make([]union.Union, 1024),
+		variableValues: make(map[string][]gqlparse.Token),
+		pathByVar:      make(map[*gqt.Variable]string),
 	}
-
-	inputTypes := map[string]*gqlast.Type{}
-	if s != nil {
-		traverse(o, func(e gqt.Expression) (stop, skipChildren bool) {
-			switch e := e.(type) {
-			case *gqt.SelectionField:
-				for _, a := range e.Arguments {
-					if a.Def == nil {
-						continue
-					}
-					p := MakePath(a)
-					inputTypes[p] = a.Def.Type
-				}
-			case *gqt.ObjectField:
-				if e.Def == nil {
-					break
-				}
-				p := MakePath(e)
-				inputTypes[p] = e.Def.Type
+	pathscan.InAST(
+		o,
+		func(path []byte, e gqt.Expression) (stop bool) {
+			// On structural
+			return false
+		}, func(path []byte, e gqt.Expression) (stop bool) {
+			// On argument
+			a := e.(*gqt.Argument)
+			var expect *gqlast.Type
+			if a.Def != nil {
+				expect = a.Def.Type
 			}
-			return false, false
-		})
-	}
-
-	// TODO: move path scanner out of this package
-	traverse(o, func(e gqt.Expression) (stop, skipChildren bool) {
-		switch e := e.(type) {
-		case *gqt.SelectionField:
-			if len(e.Arguments) < 1 && len(e.Selections) < 1 {
-				p := MakePath(e)
-				m.checkers[p] = nil
-				break
+			if fn := makeCheck(a.Constraint, expect, s); fn != nil {
+				c.checkers[string(path)] = fn
 			}
-			for _, a := range e.Arguments {
-				var expect *gqlast.Type
-				if a.Def != nil {
-					expect = a.Def.Type
-				}
-				if fn := makeCheck(a.Constraint, expect, s); fn != nil {
-					p := MakePath(a)
-					m.checkers[p] = fn
-				}
-			}
-		}
-		return false, false // Continue traversal
-	})
-
-	return m
+			return false
+		},
+		func(path []byte, e gqt.Expression) (stop bool) {
+			// On variable
+			a := e.(*gqt.Variable)
+			c.pathByVar[a] = string(path)
+			c.variableValues[string(path)] = nil // Set key
+			return false
+		},
+	)
+	return c
 }
 
 func makeCheck(
@@ -501,13 +466,13 @@ func makeCheck(
 ) check {
 	switch e := e.(type) {
 	case *gqt.ConstrAny:
-		return func(m *Checker) (match bool) {
-			if wrong, _ := isWrongType(expect, m.checkedValue, schema); wrong {
+		return func(c *Checker) (match bool) {
+			if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
 				return false
 			}
 
 			// Make sure the value is semantically valid.
-			return !gqlparse.ScanValuesInArrays(m.checkedValue, func(t []gqlparse.Token) (stop bool) {
+			return !gqlparse.ScanValuesInArrays(c.checkedValue, func(t []gqlparse.Token) (stop bool) {
 				if t[0].ID != gqlscan.TokenObj {
 					return false
 				}
@@ -532,14 +497,14 @@ func makeCheck(
 		for i, e := range e.Expressions {
 			exprCheckers[i] = makeCheck(e, expect, schema)
 		}
-		return func(m *Checker) (match bool) {
-			r := m.checkedValue
+		return func(c *Checker) (match bool) {
+			r := c.checkedValue
 			for _, e := range exprCheckers {
-				if e(m) {
+				if e(c) {
 					return true
 				}
 				// Reset value to start checking from the same index
-				m.checkedValue = r
+				c.checkedValue = r
 			}
 			return false
 		}
@@ -548,27 +513,27 @@ func makeCheck(
 		for i, e := range e.Expressions {
 			exprCheckers[i] = makeCheck(e, expect, schema)
 		}
-		return func(m *Checker) (match bool) {
-			r := m.checkedValue
+		return func(c *Checker) (match bool) {
+			r := c.checkedValue
 			for _, e := range exprCheckers {
-				if !e(m) {
+				if !e(c) {
 					return false
 				}
 				// Reset value to start checking from the same index
-				m.checkedValue = r
+				c.checkedValue = r
 			}
 			return true
 		}
 	case *gqt.ConstrGreater:
-		return func(m *Checker) (match bool) {
-			if m.expectOrNum(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrNum(expect) {
 				return false
 			}
-			m.resolveExpr(e.Value)
-			u := m.popStack()
-			switch m.checkedValue[0].ID {
+			c.resolveExpr(e.Value)
+			u := c.popStack()
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenInt:
-				i := atoi.MustI32(m.checkedValue[0].Value)
+				i := atoi.MustI32(c.checkedValue[0].Value)
 				if u, ok := u.Int(); ok != union.ValueNone {
 					match = i > u
 					break
@@ -576,23 +541,23 @@ func makeCheck(
 				u, _ := u.Float()
 				match = float64(i) > u
 			case gqlscan.TokenFloat:
-				i := atoi.MustF64(m.checkedValue[0].Value)
+				i := atoi.MustF64(c.checkedValue[0].Value)
 				u, _ := u.Float()
 				match = i > u
 			}
-			m.checkedValue = m.checkedValue[1:]
+			c.checkedValue = c.checkedValue[1:]
 			return match
 		}
 	case *gqt.ConstrGreaterOrEqual:
-		return func(m *Checker) (match bool) {
-			if m.expectOrNum(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrNum(expect) {
 				return false
 			}
-			m.resolveExpr(e.Value)
-			u := m.popStack()
-			switch m.checkedValue[0].ID {
+			c.resolveExpr(e.Value)
+			u := c.popStack()
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenInt:
-				i := atoi.MustI32(m.checkedValue[0].Value)
+				i := atoi.MustI32(c.checkedValue[0].Value)
 				if u, ok := u.Int(); ok != union.ValueNone {
 					match = i >= u
 					break
@@ -600,23 +565,23 @@ func makeCheck(
 				u, _ := u.Float()
 				match = float64(i) >= u
 			case gqlscan.TokenFloat:
-				i := atoi.MustF64(m.checkedValue[0].Value)
+				i := atoi.MustF64(c.checkedValue[0].Value)
 				u, _ := u.Float()
 				match = i >= u
 			}
-			m.checkedValue = m.checkedValue[1:]
+			c.checkedValue = c.checkedValue[1:]
 			return match
 		}
 	case *gqt.ConstrLess:
-		return func(m *Checker) (match bool) {
-			if m.expectOrNum(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrNum(expect) {
 				return false
 			}
-			m.resolveExpr(e.Value)
-			u := m.popStack()
-			switch m.checkedValue[0].ID {
+			c.resolveExpr(e.Value)
+			u := c.popStack()
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenInt:
-				i := atoi.MustI32(m.checkedValue[0].Value)
+				i := atoi.MustI32(c.checkedValue[0].Value)
 				if u, ok := u.Int(); ok != union.ValueNone {
 					match = i < u
 					break
@@ -624,23 +589,23 @@ func makeCheck(
 				u, _ := u.Float()
 				match = float64(i) < u
 			case gqlscan.TokenFloat:
-				i := atoi.MustF64(m.checkedValue[0].Value)
+				i := atoi.MustF64(c.checkedValue[0].Value)
 				u, _ := u.Float()
 				match = i < u
 			}
-			m.checkedValue = m.checkedValue[1:]
+			c.checkedValue = c.checkedValue[1:]
 			return match
 		}
 	case *gqt.ConstrLessOrEqual:
-		return func(m *Checker) (match bool) {
-			if m.expectOrNum(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrNum(expect) {
 				return false
 			}
-			m.resolveExpr(e.Value)
-			u := m.popStack()
-			switch m.checkedValue[0].ID {
+			c.resolveExpr(e.Value)
+			u := c.popStack()
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenInt:
-				i := atoi.MustI32(m.checkedValue[0].Value)
+				i := atoi.MustI32(c.checkedValue[0].Value)
 				if u, ok := u.Int(); ok != union.ValueNone {
 					match = i <= u
 					break
@@ -648,11 +613,11 @@ func makeCheck(
 				u, _ := u.Float()
 				match = float64(i) <= u
 			case gqlscan.TokenFloat:
-				i := atoi.MustF64(m.checkedValue[0].Value)
+				i := atoi.MustF64(c.checkedValue[0].Value)
 				u, _ := u.Float()
 				match = i <= u
 			}
-			m.checkedValue = m.checkedValue[1:]
+			c.checkedValue = c.checkedValue[1:]
 			return match
 		}
 	case *gqt.ConstrEquals:
@@ -696,32 +661,32 @@ func makeCheck(
 			return makeNotEqBool(true, expect, schema)
 		}
 		fn := makeEqExpression(e.Value, expect, schema)
-		return func(m *Checker) (match bool) {
-			return !fn(m)
+		return func(c *Checker) (match bool) {
+			return !fn(c)
 		}
 	case *gqt.ConstrLenEquals:
-		return func(m *Checker) (match bool) {
-			if m.expectOrHasLen(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrHasLen(expect) {
 				return false
 			}
 
 			var length int
-			switch m.checkedValue[0].ID {
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenArr:
 				var tokensRead int
 				length, tokensRead = gqlparse.CountValuesUntil(
-					m.checkedValue[1:],
+					c.checkedValue[1:],
 					gqlscan.TokenArrEnd,
 				)
-				m.checkedValue = m.checkedValue[tokensRead:]
+				c.checkedValue = c.checkedValue[tokensRead:]
 			case gqlscan.TokenStr:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			case gqlscan.TokenStrBlock:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			}
 
-			m.resolveExpr(e.Value)
-			u := m.popStack()
+			c.resolveExpr(e.Value)
+			u := c.popStack()
 			if u, ok := u.Int(); ok != union.ValueNone {
 				return int32(length) == u
 			}
@@ -731,28 +696,28 @@ func makeCheck(
 			panic(fmt.Errorf("unexpected value type: %s", u.Type().String()))
 		}
 	case *gqt.ConstrLenNotEquals:
-		return func(m *Checker) (match bool) {
-			if m.expectOrHasLen(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrHasLen(expect) {
 				return false
 			}
 
 			var length int
-			switch m.checkedValue[0].ID {
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenArr:
 				var tokensRead int
 				length, tokensRead = gqlparse.CountValuesUntil(
-					m.checkedValue[1:],
+					c.checkedValue[1:],
 					gqlscan.TokenArrEnd,
 				)
-				m.checkedValue = m.checkedValue[tokensRead:]
+				c.checkedValue = c.checkedValue[tokensRead:]
 			case gqlscan.TokenStr:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			case gqlscan.TokenStrBlock:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			}
 
-			m.resolveExpr(e.Value)
-			u := m.popStack()
+			c.resolveExpr(e.Value)
+			u := c.popStack()
 			if u, ok := u.Int(); ok != union.ValueNone {
 				return int32(length) != u
 			}
@@ -762,28 +727,28 @@ func makeCheck(
 			panic(fmt.Errorf("unexpected value type: %s", u.Type().String()))
 		}
 	case *gqt.ConstrLenGreater:
-		return func(m *Checker) (match bool) {
-			if m.expectOrHasLen(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrHasLen(expect) {
 				return false
 			}
 
 			var length int
-			switch m.checkedValue[0].ID {
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenArr:
 				var tokensRead int
 				length, tokensRead = gqlparse.CountValuesUntil(
-					m.checkedValue[1:],
+					c.checkedValue[1:],
 					gqlscan.TokenArrEnd,
 				)
-				m.checkedValue = m.checkedValue[tokensRead:]
+				c.checkedValue = c.checkedValue[tokensRead:]
 			case gqlscan.TokenStr:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			case gqlscan.TokenStrBlock:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			}
 
-			m.resolveExpr(e.Value)
-			u := m.popStack()
+			c.resolveExpr(e.Value)
+			u := c.popStack()
 			if u, ok := u.Int(); ok != union.ValueNone {
 				return int32(length) > u
 			}
@@ -793,28 +758,28 @@ func makeCheck(
 			panic(fmt.Errorf("unexpected value type: %s", u.Type().String()))
 		}
 	case *gqt.ConstrLenGreaterOrEqual:
-		return func(m *Checker) (match bool) {
-			if m.expectOrHasLen(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrHasLen(expect) {
 				return false
 			}
 
 			var length int
-			switch m.checkedValue[0].ID {
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenArr:
 				var tokensRead int
 				length, tokensRead = gqlparse.CountValuesUntil(
-					m.checkedValue[1:],
+					c.checkedValue[1:],
 					gqlscan.TokenArrEnd,
 				)
-				m.checkedValue = m.checkedValue[tokensRead:]
+				c.checkedValue = c.checkedValue[tokensRead:]
 			case gqlscan.TokenStr:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			case gqlscan.TokenStrBlock:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			}
 
-			m.resolveExpr(e.Value)
-			u := m.popStack()
+			c.resolveExpr(e.Value)
+			u := c.popStack()
 			if u, ok := u.Int(); ok != union.ValueNone {
 				return int32(length) >= u
 			}
@@ -824,28 +789,28 @@ func makeCheck(
 			panic(fmt.Errorf("unexpected value type: %s", u.Type().String()))
 		}
 	case *gqt.ConstrLenLess:
-		return func(m *Checker) (match bool) {
-			if m.expectOrHasLen(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrHasLen(expect) {
 				return false
 			}
 
 			var length int
-			switch m.checkedValue[0].ID {
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenArr:
 				var tokensRead int
 				length, tokensRead = gqlparse.CountValuesUntil(
-					m.checkedValue[1:],
+					c.checkedValue[1:],
 					gqlscan.TokenArrEnd,
 				)
-				m.checkedValue = m.checkedValue[tokensRead:]
+				c.checkedValue = c.checkedValue[tokensRead:]
 			case gqlscan.TokenStr:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			case gqlscan.TokenStrBlock:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			}
 
-			m.resolveExpr(e.Value)
-			u := m.popStack()
+			c.resolveExpr(e.Value)
+			u := c.popStack()
 			if u, ok := u.Int(); ok != union.ValueNone {
 				return int32(length) < u
 			}
@@ -855,28 +820,28 @@ func makeCheck(
 			panic(fmt.Errorf("unexpected value type: %s", u.Type().String()))
 		}
 	case *gqt.ConstrLenLessOrEqual:
-		return func(m *Checker) (match bool) {
-			if m.expectOrHasLen(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrHasLen(expect) {
 				return false
 			}
 
 			var length int
-			switch m.checkedValue[0].ID {
+			switch c.checkedValue[0].ID {
 			case gqlscan.TokenArr:
 				var tokensRead int
 				length, tokensRead = gqlparse.CountValuesUntil(
-					m.checkedValue[1:],
+					c.checkedValue[1:],
 					gqlscan.TokenArrEnd,
 				)
-				m.checkedValue = m.checkedValue[tokensRead:]
+				c.checkedValue = c.checkedValue[tokensRead:]
 			case gqlscan.TokenStr:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			case gqlscan.TokenStrBlock:
-				length = len(m.checkedValue[0].Value)
+				length = len(c.checkedValue[0].Value)
 			}
 
-			m.resolveExpr(e.Value)
-			u := m.popStack()
+			c.resolveExpr(e.Value)
+			u := c.popStack()
 			if u, ok := u.Int(); ok != union.ValueNone {
 				return int32(length) <= u
 			}
@@ -891,221 +856,107 @@ func makeCheck(
 			expectItem = expect.Elem
 		}
 		itemCheck := makeCheck(e.Constraint, expectItem, schema)
-		return func(m *Checker) (match bool) {
-			if wrong, _ := isWrongType(expect, m.checkedValue, schema); wrong {
+		return func(c *Checker) (match bool) {
+			if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
 				return false
 			}
-			for m.checkedValue[0].ID != gqlscan.TokenArr {
+			for c.checkedValue[0].ID != gqlscan.TokenArr {
 				return false
 			}
-			m.checkedValue = m.checkedValue[1:]
-			for m.checkedValue[0].ID != gqlscan.TokenArrEnd {
-				if !itemCheck(m) {
+			c.checkedValue = c.checkedValue[1:]
+			for c.checkedValue[0].ID != gqlscan.TokenArrEnd {
+				if !itemCheck(c) {
 					return false
 				}
 			}
-			m.checkedValue = m.checkedValue[1:]
+			c.checkedValue = c.checkedValue[1:]
 			return true
 		}
 	}
 	return nil
 }
 
-// traverse returns true after BFS-traversing the entire tree under e
-// calling onExpression for every discovered expression.
-func traverse(
-	e gqt.Expression,
-	onExpression func(gqt.Expression) (stop, skipChildren bool),
-) (stopped bool) {
-	stack := make([]gqt.Expression, 0, 64)
-	push := func(expression gqt.Expression) {
-		stack = append(stack, expression)
-	}
-
-	push(e)
-	for len(stack) > 0 {
-		top := stack[len(stack)-1]
-		stack = stack[:len(stack)-1]
-		stop, skipChildren := onExpression(top)
-		if stop {
-			return true
-		} else if skipChildren {
-			continue
-		}
-
-		switch e := top.(type) {
-		case *gqt.Operation:
-			for _, f := range e.Selections {
-				push(f)
-			}
-		case *gqt.SelectionInlineFrag:
-			for _, f := range e.Selections {
-				push(f)
-			}
-		case *gqt.SelectionField:
-			for _, f := range e.Selections {
-				push(f)
-			}
-			for _, a := range e.Arguments {
-				push(a)
-			}
-		case *gqt.SelectionMax:
-			for _, f := range e.Options.Selections {
-				push(f)
-			}
-		case *gqt.Argument:
-			push(e.Constraint)
-		case *gqt.ConstrEquals:
-			push(e.Value)
-		case *gqt.ConstrNotEquals:
-			push(e.Value)
-		case *gqt.ConstrGreater:
-			push(e.Value)
-		case *gqt.ConstrGreaterOrEqual:
-			push(e.Value)
-		case *gqt.ConstrLess:
-			push(e.Value)
-		case *gqt.ConstrLessOrEqual:
-			push(e.Value)
-		case *gqt.ConstrLenEquals:
-			push(e.Value)
-		case *gqt.ConstrLenNotEquals:
-			push(e.Value)
-		case *gqt.ConstrLenGreater:
-			push(e.Value)
-		case *gqt.ConstrLenLess:
-			push(e.Value)
-		case *gqt.ConstrLenGreaterOrEqual:
-			push(e.Value)
-		case *gqt.ConstrLenLessOrEqual:
-			push(e.Value)
-		case *gqt.ConstrMap:
-			push(e.Constraint)
-		case *gqt.ExprParentheses:
-			push(e.Expression)
-		case *gqt.ExprEqual:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprNotEqual:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprLogicalNegation:
-			push(e.Expression)
-		case *gqt.ExprNumericNegation:
-			push(e.Expression)
-		case *gqt.ExprLogicalOr:
-			for _, e := range e.Expressions {
-				push(e)
-			}
-		case *gqt.ExprLogicalAnd:
-			for _, e := range e.Expressions {
-				push(e)
-			}
-		case *gqt.ExprAddition:
-			push(e.AddendLeft)
-			push(e.AddendRight)
-		case *gqt.ExprSubtraction:
-			push(e.Minuend)
-			push(e.Subtrahend)
-		case *gqt.ExprMultiplication:
-			push(e.Multiplicant)
-			push(e.Multiplicator)
-		case *gqt.ExprDivision:
-			push(e.Dividend)
-			push(e.Divisor)
-		case *gqt.ExprModulo:
-			push(e.Dividend)
-			push(e.Divisor)
-		case *gqt.ExprGreater:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprGreaterOrEqual:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprLess:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.ExprLessOrEqual:
-			push(e.Left)
-			push(e.Right)
-		case *gqt.Array:
-			for _, i := range e.Items {
-				push(i)
-			}
-		case *gqt.Object:
-			for _, f := range e.Fields {
-				push(f)
-			}
-		case *gqt.ObjectField:
-			push(e.Constraint)
-		case *gqt.Number, *gqt.True, *gqt.False, *gqt.Null,
-			*gqt.Enum, *gqt.String, *gqt.ConstrAny, *gqt.Variable:
-		default:
-			panic(fmt.Errorf("unhandled type: %T", top))
-		}
-	}
-	return false
-}
-
 // Designation creates a textual explanation for the given expression.
-func Designation(e gqt.Expression) string {
+func Designation(c *Checker, e gqt.Expression) string {
 	switch e := e.(type) {
 	case *gqt.ConstrAny:
 		return "can be any value"
 	case *gqt.ConstrEquals:
-		return "must be equal " + Designation(e.Value)
+		return "must be equal " + Designation(c, e.Value)
 	case *gqt.ConstrNotEquals:
-		return "must not be equal " + Designation(e.Value)
+		return "must not be equal " + Designation(c, e.Value)
 	case *gqt.ConstrLenEquals:
-		return "length must be equal " + Designation(e.Value)
+		return "length must be equal " + Designation(c, e.Value)
 	case *gqt.ConstrLenNotEquals:
-		return "length must not be equal " + Designation(e.Value)
+		return "length must not be equal " + Designation(c, e.Value)
 	case *gqt.ConstrLenLess:
-		return "length must be less than " + Designation(e.Value)
+		return "length must be less than " + Designation(c, e.Value)
 	case *gqt.ConstrLenGreater:
-		return "length must be greater than " + Designation(e.Value)
+		return "length must be greater than " + Designation(c, e.Value)
 	case *gqt.ConstrLenLessOrEqual:
-		return "length must be less than or equal " + Designation(e.Value)
+		return "length must be less than or equal " + Designation(c, e.Value)
 	case *gqt.ConstrLenGreaterOrEqual:
-		return "length must be greater than or equal " + Designation(e.Value)
+		return "length must be greater than or equal " + Designation(c, e.Value)
 	case *gqt.ConstrMap:
-		return "each item: " + Designation(e.Constraint)
+		return "each item: " + Designation(c, e.Constraint)
 	case *gqt.ConstrLess:
-		return "must be less than " + Designation(e.Value)
+		return "must be less than " + Designation(c, e.Value)
 	case *gqt.ConstrGreater:
-		return "must be greater than " + Designation(e.Value)
+		return "must be greater than " + Designation(c, e.Value)
 	case *gqt.ConstrLessOrEqual:
-		return "must be less than or equal " + Designation(e.Value)
+		return "must be less than or equal " + Designation(c, e.Value)
 	case *gqt.ConstrGreaterOrEqual:
-		return "must be greater than or equal " + Designation(e.Value)
+		return "must be greater than or equal " + Designation(c, e.Value)
 	case *gqt.ExprParentheses:
-		return "(" + Designation(e.Expression) + ")"
+		return "(" + Designation(c, e.Expression) + ")"
 	case *gqt.ExprAddition:
-		return Designation(e.AddendLeft) + " + " + Designation(e.AddendRight)
+		return Designation(c, e.AddendLeft) +
+			" + " +
+			Designation(c, e.AddendRight)
 	case *gqt.ExprSubtraction:
-		return Designation(e.Minuend) + " - " + Designation(e.Subtrahend)
+		return Designation(c, e.Minuend) +
+			" - " +
+			Designation(c, e.Subtrahend)
 	case *gqt.ExprMultiplication:
-		return Designation(e.Multiplicant) + " * " + Designation(e.Multiplicator)
+		return Designation(c, e.Multiplicant) +
+			" * " +
+			Designation(c, e.Multiplicator)
 	case *gqt.ExprDivision:
-		return Designation(e.Dividend) + " / " + Designation(e.Divisor)
+		return Designation(c, e.Dividend) +
+			" / " +
+			Designation(c, e.Divisor)
 	case *gqt.ExprModulo:
-		return Designation(e.Dividend) + " % " + Designation(e.Divisor)
+		return Designation(c, e.Dividend) +
+			" % " +
+			Designation(c, e.Divisor)
 	case *gqt.ExprEqual:
-		return Designation(e.Left) + " equal " + Designation(e.Right)
+		return Designation(c, e.Left) +
+			" equal " +
+			Designation(c, e.Right)
 	case *gqt.ExprNotEqual:
-		return Designation(e.Left) + " not equal " + Designation(e.Right)
+		return Designation(c, e.Left) +
+			" not equal " +
+			Designation(c, e.Right)
 	case *gqt.ExprGreater:
-		return Designation(e.Left) + " greater than " + Designation(e.Right)
+		return Designation(c, e.Left) +
+			" greater than " +
+			Designation(c, e.Right)
 	case *gqt.ExprLess:
-		return Designation(e.Left) + " less than " + Designation(e.Right)
+		return Designation(c, e.Left) +
+			" less than " +
+			Designation(c, e.Right)
 	case *gqt.ExprLessOrEqual:
-		return Designation(e.Left) + " less than or equal " + Designation(e.Right)
+		return Designation(c, e.Left) +
+			" less than or equal " +
+			Designation(c, e.Right)
 	case *gqt.ExprGreaterOrEqual:
-		return Designation(e.Left) + " greater than or equal " + Designation(e.Right)
+		return Designation(c, e.Left) +
+			" greater than or equal " +
+			Designation(c, e.Right)
 	case *gqt.ExprLogicalNegation:
-		return "not(" + Designation(e.Expression) + ")"
+		return "not(" + Designation(c, e.Expression) + ")"
 	case *gqt.ExprNumericNegation:
-		return "negative(" + Designation(e.Expression) + ")"
+		return "negative(" + Designation(c, e.Expression) + ")"
 	case *gqt.Number:
 		i, ok := e.Int()
 		if ok {
@@ -1128,21 +979,24 @@ func Designation(e gqt.Expression) string {
 			if i > 0 {
 				b.WriteString(" ,")
 			}
-			fmt.Fprintf(&b, "%d: %v", i, Designation(v))
+			fmt.Fprintf(&b, "%d: %v", i, Designation(c, v))
 		}
 		b.WriteByte(']')
 		return b.String()
 	case *gqt.Enum:
 		return e.Value
 	case *gqt.Variable:
-		return MakePath(e.Declaration.Parent)
+		p, ok := c.pathByVar[e]
+		if !ok {
+			return p
+		}
 	case *gqt.ExprLogicalOr:
 		var b strings.Builder
 		for i, v := range e.Expressions {
 			if i > 0 {
 				b.WriteString(", or ")
 			}
-			b.WriteString(Designation(v))
+			b.WriteString(Designation(c, v))
 		}
 		return b.String()
 	case *gqt.ExprLogicalAnd:
@@ -1151,7 +1005,7 @@ func Designation(e gqt.Expression) string {
 			if i > 0 {
 				b.WriteString(", and ")
 			}
-			b.WriteString(Designation(v))
+			b.WriteString(Designation(c, v))
 		}
 		return b.String()
 	case *gqt.Object:
@@ -1161,7 +1015,7 @@ func Designation(e gqt.Expression) string {
 			if i > 0 {
 				b.WriteString(" ,")
 			}
-			fmt.Fprintf(&b, "%q: %v", v.Name.Name, Designation(v.Constraint))
+			fmt.Fprintf(&b, "%q: %v", v.Name.Name, Designation(c, v.Constraint))
 		}
 		b.WriteByte('}')
 		return b.String()
@@ -1169,67 +1023,67 @@ func Designation(e gqt.Expression) string {
 	panic(fmt.Sprintf("unhandled expression: %T", e))
 }
 
-func (m *Checker) expectOrNum(expect *gqlast.Type) (wrongType bool) {
+func (c *Checker) expectOrNum(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, m.checkedValue, m.schema)
+		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
 		return wrongType
 	}
-	return m.checkedValue[0].ID != gqlscan.TokenInt &&
-		m.checkedValue[0].ID != gqlscan.TokenFloat
+	return c.checkedValue[0].ID != gqlscan.TokenInt &&
+		c.checkedValue[0].ID != gqlscan.TokenFloat
 }
 
-func (m *Checker) expectOrInt(expect *gqlast.Type) (wrongType bool) {
+func (c *Checker) expectOrInt(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, m.checkedValue, m.schema)
+		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
 		return wrongType
 	}
-	return m.checkedValue[0].ID != gqlscan.TokenInt
+	return c.checkedValue[0].ID != gqlscan.TokenInt
 }
 
-func (m *Checker) expectOrFloat(expect *gqlast.Type) (wrongType bool) {
+func (c *Checker) expectOrFloat(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, m.checkedValue, m.schema)
+		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
 		return wrongType
 	}
-	return m.checkedValue[0].ID != gqlscan.TokenFloat
+	return c.checkedValue[0].ID != gqlscan.TokenFloat
 }
 
-func (m *Checker) expectOrString(expect *gqlast.Type) (wrongType bool) {
+func (c *Checker) expectOrString(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, m.checkedValue, m.schema)
+		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
 		return wrongType
 	}
-	return m.checkedValue[0].ID != gqlscan.TokenStr &&
-		m.checkedValue[0].ID != gqlscan.TokenStrBlock
+	return c.checkedValue[0].ID != gqlscan.TokenStr &&
+		c.checkedValue[0].ID != gqlscan.TokenStrBlock
 }
 
-func (m *Checker) expectOrEnum(expect *gqlast.Type) (wrongType bool) {
+func (c *Checker) expectOrEnum(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, m.checkedValue, m.schema)
+		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
 		return wrongType
 	}
-	return m.checkedValue[0].ID != gqlscan.TokenEnumVal
+	return c.checkedValue[0].ID != gqlscan.TokenEnumVal
 }
 
-func (m *Checker) expectOrBool(expect *gqlast.Type) (wrongType bool) {
+func (c *Checker) expectOrBool(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, m.checkedValue, m.schema)
+		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
 		return wrongType
 	}
-	return m.checkedValue[0].ID != gqlscan.TokenTrue &&
-		m.checkedValue[0].ID != gqlscan.TokenFalse
+	return c.checkedValue[0].ID != gqlscan.TokenTrue &&
+		c.checkedValue[0].ID != gqlscan.TokenFalse
 }
 
-func (m *Checker) expectOrHasLen(
+func (c *Checker) expectOrHasLen(
 	expect *gqlast.Type,
 ) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, m.checkedValue, m.schema)
+		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
 		return wrongType
 	}
-	return m.checkedValue[0].ID != gqlscan.TokenArr &&
-		m.checkedValue[0].ID != gqlscan.TokenStr &&
-		m.checkedValue[0].ID != gqlscan.TokenStrBlock
+	return c.checkedValue[0].ID != gqlscan.TokenArr &&
+		c.checkedValue[0].ID != gqlscan.TokenStr &&
+		c.checkedValue[0].ID != gqlscan.TokenStrBlock
 }
 
 func makeEqArray(
@@ -1245,24 +1099,24 @@ func makeEqArray(
 		}
 		checks[i] = makeCheck(v.Items[i], expect, schema)
 	}
-	return func(m *Checker) (match bool) {
-		if m.checkedValue[0].ID != gqlscan.TokenArr {
+	return func(c *Checker) (match bool) {
+		if c.checkedValue[0].ID != gqlscan.TokenArr {
 			return false
 		}
-		m.checkedValue = m.checkedValue[1:]
-		c := 0
-		for ; m.checkedValue[0].ID != gqlscan.TokenArrEnd; c++ {
-			if c >= len(checks) {
+		c.checkedValue = c.checkedValue[1:]
+		count := 0
+		for ; c.checkedValue[0].ID != gqlscan.TokenArrEnd; count++ {
+			if count >= len(checks) {
 				return false
 			}
-			if !checks[c](m) {
+			if !checks[count](c) {
 				return false
 			}
 		}
-		if c != len(checks) {
+		if count != len(checks) {
 			return false
 		}
-		m.checkedValue = m.checkedValue[1:]
+		c.checkedValue = c.checkedValue[1:]
 		return true
 	}
 }
@@ -1280,33 +1134,33 @@ func makeNotEqArray(
 		}
 		checks[i] = makeCheck(v.Items[i], expect, schema)
 	}
-	return func(m *Checker) (match bool) {
-		if m.checkedValue[0].ID != gqlscan.TokenArr {
+	return func(c *Checker) (match bool) {
+		if c.checkedValue[0].ID != gqlscan.TokenArr {
 			return false
 		}
-		m.checkedValue = m.checkedValue[1:]
-		c := 0
-		for ; m.checkedValue[0].ID != gqlscan.TokenArrEnd; c++ {
-			if c >= len(checks) {
+		c.checkedValue = c.checkedValue[1:]
+		count := 0
+		for ; c.checkedValue[0].ID != gqlscan.TokenArrEnd; count++ {
+			if count >= len(checks) {
 				// Skip all following values to return correct tokenRead
-				for m.checkedValue[0].ID != gqlscan.TokenArrEnd {
-					l := gqlparse.GetValLen(m.checkedValue)
-					m.checkedValue = m.checkedValue[l:]
+				for c.checkedValue[0].ID != gqlscan.TokenArrEnd {
+					l := gqlparse.GetValLen(c.checkedValue)
+					c.checkedValue = c.checkedValue[l:]
 				}
 				return true
 			}
-			if !checks[c](m) {
+			if !checks[count](c) {
 				// Skip all following values to return correct tokenRead
-				for m.checkedValue[0].ID != gqlscan.TokenArrEnd {
-					l := gqlparse.GetValLen(m.checkedValue)
-					m.checkedValue = m.checkedValue[l:]
+				for c.checkedValue[0].ID != gqlscan.TokenArrEnd {
+					l := gqlparse.GetValLen(c.checkedValue)
+					c.checkedValue = c.checkedValue[l:]
 				}
 				return true
 			}
 		}
-		m.checkedValue = m.checkedValue[1:]
+		c.checkedValue = c.checkedValue[1:]
 		// All item checks were matched, finally check length
-		return c != len(checks)
+		return count != len(checks)
 	}
 }
 
@@ -1316,22 +1170,22 @@ func makeEqNumber(
 	schema *gqlast.Schema,
 ) check {
 	if i, ok := v.Int(); ok {
-		return func(m *Checker) (match bool) {
-			if m.expectOrInt(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrInt(expect) {
 				return false
 			}
-			a := atoi.MustI32(m.checkedValue[0].Value)
-			m.checkedValue = m.checkedValue[1:]
+			a := atoi.MustI32(c.checkedValue[0].Value)
+			c.checkedValue = c.checkedValue[1:]
 			return int32(i) == a
 		}
 	}
 	f, _ := v.Float()
-	return func(m *Checker) (match bool) {
-		if m.expectOrFloat(expect) {
+	return func(c *Checker) (match bool) {
+		if c.expectOrFloat(expect) {
 			return false
 		}
-		a := atoi.MustF64(m.checkedValue[0].Value)
-		m.checkedValue = m.checkedValue[1:]
+		a := atoi.MustF64(c.checkedValue[0].Value)
+		c.checkedValue = c.checkedValue[1:]
 		return f == a
 	}
 }
@@ -1342,22 +1196,22 @@ func makeNotEqNumber(
 	schema *gqlast.Schema,
 ) check {
 	if i, ok := v.Int(); ok {
-		return func(m *Checker) (match bool) {
-			if m.expectOrInt(expect) {
+		return func(c *Checker) (match bool) {
+			if c.expectOrInt(expect) {
 				return false
 			}
-			a := atoi.MustI32(m.checkedValue[0].Value)
-			m.checkedValue = m.checkedValue[1:]
+			a := atoi.MustI32(c.checkedValue[0].Value)
+			c.checkedValue = c.checkedValue[1:]
 			return int32(i) != a
 		}
 	}
 	f, _ := v.Float()
-	return func(m *Checker) (match bool) {
-		if m.expectOrFloat(expect) {
+	return func(c *Checker) (match bool) {
+		if c.expectOrFloat(expect) {
 			return false
 		}
-		a := atoi.MustF64(m.checkedValue[0].Value)
-		m.checkedValue = m.checkedValue[1:]
+		a := atoi.MustF64(c.checkedValue[0].Value)
+		c.checkedValue = c.checkedValue[1:]
 		return f != a
 	}
 }
@@ -1367,12 +1221,12 @@ func makeEqString(
 	expect *gqlast.Type,
 	schema *gqlast.Schema,
 ) check {
-	return func(m *Checker) (match bool) {
-		if m.expectOrString(expect) {
+	return func(c *Checker) (match bool) {
+		if c.expectOrString(expect) {
 			return false
 		}
-		t := m.checkedValue[0]
-		m.checkedValue = m.checkedValue[1:]
+		t := c.checkedValue[0]
+		c.checkedValue = c.checkedValue[1:]
 		switch t.ID {
 		case gqlscan.TokenStr:
 			return v.Value == string(t.Value)
@@ -1388,12 +1242,12 @@ func makeNotEqString(
 	expect *gqlast.Type,
 	schema *gqlast.Schema,
 ) check {
-	return func(m *Checker) (match bool) {
-		if m.expectOrString(expect) {
+	return func(c *Checker) (match bool) {
+		if c.expectOrString(expect) {
 			return false
 		}
-		t := m.checkedValue[0]
-		m.checkedValue = m.checkedValue[1:]
+		t := c.checkedValue[0]
+		c.checkedValue = c.checkedValue[1:]
 		switch t.ID {
 		case gqlscan.TokenStr:
 			return v.Value != string(t.Value)
@@ -1409,12 +1263,12 @@ func makeEqEnum(
 	expect *gqlast.Type,
 	schema *gqlast.Schema,
 ) check {
-	return func(m *Checker) (match bool) {
-		if m.expectOrEnum(expect) {
+	return func(c *Checker) (match bool) {
+		if c.expectOrEnum(expect) {
 			return false
 		}
-		b := m.checkedValue[0].Value
-		m.checkedValue = m.checkedValue[1:]
+		b := c.checkedValue[0].Value
+		c.checkedValue = c.checkedValue[1:]
 		return v.Value == string(b)
 	}
 }
@@ -1424,12 +1278,12 @@ func makeNotEqEnum(
 	expect *gqlast.Type,
 	schema *gqlast.Schema,
 ) check {
-	return func(m *Checker) (match bool) {
-		if m.expectOrEnum(expect) {
+	return func(c *Checker) (match bool) {
+		if c.expectOrEnum(expect) {
 			return false
 		}
-		b := m.checkedValue[0].Value
-		m.checkedValue = m.checkedValue[1:]
+		b := c.checkedValue[0].Value
+		c.checkedValue = c.checkedValue[1:]
 		return v.Value != string(b)
 	}
 }
@@ -1438,12 +1292,12 @@ func makeEqNull(
 	expect *gqlast.Type,
 	schema *gqlast.Schema,
 ) check {
-	return func(m *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, m.checkedValue, schema); wrong {
+	return func(c *Checker) (match bool) {
+		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
 			return false
 		}
-		t := m.checkedValue[0].ID
-		m.checkedValue = m.checkedValue[1:]
+		t := c.checkedValue[0].ID
+		c.checkedValue = c.checkedValue[1:]
 		return t == gqlscan.TokenNull
 	}
 }
@@ -1452,12 +1306,12 @@ func makeNotEqNull(
 	expect *gqlast.Type,
 	schema *gqlast.Schema,
 ) check {
-	return func(m *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, m.checkedValue, schema); wrong {
+	return func(c *Checker) (match bool) {
+		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
 			return false
 		}
-		t := m.checkedValue[0].ID
-		m.checkedValue = m.checkedValue[1:]
+		t := c.checkedValue[0].ID
+		c.checkedValue = c.checkedValue[1:]
 		return t != gqlscan.TokenNull
 	}
 }
@@ -1471,12 +1325,12 @@ func makeEqBool(
 	if value {
 		v = gqlscan.TokenTrue
 	}
-	return func(m *Checker) (match bool) {
-		if m.expectOrBool(expect) {
+	return func(c *Checker) (match bool) {
+		if c.expectOrBool(expect) {
 			return false
 		}
-		t := m.checkedValue[0].ID
-		m.checkedValue = m.checkedValue[1:]
+		t := c.checkedValue[0].ID
+		c.checkedValue = c.checkedValue[1:]
 		return t == v
 	}
 }
@@ -1490,12 +1344,12 @@ func makeNotEqBool(
 	if value {
 		v = gqlscan.TokenTrue
 	}
-	return func(m *Checker) (match bool) {
-		if m.expectOrBool(expect) {
+	return func(c *Checker) (match bool) {
+		if c.expectOrBool(expect) {
 			return false
 		}
-		t := m.checkedValue[0].ID
-		m.checkedValue = m.checkedValue[1:]
+		t := c.checkedValue[0].ID
+		c.checkedValue = c.checkedValue[1:]
 		return t != v
 	}
 }
@@ -1519,49 +1373,49 @@ func makeEqObject(
 		checks[v.Name.Name] = makeCheck(v.Constraint, expect, schema)
 		fieldChecked[v.Name.Name] = false
 	}
-	return func(m *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, m.checkedValue, schema); wrong {
+	return func(c *Checker) (match bool) {
+		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
 			return false
 		}
-		if m.checkedValue[0].ID != gqlscan.TokenObj {
+		if c.checkedValue[0].ID != gqlscan.TokenObj {
 			return false
 		}
-		m.checkedValue = m.checkedValue[1:]
+		c.checkedValue = c.checkedValue[1:]
 
 		// Reset check status
 		for k := range fieldChecked {
 			fieldChecked[k] = false
 		}
 
-		c := 0
-		for ; m.checkedValue[0].ID != gqlscan.TokenObjEnd; c++ {
-			if c >= len(checks) {
+		count := 0
+		for ; c.checkedValue[0].ID != gqlscan.TokenObjEnd; count++ {
+			if count >= len(checks) {
 				return false
 			}
 
-			check := checks[string(m.checkedValue[0].Value)]
+			check := checks[string(c.checkedValue[0].Value)]
 			if check == nil {
 				// Unknown field, wrong object type
 				return false
 			}
 
-			if fieldChecked[string(m.checkedValue[0].Value)] {
+			if fieldChecked[string(c.checkedValue[0].Value)] {
 				// Field provided twice, invalid object
 				return false
 			}
-			fieldChecked[string(m.checkedValue[0].Value)] = true
+			fieldChecked[string(c.checkedValue[0].Value)] = true
 
-			m.checkedValue = m.checkedValue[1:]
+			c.checkedValue = c.checkedValue[1:]
 
-			if !check(m) {
+			if !check(c) {
 				return false
 			}
 		}
-		if requiredChecks < 1 && c != len(checks) || c < requiredChecks {
+		if requiredChecks < 1 && count != len(checks) || count < requiredChecks {
 			// Not all required fields were provided, wrong object type
 			return false
 		}
-		m.checkedValue = m.checkedValue[1:]
+		c.checkedValue = c.checkedValue[1:]
 		return true
 	}
 }
@@ -1585,51 +1439,51 @@ func makeNotEqObject(
 		checks[v.Name.Name] = makeCheck(v.Constraint, expect, schema)
 		fieldChecked[v.Name.Name] = false
 	}
-	return func(m *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, m.checkedValue, schema); wrong {
+	return func(c *Checker) (match bool) {
+		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
 			return false
 		}
-		if m.checkedValue[0].ID != gqlscan.TokenObj {
+		if c.checkedValue[0].ID != gqlscan.TokenObj {
 			return false
 		}
-		m.checkedValue = m.checkedValue[1:]
+		c.checkedValue = c.checkedValue[1:]
 
 		// Reset check status
 		for k := range fieldChecked {
 			fieldChecked[k] = false
 		}
 
-		c := 0
-		for ; m.checkedValue[0].ID != gqlscan.TokenObjEnd; c++ {
-			if c >= len(checks) {
+		count := 0
+		for ; c.checkedValue[0].ID != gqlscan.TokenObjEnd; count++ {
+			if count >= len(checks) {
 				return false
 			}
 
-			check := checks[string(m.checkedValue[0].Value)]
+			check := checks[string(c.checkedValue[0].Value)]
 			if check == nil {
 				// Unknown field, wrong object type
 				return false
 			}
 
-			if fieldChecked[string(m.checkedValue[0].Value)] {
+			if fieldChecked[string(c.checkedValue[0].Value)] {
 				// Field provided twice, invalid object
 				return false
 			}
-			fieldChecked[string(m.checkedValue[0].Value)] = true
+			fieldChecked[string(c.checkedValue[0].Value)] = true
 
-			m.checkedValue = m.checkedValue[1:]
+			c.checkedValue = c.checkedValue[1:]
 
-			if check(m) {
+			if check(c) {
 				// Don't return just yet as we're not sure whether the
 				// object type was correct.
 				match = true
 			}
 		}
-		if requiredChecks < 1 && c != len(checks) || c < requiredChecks {
+		if requiredChecks < 1 && count != len(checks) || count < requiredChecks {
 			// Not all required fields were provided, wrong object type
 			return false
 		}
-		m.checkedValue = m.checkedValue[1:]
+		c.checkedValue = c.checkedValue[1:]
 		return !match
 	}
 }
@@ -1639,61 +1493,61 @@ func makeEqExpression(
 	expect *gqlast.Type,
 	schema *gqlast.Schema,
 ) check {
-	return func(m *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, m.checkedValue, schema); wrong {
+	return func(c *Checker) (match bool) {
+		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
 			return false
 		}
-		m.resolveExpr(v)
-		u := m.popStack()
+		c.resolveExpr(v)
+		u := c.popStack()
 
 		switch u.Type() {
 		case union.TypeNull:
-			return m.checkedValue[0].ID == gqlscan.TokenNull
+			return c.checkedValue[0].ID == gqlscan.TokenNull
 		case union.TypeBoolean:
 			b, _ := u.Bool()
 			if b {
-				return m.checkedValue[0].ID == gqlscan.TokenTrue
+				return c.checkedValue[0].ID == gqlscan.TokenTrue
 			}
-			return m.checkedValue[0].ID == gqlscan.TokenFalse
+			return c.checkedValue[0].ID == gqlscan.TokenFalse
 		case union.TypeInt:
-			if m.checkedValue[0].ID == gqlscan.TokenInt {
+			if c.checkedValue[0].ID == gqlscan.TokenInt {
 				u, _ := u.Int()
-				return u == atoi.MustI32(m.checkedValue[0].Value)
+				return u == atoi.MustI32(c.checkedValue[0].Value)
 			}
 			return false
 		case union.TypeFloat:
-			if m.checkedValue[0].ID == gqlscan.TokenFloat {
+			if c.checkedValue[0].ID == gqlscan.TokenFloat {
 				u, _ := u.Float()
-				return u == atoi.MustF64(m.checkedValue[0].Value)
+				return u == atoi.MustF64(c.checkedValue[0].Value)
 			}
 			return false
 		case union.TypeString:
-			if m.checkedValue[0].ID == gqlscan.TokenStr {
+			if c.checkedValue[0].ID == gqlscan.TokenStr {
 				u, _ := u.String()
-				return u == string(m.checkedValue[0].Value)
+				return u == string(c.checkedValue[0].Value)
 			}
 			return false
 		case union.TypeEnum:
-			if m.checkedValue[0].ID == gqlscan.TokenEnumVal {
+			if c.checkedValue[0].ID == gqlscan.TokenEnumVal {
 				u, _ := u.Enum()
-				return u == string(m.checkedValue[0].Value)
+				return u == string(c.checkedValue[0].Value)
 			}
 			return false
 		case union.TypeTokens:
-			if len(u.Tokens()) != len(m.checkedValue) {
+			if len(u.Tokens()) != len(c.checkedValue) {
 				return false
 			}
-			for i := range m.checkedValue {
-				if m.checkedValue[i].ID != u.Tokens()[i].ID {
+			for i := range c.checkedValue {
+				if c.checkedValue[i].ID != u.Tokens()[i].ID {
 					return false
 				}
-				switch m.checkedValue[i].ID {
+				switch c.checkedValue[i].ID {
 				case gqlscan.TokenStrBlock:
-					if string(m.checkedValue[i].Value) != string(u.Tokens()[i].Value) {
+					if string(c.checkedValue[i].Value) != string(u.Tokens()[i].Value) {
 						return false
 					}
 				default:
-					if string(m.checkedValue[i].Value) != string(u.Tokens()[i].Value) {
+					if string(c.checkedValue[i].Value) != string(u.Tokens()[i].Value) {
 						return false
 					}
 				}

@@ -19,7 +19,10 @@ type Matcher struct {
 }
 
 // Match calls onMatch for every template matching paths
-func (m *Matcher) Match(paths []string, onMatch func(*config.Template)) {
+func (m *Matcher) Match(
+	paths [][]byte,
+	onMatch func(*config.Template) (stop bool),
+) {
 	m.matchMask.Reset()
 	m.rejectedMask.Reset()
 	for i := range m.matchesPerTemplate {
@@ -27,7 +30,7 @@ func (m *Matcher) Match(paths []string, onMatch func(*config.Template)) {
 	}
 
 	for i := range paths {
-		b, ok := m.paths[paths[i]]
+		b, ok := m.paths[string(paths[i])]
 		if !ok {
 			return // Unknown path, can't match any template
 		}
@@ -40,8 +43,8 @@ func (m *Matcher) Match(paths []string, onMatch func(*config.Template)) {
 		}
 	}
 	m.matchMask.SetAndNot(m.matchMask, m.rejectedMask)
-	m.matchMask.VisitAll(func(n int) {
-		onMatch(m.conf.TemplatesEnabled[n])
+	m.matchMask.Visit(func(n int) (stop bool) {
+		return onMatch(m.conf.TemplatesEnabled[n])
 	})
 }
 
@@ -62,10 +65,18 @@ func New(conf *config.Service) *Matcher {
 			pathscan.InAST(
 				conf.TemplatesEnabled[i].GQTTemplate,
 				func(path []byte, e gqt.Expression) (stop bool) {
+					// On structural
 					m.templatePaths[i] = append(m.templatePaths[i], string(path))
 					return false
 				},
-				func(path []byte, e gqt.Expression) (stop bool) { return false },
+				func(path []byte, e gqt.Expression) (stop bool) {
+					// On argument
+					return false
+				},
+				func(path []byte, e gqt.Expression) (stop bool) {
+					// On variable
+					return false
+				},
 			)
 		}
 

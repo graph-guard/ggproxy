@@ -14,8 +14,13 @@ func TestMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := prepareTestSetup(t, tt.conf)
 			var actualMatches []string
-			m.Match(tt.paths, func(tm *config.Template) {
+			paths := make([][]byte, len(tt.paths))
+			for i := range tt.paths {
+				paths[i] = []byte(tt.paths[i])
+			}
+			m.Match(paths, func(tm *config.Template) (stop bool) {
 				actualMatches = append(actualMatches, tm.ID)
+				return false
 			})
 			require.Equal(t, tt.expectIDs, actualMatches)
 		})
