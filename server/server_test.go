@@ -1,75 +1,25 @@
 package server_test
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"net"
-	"path/filepath"
 	"regexp"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/server"
+	"github.com/graph-guard/ggproxy/testsetup"
 	plog "github.com/phuslu/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/valyala/fasthttp"
 	"github.com/valyala/fasthttp/fasthttputil"
-	"gopkg.in/yaml.v3"
 )
 
-//go:embed tests
-var testsFS embed.FS
-
-type TestModel struct {
-	Client struct {
-		Input struct {
-			Method   string         `yaml:"method"`
-			Endpoint string         `yaml:"endpoint"`
-			Body     string         `yaml:"body"`
-			BodyJSON map[string]any `yaml:"body(JSON)"`
-		} `yaml:"input"`
-		ExpectResponse struct {
-			Status   int               `yaml:"status"`
-			Headers  map[string]string `yaml:"headers"` // Key -> Regexp
-			Body     string            `yaml:"body"`
-			BodyJSON map[string]any    `yaml:"body(JSON)"`
-		} `yaml:"expect-response"`
-	} `yaml:"client"`
-	Destination *struct {
-		ExpectForwarded struct {
-			Headers  map[string]string `yaml:"headers"` // Key -> Regexp
-			Body     string            `yaml:"body"`
-			BodyJSON map[string]any    `yaml:"body(JSON)"`
-		} `yaml:"expect-forwarded"`
-		Response struct {
-			Status   int               `yaml:"status"`
-			Headers  map[string]string `yaml:"headers"`
-			Body     string            `yaml:"body"`
-			BodyJSON map[string]any    `yaml:"body(JSON)"`
-		}
-	} `yaml:"destination"`
-	Logs []map[string]any `yaml:"logs"`
-}
-
-type Setup struct {
-	Name   string
-	Config *config.Config
-	Tests  []Test
-}
-
-type Test struct {
-	Name string
-	TestModel
-}
-
 func TestProxy(t *testing.T) {
-	setups := GetSetups(t, testsFS, "tests")
+	setups := GetSetups(t)
 	for _, setup := range setups {
 		t.Run(setup.Name, func(t *testing.T) {
 			clientProxy, forwarded, respSetter, logs := launchSetup(t, setup)
@@ -183,88 +133,12 @@ func TestProxy(t *testing.T) {
 	}
 }
 
-func GetSetups(t *testing.T, filesystem fs.FS, path string) []Setup {
-	var setups []Setup
-
-	d, err := fs.ReadDir(filesystem, path)
-	require.NoError(t, err)
-	for _, setupDir := range d {
-		if !setupDir.IsDir() {
-			continue
-		}
-		n := setupDir.Name()
-		if !strings.HasPrefix(n, "setup_") {
-			t.Logf("ignoring %q", filepath.Join(n))
-			continue
-		}
-
-		c, err := config.New(filepath.Join(path, n, "config.yaml"))
-		require.NoError(t, err)
-
-		tests := GetTests(t, filesystem, filepath.Join(path, n))
-
-		setups = append(setups, Setup{
-			Name:   n,
-			Config: c,
-			Tests:  tests,
-		})
+func GetSetups(t *testing.T) []testsetup.Setup {
+	return []testsetup.Setup{
+		testsetup.Starwars(),
+		testsetup.Test1(),
+		testsetup.Test2(),
 	}
-
-	return setups
-}
-
-func GetTests(t *testing.T, filesystem fs.FS, root string) []Test {
-	var tests []Test
-	d, err := fs.ReadDir(filesystem, root)
-	require.NoError(t, err)
-	for _, testDir := range d {
-		n := testDir.Name()
-		if !strings.HasPrefix(n, "test_") || !strings.HasSuffix(n, ".yaml") {
-			continue
-		}
-
-		f, err := filesystem.Open(filepath.Join(root, n))
-		require.NoError(t, err)
-		defer f.Close()
-		var m TestModel
-		d := yaml.NewDecoder(f)
-		d.KnownFields(true)
-		err = d.Decode(&m)
-		require.NoError(t, err)
-
-		isXOR(t,
-			m.Client.Input.Body,
-			m.Client.Input.BodyJSON,
-			"client.input.body",
-			"client.input.body(JSON)",
-		)
-		isXOR(t,
-			m.Client.ExpectResponse.Body,
-			m.Client.ExpectResponse.BodyJSON,
-			"client.expect-response.body",
-			"client.expect-response.body(JSON)",
-		)
-		if m.Destination != nil {
-			isXOR(t,
-				m.Destination.ExpectForwarded.Body,
-				m.Destination.ExpectForwarded.BodyJSON,
-				"destination.expect-forwarded.body",
-				"destination.expect-forwarded.body(JSON)",
-			)
-			isXOR(t,
-				m.Destination.Response.Body,
-				m.Destination.Response.BodyJSON,
-				"destination.expect-forwarded.body",
-				"destination.expect-forwarded.body(JSON)",
-			)
-		}
-
-		tests = append(tests, Test{
-			Name:      n,
-			TestModel: m,
-		})
-	}
-	return tests
 }
 
 type SendResponse struct {
@@ -277,7 +151,7 @@ type ReceivedRequest struct {
 	Headers map[string]string
 }
 
-func launchSetup(t *testing.T, s Setup) (
+func launchSetup(t *testing.T, s testsetup.Setup) (
 	clientProxy *fasthttp.Client,
 	forwarded <-chan ReceivedRequest,
 	resp *Syncronized[*SendResponse],
@@ -482,20 +356,6 @@ func copyMap[K comparable, V any](m map[K]V) (copy map[K]V) {
 		copy[k] = v
 	}
 	return copy
-}
-
-func isXOR(
-	t *testing.T,
-	a string, b map[string]any,
-	aTitle, bTitle string,
-) {
-	if (a != "" && b == nil) || (a == "" && b != nil) {
-		return
-	}
-	t.Fatalf(`"%s" (%q) and "%s" (%v) are mutually exclusive, `+
-		`make sure you're using either of them, not both at the same time!`,
-		aTitle, a, bTitle, b,
-	)
 }
 
 // func checkLogs(t *testing.T, expected, actual []map[string]any) {

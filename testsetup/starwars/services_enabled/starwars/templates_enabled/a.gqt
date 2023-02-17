@@ -1,0 +1,13 @@
+---
+name: "A"
+---
+query {
+    hero(episode: *) {
+        id
+        name
+        friends {
+            id
+            name
+        }
+    }
+}

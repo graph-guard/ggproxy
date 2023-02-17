@@ -31,491 +31,568 @@ type TestError struct {
 
 var ServerConfigFileName = "config.yml"
 
-func TestReadConfig(t *testing.T) {
-	validFS(t, func(basePath string, expect *config.Config) {
-		actual, err := config.New(filepath.Join(basePath, ServerConfigFileName))
-		require.NoError(t, err)
-		require.Equal(t, expect, actual)
-	})
+func TestRead(t *testing.T) {
+	basePath, expect := validFS(t)
+	actual, err := config.Read(
+		os.DirFS(basePath),
+		basePath,
+		ServerConfigFileName,
+	)
+	require.NoError(t, err)
+	require.Equal(t, expect, actual)
 }
 
-func TestReadConfigDefaultMaxReqBodySize(t *testing.T) {
-	validFS(t, func(basePath string, conf *config.Config) {
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines(
-				`proxy:`,
-				`  host: localhost:443`,
-				`  tls:`,
-				`    cert-file: proxy.cert`,
-				`    key-file: proxy.key`,
-				`  # max-request-body-size: 1234`,
-				`api:`,
-				`  host: localhost:3000`,
-				`  tls:`,
-				`    cert-file: api.cert`,
-				`    key-file: api.key`,
-				`all-services: all-services`,
-				`enabled-services: enabled-services`,
+func TestReadDefaultMaxReqBodySize(t *testing.T) {
+	basePath, conf := validFS(t)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: localhost:443`,
+			`  tls:`,
+			`    cert-file: proxy.cert`,
+			`    key-file: proxy.key`,
+			`  # max-request-body-size: 1234`,
+			`api:`,
+			`  host: localhost:3000`,
+			`  tls:`,
+			`    cert-file: api.cert`,
+			`    key-file: api.key`,
+			`all-services: all-services`,
+			`enabled-services: enabled-services`,
+		),
+	}, nil, basePath)
+	conf.Proxy.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
+}
+
+func TestErrMissingServerConfig(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	err := os.Remove(p)
+	require.NoError(t, err)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "server config",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMalformedServerConfig(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines("not a valid config"),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: p,
+		Feature:  "syntax",
+		Message: "yaml: unmarshal errors:\n  " +
+			"line 1: cannot unmarshal !!str `not a v...` " +
+			"into config.serverConfig",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMissingProxyHostConfig(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: `,
+		),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "proxy.host",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMissingAPIHostConfig(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: localhost:8080`,
+			`api:`,
+			`  host: `,
+		),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "api.host",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMissingProxyTLSCert(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: localhost:8080`,
+			`  tls:`,
+			`    key-file: proxy.key`,
+			`api:`,
+			`  host: localhost:9090`,
+		),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "proxy.tls.cert-file",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMissingProxyTLSKey(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: localhost:8080`,
+			`  tls:`,
+			`    cert-file: proxy.cert`,
+			`api:`,
+			`  host: localhost:9090`,
+		),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "proxy.tls.key-file",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMissingAPITLSCert(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: localhost:8080`,
+			`api:`,
+			`  host: localhost:9090`,
+			`  tls:`,
+			`    key-file: api.key`,
+		),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "api.tls.cert-file",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMissingAPITLSKey(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: localhost:8080`,
+			`api:`,
+			`  host: localhost:9090`,
+			`  tls:`,
+			`    cert-file: api.cert`,
+		),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "api.tls.key-file",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrIllegalProxyMaxReqBodySize(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, ServerConfigFileName)
+	createFiles(t, map[string]any{
+		ServerConfigFileName: lines(
+			`proxy:`,
+			`  host: localhost:8080`,
+			`  max-request-body-size: 255`,
+			`api:`,
+			`  host: localhost:9090`,
+		),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: p,
+		Feature:  "proxy.max-request-body-size",
+		Message: fmt.Sprintf(
+			"maximum request body size should not be smaller than %d B",
+			config.MinReqBodySize,
+		),
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrNoServices(t *testing.T) {
+	basePath := minValidFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"irrelevant_file.txt": `this file only keeps the directory`,
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, config.ErrNoServices, err)
+	require.Nil(t, c)
+}
+
+func TestErrNoServicesEnabled(t *testing.T) {
+	basePath := minValidFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": lines(
+				`path: /`,
+				`forward-url: http://localhost:8080/`,
+				`all-templates: ../all-templates/a`,
+				`enabled-templates: ../enabled-templates/a`,
 			),
-		}, nil, basePath)
-		conf.Proxy.MaxReqBodySizeBytes = config.DefaultMaxReqBodySize
-	})
-}
-
-func TestReadConfigErrorMissingServerConfig(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		err := os.Remove(p)
-		require.NoError(t, err)
-		c, err := config.New(p)
-		require.Contains(t, err.Error(), "no such file or directory")
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorMalformedServerConfig(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines("not a valid config"),
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: p,
-			Feature:  "syntax",
-			Message: "yaml: unmarshal errors:\n  " +
-				"line 1: cannot unmarshal !!str `not a v...` " +
-				"into config.serverConfig",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorMissingProxyHostConfig(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines(
-				`proxy:`,
-				`  host: `,
-			),
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: p,
-			Feature:  "proxy.host",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorMissingAPIHostConfig(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines(
-				`proxy:`,
-				`  host: localhost:8080`,
-				`api:`,
-				`  host: `,
-			),
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: p,
-			Feature:  "api.host",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorMissingProxyTLSCert(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines(
-				`proxy:`,
-				`  host: localhost:8080`,
-				`  tls:`,
-				`    key-file: proxy.key`,
-				`api:`,
-				`  host: localhost:9090`,
-			),
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: p,
-			Feature:  "proxy.tls.cert-file",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorMissingProxyTLSKey(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines(
-				`proxy:`,
-				`  host: localhost:8080`,
-				`  tls:`,
-				`    cert-file: proxy.cert`,
-				`api:`,
-				`  host: localhost:9090`,
-			),
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: p,
-			Feature:  "proxy.tls.key-file",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorMissingAPITLSCert(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines(
-				`proxy:`,
-				`  host: localhost:8080`,
-				`api:`,
-				`  host: localhost:9090`,
-				`  tls:`,
-				`    key-file: api.key`,
-			),
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: p,
-			Feature:  "api.tls.cert-file",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorMissingAPITLSKey(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines(
-				`proxy:`,
-				`  host: localhost:8080`,
-				`api:`,
-				`  host: localhost:9090`,
-				`  tls:`,
-				`    cert-file: api.cert`,
-			),
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: p,
-			Feature:  "api.tls.key-file",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorIllegalProxyMaxReqBodySize(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			ServerConfigFileName: lines(
-				`proxy:`,
-				`  host: localhost:8080`,
-				`  max-request-body-size: 255`,
-				`api:`,
-				`  host: localhost:9090`,
-			),
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: p,
-			Feature:  "proxy.max-request-body-size",
-			Message: fmt.Sprintf(
-				"maximum request body size should not be smaller than %d B",
-				config.MinReqBodySize,
-			),
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadServiceConfigErrorMissingConfig(t *testing.T) {
-	minValidFS(t, func(basePath string) {
-		p := filepath.Join(basePath, "all-services", "a.yml")
-		createFiles(t, map[string]any{
-			"all-services": map[string]any{
-				"irrelevant_file.txt": `this file only keeps the directory`,
+		},
+		"all-templates": map[string]any{
+			"a": map[string]any{
+				"a.gqt": `query { foo }`,
 			},
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Contains(t, err.Error(), "no such file or directory")
-		require.Nil(t, c)
-	})
+		},
+		"enabled-templates": map[string]any{
+			"a": map[string]any{
+				"a.gqt": `query { foo }`,
+			},
+		},
+		"enabled-services": map[string]any{
+			"placeholder.txt": "no services here",
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, config.ErrNoServicesEnabled, err)
+	require.Nil(t, c)
 }
 
-func TestReadConfigErrorMalformedMetadata(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join("all-templates", "a", "a.gqt")
-		createFiles(t, map[string]any{
-			p: lines(
-				"---",
-				"malformed metadata",
-				"---",
-				`query { foo }`,
+func TestErrNoTemplates(t *testing.T) {
+	basePath := minValidFS(t)
+	serviceAConf := lines(
+		`path: /`,
+		`forward-url: http://localhost:8080/`,
+		`all-templates: ../all-templates/a`,
+		`enabled-templates: ../enabled-templates/a`,
+	)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": serviceAConf,
+		},
+		"all-templates": map[string]any{
+			"placeholder.txt": "no templates here",
+		},
+		"enabled-services": map[string]any{
+			"a.yml": serviceAConf,
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, config.ErrNoTemplates, err)
+	require.Nil(t, c)
+}
+
+func TestErrMalformedMetadata(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join("all-templates", "a", "a.gqt")
+	createFiles(t, map[string]any{
+		p: lines(
+			"---",
+			"malformed metadata",
+			"---",
+			`query { foo }`,
+		),
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(basePath, p),
+		Feature:  "metadata",
+		Message: "decoding yaml: yaml: " +
+			"unmarshal errors:\n  " +
+			"line 1: cannot unmarshal !!str `malform...` " +
+			"into metadata.Metadata",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrDuplicateTemplate(t *testing.T) {
+	basePath, _ := validFS(t)
+	t1 := filepath.Join("all-templates", "a", "d1.gqt")
+	t2 := filepath.Join("all-templates", "a", "d2.gqt")
+	createFiles(t, map[string]any{
+		t1: `query { foo }`,
+		t2: `query { foo }`,
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorDuplicate{
+		Original:  filepath.Join(basePath, t1),
+		Duplicate: filepath.Join(basePath, t2),
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrDuplicateService(t *testing.T) {
+	basePath := minValidFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": lines(
+				`path: /`,
+				`forward-url: http://localhost:8080/`,
+				`all-templates: ../all-templates/a`,
+				`enabled-templates: ../enabled-templates/a`,
 			),
-		}, nil, basePath)
-		c, err := config.New(filepath.Join(basePath, ServerConfigFileName))
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: filepath.Join(basePath, p),
-			Feature:  "metadata",
-			Message: "decoding yaml: yaml: " +
-				"unmarshal errors:\n  " +
-				"line 1: cannot unmarshal !!str `malform...` " +
-				"into metadata.Metadata",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorDuplicateTemplate(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		t1 := filepath.Join("all-templates", "a", "d1.gqt")
-		t2 := filepath.Join("all-templates", "a", "d2.gqt")
-		createFiles(t, map[string]any{
-			t1: `query { foo }`,
-			t2: `query { foo }`,
-		}, nil, basePath)
-		c, err := config.New(filepath.Join(basePath, ServerConfigFileName))
-		require.Equal(t, &config.ErrorDuplicate{
-			Original:  filepath.Join(basePath, t1),
-			Duplicate: filepath.Join(basePath, t2),
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorDuplicateService(t *testing.T) {
-	minValidFS(t, func(basePath string) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			"all-services": map[string]any{
-				"a.yml": lines(
-					`path: /`,
-					`forward-url: http://localhost:8080/`,
-					`all-templates: ../all-templates/a`,
-					`enabled-templates: ../enabled-templates/a`,
-				),
-				"b.yml": lines(
-					`path: /`,
-					`forward-url: http://localhost:8080/`,
-					`all-templates: ../all-templates/a`,
-					`enabled-templates: ../enabled-templates/a`,
-				),
-			},
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorDuplicate{
-			Original:  filepath.Join(basePath, "all-services", "a.yml"),
-			Duplicate: filepath.Join(basePath, "all-services", "b.yml"),
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorMissingPath(t *testing.T) {
-	minValidFS(t, func(basePath string) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			"all-services": map[string]any{
-				"a.yml": lines(
-					`forward-url: http://localhost:8080/`,
-				),
-			},
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: filepath.Join(
-				basePath, "all-services", "a.yml",
+			"b.yml": lines(
+				`path: /`,
+				`forward-url: http://localhost:8080/`,
+				`all-templates: ../all-templates/a`,
+				`enabled-templates: ../enabled-templates/a`,
 			),
-			Feature: "path",
-		}, err)
-		require.Nil(t, c)
-	})
+		},
+		"all-templates": map[string]any{
+			"a": map[string]any{"a.gqt": `query {foo}`},
+		},
+		"enabled-templates": map[string]any{
+			"a": map[string]any{"a.gqt": `query {foo}`},
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorDuplicate{
+		Original:  filepath.Join(basePath, "all-services", "a.yml"),
+		Duplicate: filepath.Join(basePath, "all-services", "b.yml"),
+	}, err)
+	require.Nil(t, c)
 }
 
-func TestReadConfigErrorMissingForwardURL(t *testing.T) {
-	minValidFS(t, func(basePath string) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			"all-services": map[string]any{
-				"a.yml": lines(
-					`path: /`,
-				),
-			},
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: filepath.Join(
-				basePath, "all-services", "a.yml",
+func TestErrConflictServicePath(t *testing.T) {
+	basePath := minValidFS(t)
+	serviceAConf := lines(
+		`path: /`,
+		`forward-url: http://localhost:8080/`,
+		`all-templates: ../all-templates/a`,
+		`enabled-templates: ../enabled-templates/a`,
+	)
+	serviceBConf := lines(
+		`path: /`,
+		`forward-url: http://localhost:8080/`,
+		`all-templates: ../all-templates/b`,
+		`enabled-templates: ../enabled-templates/b`,
+	)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": serviceAConf,
+			"b.yml": serviceBConf,
+		},
+		"enabled-services": map[string]any{
+			"a.yml": serviceAConf,
+			"b.yml": serviceBConf,
+		},
+		"all-templates": map[string]any{
+			"a": map[string]any{"a.gqt": `query {foo}`},
+			"b": map[string]any{"b.gqt": `query {foo}`},
+		},
+		"enabled-templates": map[string]any{
+			"a": map[string]any{"a.gqt": `query {foo}`},
+			"b": map[string]any{"b.gqt": `query {foo}`},
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Error(t, err)
+	require.Equal(t, &config.ErrorConflict{
+		Feature:  "path",
+		Value:    "/",
+		Subject1: filepath.Join(basePath, "all-services", "b.yml"),
+		Subject2: filepath.Join(basePath, "all-services", "a.yml"),
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMissingPath(t *testing.T) {
+	basePath := minValidFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": lines(
+				`forward-url: http://localhost:8080/`,
 			),
-			Feature: "forward-url",
-		}, err)
-		require.Nil(t, c)
-	})
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: filepath.Join(
+			basePath, "all-services", "a.yml",
+		),
+		Feature: "path",
+	}, err)
+	require.Nil(t, c)
 }
 
-func TestReadConfigErrorInvalidPath(t *testing.T) {
-	minValidFS(t, func(basePath string) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			"all-services": map[string]any{
-				"a.yml": lines(
-					`path: invalid_path`,
-					`forward-url: http://localhost:8080/`,
-				),
-			},
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: filepath.Join(basePath, "all-services", "a.yml"),
-			Feature:  "path",
-			Message:  `path is not starting with /`,
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorInvalidForwardURLInvalidScheme(t *testing.T) {
-	minValidFS(t, func(basePath string) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			"all-services": map[string]any{
-				"a.yml": lines(
-					`path: /`,
-					`forward-url: localhost:8080`,
-				),
-			},
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: filepath.Join(basePath, "all-services", "a.yml"),
-			Feature:  "forward-url",
-			Message:  `protocol is not supported or undefined`,
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorInvalidSchema(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join("all-services", "schema_a.graphqls")
-		createFiles(t, map[string]any{p: `type Query{ invalid }`}, nil, basePath)
-		c, err := config.New(filepath.Join(basePath, ServerConfigFileName))
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: filepath.Join(basePath, p),
-			Feature:  "schema",
-			Message: fmt.Sprintf(
-				`invalid schema: %s:1: Expected :, found }`,
-				filepath.Join(basePath, p),
+func TestErrMissingForwardURL(t *testing.T) {
+	basePath := minValidFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": lines(
+				`path: /`,
 			),
-		}, err)
-		require.Nil(t, c)
-	})
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: filepath.Join(
+			basePath, "all-services", "a.yml",
+		),
+		Feature: "forward-url",
+	}, err)
+	require.Nil(t, c)
 }
 
-func TestReadConfigErrorMissingSchema(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, "all-services", "schema_a.graphqls")
-		err := os.Remove(p)
-		require.NoError(t, err)
-		c, err := config.New(filepath.Join(basePath, ServerConfigFileName))
-		require.Equal(t, &config.ErrorMissing{
-			FilePath: p,
-			Feature:  "schema",
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorInvalidTemplate(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join("all-templates", "a", "invalid_template.gqt")
-		createFiles(t, map[string]any{p: `invalid { template }`}, nil, basePath)
-		c, err := config.New(filepath.Join(basePath, ServerConfigFileName))
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: filepath.Join(basePath, p),
-			Feature:  "template",
-			Message: `1:1: unexpected token, expected ` +
-				`query, mutation, or subscription operation definition`,
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorInvalidTemplateID(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join("all-templates", "a", "invalid_template#.gqt")
-		createFiles(t, map[string]any{p: `invalid { template }`}, nil, basePath)
-		c, err := config.New(filepath.Join(basePath, ServerConfigFileName))
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: filepath.Join(basePath, p),
-			Feature:  "id",
-			Message:  `contains illegal character at index 16`,
-		}, err)
-		require.Nil(t, c)
-	})
-}
-
-func TestReadConfigErrorInvalidServiceID(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			"all-services": map[string]any{
-				"a#.yml": lines(
-					`path: /`,
-					`forward-url: http://localhost:8080/`,
-					`all-templates: ../all-templates/a`,
-					`enabled-templates: ../enabled-templates/a`,
-				),
-			},
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: filepath.Join(
-				basePath,
-				"all-services",
-				"a#.yml",
+func TestErrInvalidPath(t *testing.T) {
+	basePath := minValidFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": lines(
+				`path: invalid_path`,
+				`forward-url: http://localhost:8080/`,
 			),
-			Feature: "id",
-			Message: `contains illegal character at index 1`,
-		}, err)
-		require.Nil(t, c)
-	})
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(basePath, "all-services", "a.yml"),
+		Feature:  "path",
+		Message:  `path is not starting with /`,
+	}, err)
+	require.Nil(t, c)
 }
 
-func TestReadConfigErrorMalformedConfig(t *testing.T) {
-	validFS(t, func(basePath string, _ *config.Config) {
-		p := filepath.Join(basePath, ServerConfigFileName)
-		createFiles(t, map[string]any{
-			"all-services": map[string]any{
-				"a.yml": lines(
-					`malformed yaml`,
-				),
-			},
-		}, nil, basePath)
-		c, err := config.New(p)
-		require.Equal(t, &config.ErrorIllegal{
-			FilePath: filepath.Join(basePath, "all-services", "a.yml"),
-			Feature:  "syntax",
-			Message: "yaml: unmarshal errors:\n  " +
-				"line 1: cannot unmarshal !!str `malform...` " +
-				"into config.serviceConfig",
-		}, err)
-		require.Nil(t, c)
-	})
+func TestErrInvalidForwardURLInvalidScheme(t *testing.T) {
+	basePath := minValidFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": lines(
+				`path: /`,
+				`forward-url: localhost:8080`,
+			),
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(basePath, "all-services", "a.yml"),
+		Feature:  "forward-url",
+		Message:  `protocol is not supported or undefined`,
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrInvalidSchema(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join("all-services", "schema_a.graphqls")
+	createFiles(t, map[string]any{p: `type Query{ invalid }`}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(basePath, p),
+		Feature:  "schema",
+		Message: fmt.Sprintf(
+			`invalid schema: %s:1: Expected :, found }`,
+			filepath.Join(basePath, p),
+		),
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMissingSchema(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join(basePath, "all-services", "schema_a.graphqls")
+	err := os.Remove(p)
+	require.NoError(t, err)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorMissing{
+		FilePath: p,
+		Feature:  "schema",
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrInvalidTemplate(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join("all-templates", "a", "invalid_template.gqt")
+	createFiles(t, map[string]any{p: `invalid { template }`}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(basePath, p),
+		Feature:  "template",
+		Message: `1:1: unexpected token, expected ` +
+			`query, mutation, or subscription operation definition`,
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrInvalidTemplateID(t *testing.T) {
+	basePath, _ := validFS(t)
+	p := filepath.Join("all-templates", "a", "invalid_template#.gqt")
+	createFiles(t, map[string]any{p: `invalid { template }`}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(basePath, p),
+		Feature:  "id",
+		Message:  `contains illegal character at index 16`,
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrInvalidServiceID(t *testing.T) {
+	basePath, _ := validFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a#.yml": lines(
+				`path: /`,
+				`forward-url: http://localhost:8080/`,
+				`all-templates: ../all-templates/a`,
+				`enabled-templates: ../enabled-templates/a`,
+			),
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(
+			basePath,
+			"all-services",
+			"a#.yml",
+		),
+		Feature: "id",
+		Message: `contains illegal character at index 1`,
+	}, err)
+	require.Nil(t, c)
+}
+
+func TestErrMalformedConfig(t *testing.T) {
+	basePath, _ := validFS(t)
+	createFiles(t, map[string]any{
+		"all-services": map[string]any{
+			"a.yml": lines(
+				`malformed yaml`,
+			),
+		},
+	}, nil, basePath)
+	c, err := config.Read(os.DirFS(basePath), basePath, ServerConfigFileName)
+	require.Equal(t, &config.ErrorIllegal{
+		FilePath: filepath.Join(basePath, "all-services", "a.yml"),
+		Feature:  "syntax",
+		Message: "yaml: unmarshal errors:\n  " +
+			"line 1: cannot unmarshal !!str `malform...` " +
+			"into config.serviceConfig",
+	}, err)
+	require.Nil(t, c)
 }
 
 func TestErrorString(t *testing.T) {
@@ -563,13 +640,8 @@ func TestErrorString(t *testing.T) {
 	}
 }
 
-func minValidFS(t *testing.T, fn func(basePath string)) {
-	base, err := os.MkdirTemp("", "ggproxy-")
-	if err != nil {
-		panic(err)
-	}
-	defer os.RemoveAll(base)
-
+func minValidFS(t *testing.T) (base string) {
+	base = t.TempDir()
 	dirs := map[string]any{
 		"all-services":     nil,
 		"enabled-services": nil,
@@ -592,12 +664,12 @@ func minValidFS(t *testing.T, fn func(basePath string)) {
 		),
 		"irrelevant-file.txt": lines(
 			`this file is irrelevant and exists only for the purposes`,
-			`of testing function ReadConfig.`,
+			`of testing function Read.`,
 		),
 		"irrelevant-dir": map[string]any{
 			"irrelevant_file.txt": lines(
 				`this file is irrelevant and exists only for the purposes`,
-				`of testing function ReadConfig.`,
+				`of testing function Read.`,
 			),
 		},
 	}
@@ -607,17 +679,12 @@ func minValidFS(t *testing.T, fn func(basePath string)) {
 	createDirs(t, dirs, base)
 	createFiles(t, files, hashes, base)
 
-	fn(base)
+	return base
 }
 
 // validFS calls fn providing a valid setup filesystem.
-func validFS(t *testing.T, fn func(basePath string, conf *config.Config)) {
-	base, err := os.MkdirTemp("", "ggproxy-")
-	if err != nil {
-		panic(err)
-	}
-	defer os.RemoveAll(base)
-
+func validFS(t *testing.T) (base string, conf *config.Config) {
+	base = t.TempDir()
 	type M = map[string]any
 
 	dirs := M{
@@ -697,12 +764,12 @@ func validFS(t *testing.T, fn func(basePath string, conf *config.Config)) {
 		},
 		"irrelevant-file.txt": lines(
 			`this file is irrelevant and exists only for the purposes`,
-			`of testing function ReadConfig.`,
+			`of testing function Read.`,
 		),
 		"irrelevant-dir": M{
 			"irrelevant_file.txt": lines(
 				`this file is irrelevant and exists only for the purposes`,
-				`of testing function ReadConfig.`,
+				`of testing function Read.`,
 			),
 		},
 	}
@@ -832,7 +899,7 @@ func validFS(t *testing.T, fn func(basePath string, conf *config.Config)) {
 		}
 	}
 
-	conf := &config.Config{
+	return base, &config.Config{
 		Proxy: config.ProxyServerConfig{
 			Host: "localhost:443",
 			TLS: config.TLS{
@@ -854,8 +921,6 @@ func validFS(t *testing.T, fn func(basePath string, conf *config.Config)) {
 			services[hashes[filepath.Join(base, "all-services", "b.yml")]],
 		},
 	}
-
-	fn(base, conf)
 }
 
 func createDirs(t *testing.T, dirs map[string]any, basePath string) {

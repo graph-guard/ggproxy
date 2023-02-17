@@ -21,30 +21,21 @@ type Enum string
 // Checker is a constraint checker instance.
 // Before calling Check, make sure you initialize the Checker using Init.
 type Checker struct {
-	operation *gqt.Operation
-	schema    *gqlast.Schema
-	checkers  map[string]check
-	pathByVar map[*gqt.Variable]string
+	operation     *gqt.Operation
+	schema        *gqlast.Schema
+	checkers      map[uint64]check
+	pathByVarDecl map[*gqt.VariableDeclaration]uint64
 
-	// variableValues keys will be set at initialization
-	// but values must be set before every call to Check.
-	variableValues map[string][]gqlparse.Token
+	// varValues is set in every call to Check.
+	varValues map[uint64][]gqlparse.Token
 
-	// inputValue is set before every call to Check.
+	// inputValue is set in every call to Check.
 	inputValue []gqlparse.Token
-	// checkedValue is set before every call to Check.
+	// checkedValue is set in every call to Check.
 	checkedValue []gqlparse.Token
 
 	// stack is reset in every call to Check.
 	stack []union.Union
-}
-
-func (c *Checker) SetVariableValue(path []byte, value []gqlparse.Token) {
-	c.variableValues[string(path)] = value
-}
-
-func (c *Checker) Init(inputValue []gqlparse.Token) {
-	c.inputValue = inputValue
 }
 
 func (c *Checker) stackTopType() union.Type {
@@ -128,14 +119,17 @@ func (c *Checker) pushStackBool(v bool) {
 
 // Check returns true if the value for the given path is accepted,
 // otherwise returns false.
-func (c *Checker) Check(path string) bool {
+func (c *Checker) Check(
+	varVals map[uint64][]gqlparse.Token,
+	path uint64,
+	value []gqlparse.Token,
+) bool {
 	c.stack = c.stack[:0]
 	cf := c.checkers[path]
 	if cf == nil {
 		return false
 	}
-	v := c.variableValues[path]
-	c.inputValue, c.checkedValue = v, v
+	c.varValues, c.inputValue, c.checkedValue = varVals, value, value
 	return cf(c)
 }
 
@@ -155,9 +149,9 @@ func (c *Checker) resolveExpr(e gqt.Expression) union.Type {
 		c.pushStackArray()
 		return union.TypeArray
 	case *gqt.Variable:
-		p, ok := c.pathByVar[e]
+		p, ok := c.pathByVarDecl[e.Declaration]
 		if !ok {
-			if s := c.variableValues[p]; s != nil {
+			if s := c.varValues[p]; s != nil {
 				c.stack = append(c.stack, union.Tokens(s))
 				return union.TypeTokens
 			}
@@ -424,19 +418,18 @@ func (c *Checker) resolveExpr(e gqt.Expression) union.Type {
 // New creates a constraint checker instance for each path of o.
 func New(o *gqt.Operation, s *gqlast.Schema) *Checker {
 	c := &Checker{
-		operation:      o,
-		schema:         s,
-		checkers:       make(map[string]check),
-		stack:          make([]union.Union, 1024),
-		variableValues: make(map[string][]gqlparse.Token),
-		pathByVar:      make(map[*gqt.Variable]string),
+		operation:     o,
+		schema:        s,
+		checkers:      make(map[uint64]check),
+		stack:         make([]union.Union, 1024),
+		pathByVarDecl: make(map[*gqt.VariableDeclaration]uint64),
 	}
-	pathscan.InAST(
+	if errs := pathscan.InAST(
 		o,
-		func(path []byte, e gqt.Expression) (stop bool) {
+		func(path uint64, e gqt.Expression) (stop bool) {
 			// On structural
 			return false
-		}, func(path []byte, e gqt.Expression) (stop bool) {
+		}, func(path uint64, e gqt.Expression) (stop bool) {
 			// On argument
 			a := e.(*gqt.Argument)
 			var expect *gqlast.Type
@@ -444,18 +437,18 @@ func New(o *gqt.Operation, s *gqlast.Schema) *Checker {
 				expect = a.Def.Type
 			}
 			if fn := makeCheck(a.Constraint, expect, s); fn != nil {
-				c.checkers[string(path)] = fn
+				c.checkers[path] = fn
 			}
 			return false
 		},
-		func(path []byte, e gqt.Expression) (stop bool) {
+		func(path uint64, e *gqt.VariableDeclaration) (stop bool) {
 			// On variable
-			a := e.(*gqt.Variable)
-			c.pathByVar[a] = string(path)
-			c.variableValues[string(path)] = nil // Set key
+			c.pathByVarDecl[e] = path
 			return false
 		},
-	)
+	); errs != nil {
+		panic(errs)
+	}
 	return c
 }
 
@@ -986,9 +979,9 @@ func Designation(c *Checker, e gqt.Expression) string {
 	case *gqt.Enum:
 		return e.Value
 	case *gqt.Variable:
-		p, ok := c.pathByVar[e]
+		p, ok := c.pathByVarDecl[e.Declaration]
 		if !ok {
-			return p
+			return strconv.FormatUint(p, 10)
 		}
 	case *gqt.ExprLogicalOr:
 		var b strings.Builder

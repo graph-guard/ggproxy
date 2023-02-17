@@ -5,8 +5,8 @@ tags:
 ---
 mutation {
   someMutations(
-    firstArg: val = "first"
-    secondArg: val = "second"
+    firstArg: "first",
+    secondArg: "second",
   ) {
     fieldA
     fieldB {

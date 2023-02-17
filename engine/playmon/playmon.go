@@ -1,8 +1,6 @@
 package playmon
 
 import (
-	"fmt"
-
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/constrcheck"
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/pathmatch"
@@ -12,14 +10,20 @@ import (
 	"github.com/graph-guard/gqt/v4"
 )
 
-type Engine struct {
-	pathScanner *pathscan.PathScanner
-	matcher     *pathmatch.Matcher
-	templates   []*template
+type arg struct {
+	PathHash uint64
+	Value    []gqlparse.Token
+}
 
-	structuralPaths [][]byte
-	gqtVarPaths     map[string]int
-	inputsByPath    map[string][]gqlparse.Token
+type Engine struct {
+	pathScanner   *pathscan.PathScanner
+	matcher       *pathmatch.Matcher
+	templates     map[string]*template
+	argumentPaths map[uint64]struct{}
+
+	structuralPaths []uint64
+	varValues       map[uint64][]gqlparse.Token
+	argumentsSet    []arg
 }
 
 type template struct {
@@ -32,11 +36,13 @@ type template struct {
 // New expects templates to be initialized and valid.
 func New(s *config.Service) *Engine {
 	e := &Engine{
-		pathScanner: pathscan.New(128, 2048),
-		templates:   make([]*template, len(s.Templates)),
-		gqtVarPaths: make(map[string]int),
+		pathScanner:   pathscan.New(128, 2048),
+		templates:     make(map[string]*template, len(s.Templates)),
+		argumentPaths: make(map[uint64]struct{}),
 
-		inputsByPath: make(map[string][]gqlparse.Token),
+		structuralPaths: make([]uint64, 1024),
+		varValues:       make(map[uint64][]gqlparse.Token),
+		argumentsSet:    make([]arg, 1024),
 	}
 	idCounter := 0
 	for _, t := range s.Templates {
@@ -47,18 +53,24 @@ func New(s *config.Service) *Engine {
 			GQTOpr:            t.GQTTemplate,
 			ConstraintChecker: c,
 		}
-		e.templates[idCounter] = tmpl
-		pathscan.InAST(
+		e.templates[tmpl.ID] = tmpl
+		if errs := pathscan.InAST(
 			tmpl.GQTOpr,
-			func(path []byte, e gqt.Expression) (stop bool) {
+			func(path uint64, e gqt.Expression) (stop bool) {
+				// Structural
 				return false
-			}, func(path []byte, _ gqt.Expression) (stop bool) {
+			}, func(path uint64, _ gqt.Expression) (stop bool) {
+				// Argument
+				e.argumentPaths[path] = struct{}{}
 				return false
-			}, func(path []byte, _ gqt.Expression) (stop bool) {
-				e.gqtVarPaths[string(path)] = 0
+			}, func(path uint64, _ *gqt.VariableDeclaration) (stop bool) {
+				// Variable
+				e.varValues[path] = nil
 				return false
 			},
-		)
+		); errs != nil {
+			panic(errs)
+		}
 		idCounter++
 	}
 	e.matcher = pathmatch.New(s)
@@ -67,11 +79,9 @@ func New(s *config.Service) *Engine {
 
 func (e *Engine) reset() {
 	e.structuralPaths = e.structuralPaths[:0]
-	for i := range e.gqtVarPaths {
-		e.gqtVarPaths[i] = 0
-	}
-	for path := range e.inputsByPath {
-		e.gqtVarPaths[path] = 0
+	e.argumentsSet = e.argumentsSet[:0]
+	for path := range e.varValues {
+		e.varValues[path] = nil
 	}
 }
 
@@ -82,51 +92,47 @@ func (e *Engine) Match(
 	selectionSet []gqlparse.Token,
 ) (id string) {
 	e.reset()
-	fmt.Println(selectionSet)
+	var mismatch bool
 	e.pathScanner.InTokens(
 		queryType,
 		selectionSet,
-		e.gqtVarPaths,
-		func(path []byte) (stop bool) {
+		e.varValues,
+		func(path uint64) (stop bool) { // Structural path
 			e.structuralPaths = append(e.structuralPaths, path)
 			return false
 		},
-		func(path []byte, i int) (stop bool) {
+		func(path uint64, i int) (stop bool) { // Argument
+			if _, ok := e.argumentPaths[path]; !ok {
+				mismatch = true
+				return false
+			}
+			e.argumentsSet = append(e.argumentsSet, arg{
+				PathHash: path,
+				Value:    selectionSet[i+1:],
+			})
 			return false
 		},
-		func(path []byte, i int) (stop bool) {
-			fmt.Println("FUCK")
-			e.inputsByPath[string(path)] = selectionSet[i:]
+		func(path uint64, i int) (stop bool) { // Variable value
+			e.varValues[path] = selectionSet[i:]
 			return false
 		},
 	)
-	fmt.Println("STR", e.structuralPaths)
-	for i := range e.structuralPaths {
-		fmt.Println("  ", string(e.structuralPaths[i]))
+	if mismatch {
+		return ""
 	}
 
 	e.matcher.Match(e.structuralPaths, func(t *config.Template) (stop bool) {
-		fmt.Println("STRUCTURAL MATCH ", t.ID)
-		fmt.Println(e.inputsByPath)
+		tm := e.templates[t.ID]
+		for i := range e.argumentsSet {
+			if !tm.ConstraintChecker.Check(
+				e.varValues, e.argumentsSet[i].PathHash, e.argumentsSet[i].Value,
+			) {
+				return false
+			}
+		}
 		id = t.ID
 		return false
 	})
-	// e.currentMask.Visit(func(i int) (skip bool) {
-	// 	t := e.templates[i]
-	// 	match := true
-	// 	t.ConstraintChecker.VisitPaths(func(path string) (stop bool) {
-	// 		if !t.ConstraintChecker.Check(path) {
-	// 			match = false
-	// 			return true
-	// 		}
-	// 		return false
-	// 	})
-	// 	if match {
-	// 		id = t.ID
-	// 		return true
-	// 	}
-	// 	return false
-	// })
 	return id
 }
 

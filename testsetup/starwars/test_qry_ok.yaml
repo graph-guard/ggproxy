@@ -1,0 +1,96 @@
+client:
+  input:
+    method: POST
+    endpoint: /testservice
+    body(JSON):
+      query: >
+        query {
+          hero(episode: EMPIRE) {
+            id
+            name
+            friends {
+              id
+              name
+            }
+          }
+        }
+
+  expect-response:
+    status: 200
+    headers:
+      Content-Length: ^166$
+      Content-Type: ^text/plain; charset=utf-8$
+      Server: ^fasthttp$
+      Date: .
+      X-Custom-Header: value
+    body(JSON):
+      data:
+        hero:
+          id: "1000"
+          name: "Luke Skywalker"
+          friends:
+            - id: "1002"
+              name: "Han Solo"
+            - id: "1003"
+              name: "Leia Organa"
+            - id: "2000"
+              name: "C-3PO"
+            - id: "2001"
+              name: "R2-D2"
+
+destination:
+  expect-forwarded:
+    headers:
+      X-Forwarded-Host: ^localhost:8000$
+      X-Forwarded-For: 0.0.0.0
+      X-Forwarded-Proto: ^HTTP/1.1$
+      Host: ^localhost:8081$
+      Content-Length: ^97$
+      Content-Type: ^application/json$
+      User-Agent: ^fasthttp$
+      Date: .
+    body(JSON):
+      query: >
+        query {
+          hero(episode: EMPIRE) {
+            id
+            name
+            friends {
+              id
+              name
+            }
+          }
+        }
+
+  response:
+    status: 200
+    headers:
+      X-Custom-Header: value
+    body(JSON):
+      data:
+        hero:
+          id: "1000"
+          name: "Luke Skywalker"
+          friends:
+            - id: "1002"
+              name: "Han Solo"
+            - id: "1003"
+              name: "Leia Organa"
+            - id: "2000"
+              name: "C-3PO"
+            - id: "2001"
+              name: "R2-D2"
+
+logs:
+  - level: info
+    message: 'listening'
+    host: localhost:8080
+    tls: false
+    services:
+      - testservice
+  - level: info
+    message: 'handling request'
+    path: /testservice
+  - level: debug
+    path: /testservice
+    query: '{"query":"query { queryFirstField { queryFirstSubfield querySecondSubfield } querySecondField }"}'

@@ -1,0 +1,28 @@
+---
+name: "C"
+---
+query {
+    hero(episode: EMPIRE || JEDI) {
+        id
+        name
+        appearsIn
+        friends {
+            id
+            name
+            appearsIn
+            friends {
+                id
+                name
+                appearsIn
+            }
+        }
+        friendsConnection(first: >= 0, after: len > 0) {
+            totalCount
+            friends {
+                id
+                name
+                appearsIn
+            }
+        }
+    }
+}

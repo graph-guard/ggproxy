@@ -3,6 +3,8 @@ package main
 import (
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 
 	"github.com/graph-guard/ggproxy/config"
 )
@@ -11,7 +13,8 @@ func ReadConfig(
 	w io.Writer,
 	configPath string,
 ) *config.Config {
-	conf, err := config.New(configPath)
+	basePath, fileName := basePathAndFileName(configPath)
+	conf, err := config.Read(os.DirFS(basePath), basePath, fileName)
 	if err != nil {
 		fmt.Fprintf(w, "reading config: %s\n", err)
 		return nil
@@ -33,4 +36,8 @@ func ReadConfig(
 	}
 
 	return conf
+}
+
+func basePathAndFileName(path string) (basePath, fileName string) {
+	return filepath.Base(path), path[:len(path)-len(filepath.Base(path))]
 }

@@ -1,10 +1,12 @@
 package pathmatch_test
 
 import (
+	"embed"
 	"testing"
 
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/pathmatch"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/pathscan"
 	"github.com/graph-guard/gqt/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -14,9 +16,9 @@ func TestMatch(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			m := prepareTestSetup(t, tt.conf)
 			var actualMatches []string
-			paths := make([][]byte, len(tt.paths))
+			paths := make([]uint64, len(tt.paths))
 			for i := range tt.paths {
-				paths[i] = []byte(tt.paths[i])
+				paths[i] = pathscan.Hash(tt.paths[i])
 			}
 			m.Match(paths, func(tm *config.Template) (stop bool) {
 				actualMatches = append(actualMatches, tm.ID)
@@ -26,6 +28,9 @@ func TestMatch(t *testing.T) {
 		})
 	}
 }
+
+//go:embed test_setups
+var embeddedTestSetups embed.FS
 
 var tests = []struct {
 	name      string
@@ -119,28 +124,30 @@ var tests = []struct {
 		paths:     []string{"Q.bazz"},
 		expectIDs: []string{"A", "B", "C"},
 	},
-	// {
-	// 	name: "2_of_20",
-	// 	conf: &config.Service{
-	// 		TemplatesEnabled: []*config.Template{
-	// 			{ID: "Q1", Source: []byte(`query { foo bazz }`)},
-	// 			{ID: "Q2", Source: []byte(`query { bar bazz }`)},
-	// 			{ID: "Q3", Source: []byte(`query { bazz { fraz } maz }`)},
-	// 			{ID: "Q4", Source: []byte(`query { bazz { fraz } }`)},
-	// 		},
-	// 	},
-	// 	paths:     []string{"Q.bazz"},
-	// 	expectIDs: []string{"A", "B", "C"},
-	// },
 	{
 		name: "starwars",
 		conf: func() *config.Service {
-			s, err := config.New("./test_setups/starwars/config.yml")
+			s, err := config.Read(
+				embeddedTestSetups,
+				"test_setups/starwars/",
+				"test_setups/starwars/config.yml",
+			)
 			if err != nil {
 				panic(err)
 			}
 			return s.ServicesEnabled[0]
 		}(),
+		/* query { hero(episode: EMPIRE || JEDI) {
+			id, name, appearsIn
+			friends {
+				id, name, appearsIn
+				friends { id, name, appearsIn }
+			}
+			friendsConnection(first: >= 0, after: len > 0) {
+				totalCount
+				friends { id, name, appearsIn }
+			}
+		} } */
 		paths: []string{
 			"Q.hero|episode,.id",
 			"Q.hero|episode,.name",
@@ -157,31 +164,6 @@ var tests = []struct {
 			"Q.hero|episode,.friendsConnection|after,first,.friends.appearsIn",
 		},
 		expectIDs: []string{"c"},
-		/* query {
-		    hero(episode: EMPIRE || JEDI) {
-		        id
-		        name
-		        appearsIn
-		        friends {
-		            id
-		            name
-		            appearsIn
-		            friends {
-		                id
-		                name
-		                appearsIn
-		            }
-		        }
-		        friendsConnection(first: >= 0, after: len > 0) {
-		            totalCount
-		            friends {
-		                id
-		                name
-		                appearsIn
-		            }
-		        }
-		    }
-		} */
 	},
 }
 

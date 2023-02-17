@@ -9,8 +9,8 @@ import (
 
 type Matcher struct {
 	conf          *config.Service
-	templatePaths [][]string
-	paths         map[string]*bitmask.Set
+	templatePaths [][]uint64
+	paths         map[uint64]*bitmask.Set
 	lengths       []int
 
 	// Operational data, reset for every match call
@@ -20,7 +20,7 @@ type Matcher struct {
 
 // Match calls onMatch for every template matching paths
 func (m *Matcher) Match(
-	paths [][]byte,
+	paths []uint64,
 	onMatch func(*config.Template) (stop bool),
 ) {
 	m.matchMask.Reset()
@@ -30,7 +30,7 @@ func (m *Matcher) Match(
 	}
 
 	for i := range paths {
-		b, ok := m.paths[string(paths[i])]
+		b, ok := m.paths[paths[i]]
 		if !ok {
 			return // Unknown path, can't match any template
 		}
@@ -52,8 +52,8 @@ func New(conf *config.Service) *Matcher {
 	m := &Matcher{
 		conf: conf,
 		// There will at least be 1 path per template
-		paths:         make(map[string]*bitmask.Set, len(conf.TemplatesEnabled)),
-		templatePaths: make([][]string, len(conf.TemplatesEnabled)),
+		paths:         make(map[uint64]*bitmask.Set, len(conf.TemplatesEnabled)),
+		templatePaths: make([][]uint64, len(conf.TemplatesEnabled)),
 		lengths:       make([]int, len(conf.TemplatesEnabled)),
 
 		matchMask:          bitmask.New(),
@@ -62,22 +62,24 @@ func New(conf *config.Service) *Matcher {
 	}
 	for i := range conf.TemplatesEnabled {
 		{ // Associate paths with templates by index
-			pathscan.InAST(
+			if errs := pathscan.InAST(
 				conf.TemplatesEnabled[i].GQTTemplate,
-				func(path []byte, e gqt.Expression) (stop bool) {
+				func(pathHash uint64, e gqt.Expression) (stop bool) {
 					// On structural
-					m.templatePaths[i] = append(m.templatePaths[i], string(path))
+					m.templatePaths[i] = append(m.templatePaths[i], pathHash)
 					return false
 				},
-				func(path []byte, e gqt.Expression) (stop bool) {
+				func(pathHash uint64, e gqt.Expression) (stop bool) {
 					// On argument
 					return false
 				},
-				func(path []byte, e gqt.Expression) (stop bool) {
+				func(pathHash uint64, e *gqt.VariableDeclaration) (stop bool) {
 					// On variable
 					return false
 				},
-			)
+			); errs != nil {
+				panic(errs)
+			}
 		}
 
 		// Initialize path bitmasks

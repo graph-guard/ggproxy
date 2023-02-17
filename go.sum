@@ -34,8 +34,6 @@ github.com/graph-guard/backend v0.0.0-20220826171348-e3dcd100c82b h1:MTZ+FdD6qIy
 github.com/graph-guard/backend v0.0.0-20220826171348-e3dcd100c82b/go.mod h1:x2XK0889DedSc5iB1AZzg0dJdWaHx8UiRo1vnv55kNc=
 github.com/graph-guard/gqlscan v1.0.0 h1:hUEDqnJQJ7nV9S8hCPJuYI/H97KP3unu0Gu7wd0wV8A=
 github.com/graph-guard/gqlscan v1.0.0/go.mod h1:A7TeIFxoiP39gw/r4sWjDnTZJnNy+4kaytP9Kh7Luuk=
-github.com/graph-guard/gqt v0.0.0-20220830090241-b646278952f9 h1:aVvTdG6rHXs4ZzE0BMK83P37zacC9t6I7LOhFb79DVI=
-github.com/graph-guard/gqt v0.0.0-20220830090241-b646278952f9/go.mod h1:LSgSzLS6fBQ3uD5lREaytQu4qsSkM2EN50Ds1acdu0U=
 github.com/graph-guard/gqt/v4 v4.0.7 h1:xp07pamaP7wPqOTRp7+m4wUdpZ78unbisyh44SFnUtE=
 github.com/graph-guard/gqt/v4 v4.0.7/go.mod h1:tXBLe4Gr3S/y8pM6ABkcIWFcspyU1c1YfrsXdBf0hKE=
 github.com/hashicorp/golang-lru v0.5.4 h1:YDjusn29QI/Das2iO9M0BHnIbxPeyuCHsjMW+lJfyTc=

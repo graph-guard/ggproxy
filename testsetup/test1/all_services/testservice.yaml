@@ -2,5 +2,5 @@ name: "Test Service"
 path: "/testservice"
 forward-url: "http://localhost:8081/test"
 forward-reduced: false
-all-templates: ../all-templates/testservice
-enabled-templates: ../enabled-templates/testservice
+all-templates: ../all_templates
+enabled-templates: ../enabled_templates

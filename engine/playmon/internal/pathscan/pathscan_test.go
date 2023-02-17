@@ -1,6 +1,7 @@
 package pathscan_test
 
 import (
+	"fmt"
 	"sort"
 	"testing"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/graph-guard/gqlscan"
 	"github.com/graph-guard/gqt/v4"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/exp/constraints"
+	"golang.org/x/exp/slices"
 )
 
 var testsInTokens = []struct {
@@ -255,12 +258,12 @@ func TestInTokens(t *testing.T) {
 		t.Run(tt.Name, func(t *testing.T) {
 			ps := pathscan.New(0, 0)
 			p := gqlparse.NewParser()
-			actualStructuralPaths := []string{}
-			actualArgPaths := make(map[string]int)
-			actualVarPaths := make(map[string]int)
-			variablePaths := make(map[string]int, len(tt.VariablePaths))
+			actualStructuralPaths := []uint64{}
+			actualArgPaths := make(map[uint64]int)
+			actualVarPaths := make(map[uint64]int)
+			variablePaths := make(map[uint64][]gqlparse.Token, len(tt.VariablePaths))
 			for _, p := range tt.VariablePaths {
-				variablePaths[p] = 0
+				variablePaths[pathscan.Hash(p)] = nil
 			}
 			p.Parse(
 				[]byte(tt.GraphQLOperation), nil, nil,
@@ -272,18 +275,18 @@ func TestInTokens(t *testing.T) {
 						operation[0].ID,
 						selectionSet,
 						variablePaths,
-						func(path []byte) (stop bool) { // On structural
+						func(pathHash uint64) (stop bool) { // On structural
 							actualStructuralPaths = append(
-								actualStructuralPaths, string(path),
+								actualStructuralPaths, pathHash,
 							)
 							return false
 						},
-						func(path []byte, i int) (stop bool) { // On argument
-							actualArgPaths[string(path)] = i
+						func(pathHash uint64, i int) (stop bool) { // On argument
+							actualArgPaths[pathHash] = i
 							return false
 						},
-						func(path []byte, i int) (stop bool) { // On GQT variable
-							actualVarPaths[string(path)] = i
+						func(pathHash uint64, i int) (stop bool) { // On GQT variable
+							actualVarPaths[pathHash] = i
 							return false
 						},
 					)
@@ -292,18 +295,25 @@ func TestInTokens(t *testing.T) {
 					t.Fatalf("unexpected GraphQL parsing error: %v", err)
 				},
 			)
-			require.Equal(
-				t, tt.ExpectedStructural, actualStructuralPaths,
-				"structural paths",
+			compareStringsByHash(
+				t, tt.ExpectedStructural, actualStructuralPaths, "structural path",
 			)
-			if tt.ExpectedVarVal == nil {
-				tt.ExpectedVarVal = map[string]int{}
+
+			argPathHash := map[uint64]int{}
+			if tt.ExpectedArg != nil {
+				for k, v := range tt.ExpectedArg {
+					argPathHash[pathscan.Hash(k)] = v
+				}
 			}
-			if tt.ExpectedArg == nil {
-				tt.ExpectedArg = map[string]int{}
+			require.Equal(t, argPathHash, actualArgPaths, "argument paths")
+
+			varPathHash := map[uint64]int{}
+			if tt.ExpectedVarVal != nil {
+				for k, v := range tt.ExpectedVarVal {
+					varPathHash[pathscan.Hash(k)] = v
+				}
 			}
-			require.Equal(t, tt.ExpectedArg, actualArgPaths, "argument paths")
-			require.Equal(t, tt.ExpectedVarVal, actualVarPaths, "variable paths")
+			require.Equal(t, varPathHash, actualVarPaths, "variable paths")
 		})
 	}
 }
@@ -318,18 +328,16 @@ func TestInTokensPanic(t *testing.T) {
 				{ID: gqlscan.TokenField, Value: []byte("foo")},
 				{ID: gqlscan.TokenSetEnd},
 			},
-			map[string]int{
-				// No variable paths
-			},
-			func(path []byte) (stop bool) { // On structural
+			map[uint64][]gqlparse.Token{ /* No variable paths */ },
+			func(pathHash uint64) (stop bool) { // On structural
 				t.Fatal("this function isn't expected to be called")
 				return false
 			},
-			func(path []byte, i int) (stop bool) { // On argument
+			func(pathHash uint64, i int) (stop bool) { // On argument
 				t.Fatal("this function isn't expected to be called")
 				return false
 			},
-			func(path []byte, i int) (stop bool) { // On variable
+			func(pathHash uint64, i int) (stop bool) { // On variable
 				t.Fatal("this function isn't expected to be called")
 				return false
 			},
@@ -542,39 +550,83 @@ var testsInAST = []struct {
 	},
 }
 
-func TestInAst(t *testing.T) {
+func TestInAST(t *testing.T) {
 	for _, tt := range testsInAST {
 		t.Run(tt.Name, func(t *testing.T) {
+			x := tt.Name
+			fmt.Println(x)
 			o, _, errs := gqt.Parse([]byte(tt.GQTTemplateSrc))
 			require.Nil(t, errs)
 
-			var actualPaths, actualArgPaths, actualVarPaths []string
-			pathscan.InAST(o, func(path []byte, e gqt.Expression) (stop bool) {
-				// On structural
-				actualPaths = append(actualPaths, string(path))
-				require.NotNil(t, e)
-				return false
-			}, func(path []byte, e gqt.Expression) (stop bool) {
-				// On argument
-				actualArgPaths = append(actualArgPaths, string(path))
-				return false
-			}, func(path []byte, e gqt.Expression) (stop bool) {
-				// On variable
-				actualVarPaths = append(actualVarPaths, string(path))
-				return false
-			})
+			var actualPaths, actualArgPaths []uint64
+			actualVarPaths := map[uint64]string{} // Hash -> variable name
+			errsP := pathscan.InAST(
+				o,
+				func(pathHash uint64, e gqt.Expression) (stop bool) {
+					// On structural
+					actualPaths = append(actualPaths, pathHash)
+					require.NotNil(t, e)
+					return false
+				}, func(pathHash uint64, e gqt.Expression) (stop bool) {
+					// On argument
+					actualArgPaths = append(actualArgPaths, pathHash)
+					return false
+				}, func(pathHash uint64, e *gqt.VariableDeclaration) (stop bool) {
+					// On variable
+					actualVarPaths[pathHash] = e.Name
+					return false
+				},
+			)
+			require.Nil(t, errsP)
 
-			sort.Strings(tt.ExpectStructural)
-			sort.Strings(actualPaths)
-			require.Equal(t, tt.ExpectStructural, actualPaths, "structural paths")
-
-			sort.Strings(tt.ExpectedArgPaths)
-			sort.Strings(actualArgPaths)
-			require.Equal(t, tt.ExpectedArgPaths, actualArgPaths, "argument paths")
-
-			sort.Strings(tt.ExpectedVarPaths)
-			sort.Strings(actualVarPaths)
-			require.Equal(t, tt.ExpectedVarPaths, actualVarPaths, "variable paths")
+			compareStringsByHash(
+				t, tt.ExpectStructural, actualPaths, "structural paths",
+			)
+			compareStringsByHash(
+				t, tt.ExpectedArgPaths, actualArgPaths, "argument paths",
+			)
+			compareStringsByHash(
+				t, tt.ExpectedVarPaths, mapKeys(actualVarPaths), "variable paths",
+			)
 		})
 	}
+}
+
+func compareStringsByHash(
+	t *testing.T,
+	expected []string,
+	actual []uint64,
+	msg string,
+) {
+	e := hashStrings(expected)
+	sort.Slice(e, func(i, j int) bool {
+		return e[i] < e[j]
+	})
+	sort.Slice(actual, func(i, j int) bool {
+		return actual[i] < actual[j]
+	})
+	require.Equal(t, e, actual, msg)
+}
+
+func hashStrings(s []string) []uint64 {
+	if len(s) < 1 {
+		return nil
+	}
+	h := make([]uint64, len(s))
+	for i, s := range s {
+		h[i] = pathscan.Hash(s)
+	}
+	return h
+}
+
+func mapKeys[K constraints.Ordered, T any](m map[K]T) []K {
+	if len(m) < 1 {
+		return nil
+	}
+	ks := make([]K, 0, len(m))
+	for k := range m {
+		ks = append(ks, k)
+	}
+	slices.Sort(ks)
+	return ks
 }

@@ -1,13 +1,13 @@
 package config
 
 import (
+	"bytes"
 	"crypto/md5"
 	"encoding/base32"
 	"errors"
 	"fmt"
-	"io"
+	"io/fs"
 	neturl "net/url"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -17,6 +17,7 @@ import (
 	gqt "github.com/graph-guard/gqt/v4"
 	gqlparser "github.com/vektah/gqlparser/v2"
 	gqlast "github.com/vektah/gqlparser/v2/ast"
+	"golang.org/x/exp/slices"
 	yaml "gopkg.in/yaml.v3"
 )
 
@@ -113,24 +114,25 @@ type serviceConfig struct {
 	Schema           string `yaml:"schema"`
 }
 
-func New(path string) (c *Config, err error) {
+// Read parses configuration files and composes the server config.
+func Read(fsys fs.FS, basePath, path string) (c *Config, err error) {
 	// Set default config values
 	c = &Config{
 		Proxy:    ProxyServerConfig{},
 		API:      &APIServerConfig{},
 		Services: make(map[string]*Service),
 	}
-	if err = c.readServerConfig(path); err != nil {
+	if err = c.readServerConfig(fsys, basePath, path); err != nil {
 		return nil, err
 	}
 	return c, nil
 }
 
-func (c *Config) readServerConfig(path string) (err error) {
+func (c *Config) readServerConfig(fsys fs.FS, basePath, path string) (err error) {
 	dirPath := filepath.Dir(path)
-	file, err := os.Open(path)
+	file, err := openFile(fsys, basePath, path, "server config")
 	if err != nil {
-		return fmt.Errorf("opening server config file: %w", err)
+		return err
 	}
 
 	sc := &serverConfig{}
@@ -138,13 +140,13 @@ func (c *Config) readServerConfig(path string) (err error) {
 	d.KnownFields(true)
 	if err := d.Decode(sc); err != nil {
 		return &ErrorIllegal{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "syntax",
 			Message:  err.Error(),
 		}
 	}
 
-	if err := validateServerConfig(sc, path); err != nil {
+	if err := validateServerConfig(sc, basePath, path); err != nil {
 		return err
 	}
 
@@ -180,22 +182,47 @@ func (c *Config) readServerConfig(path string) (err error) {
 	}
 
 	// reading all services
-	if err := c.readAllServices(servicesAllPath); err != nil {
+	if err := c.readAllServices(fsys, basePath, servicesAllPath); err != nil {
 		return err
 	}
 
+	if len(c.Services) < 1 {
+		return ErrNoServices
+	}
+
 	// reading enabled services
-	if err := c.readEnabledServices(servicesEnabledPath); err != nil {
+	if err := c.readEnabledServices(fsys, servicesEnabledPath); err != nil {
 		return err
+	}
+
+	if len(c.ServicesEnabled) < 1 {
+		return ErrNoServicesEnabled
+	}
+
+	{ // Make sure there are no collisions on service paths
+		sk := sortedKeys(c.Services)
+		paths := make(map[string]*Service, len(c.Services))
+		for _, sk := range sk {
+			s := c.Services[sk]
+			if s2, ok := paths[s.Path]; ok {
+				return &ErrorConflict{
+					Feature:  "path",
+					Value:    s.Path,
+					Subject1: s.FilePath,
+					Subject2: s2.FilePath,
+				}
+			}
+			paths[s.Path] = s
+		}
 	}
 
 	return
 }
 
-func validateServerConfig(sc *serverConfig, path string) (err error) {
+func validateServerConfig(sc *serverConfig, basePath, path string) (err error) {
 	if sc.Proxy.Host == "" {
 		return &ErrorMissing{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "proxy.host",
 		}
 	}
@@ -207,13 +234,13 @@ func validateServerConfig(sc *serverConfig, path string) (err error) {
 		switch {
 		case c.CertFile != "" && c.KeyFile == "":
 			return &ErrorMissing{
-				FilePath: path,
+				FilePath: filepath.Join(basePath, path),
 				Feature:  "proxy.tls.key-file",
 			}
 		case (c.KeyFile != "" && c.CertFile == "") ||
 			(c.KeyFile == "" && c.CertFile == ""):
 			return &ErrorMissing{
-				FilePath: path,
+				FilePath: filepath.Join(basePath, path),
 				Feature:  "proxy.tls.cert-file",
 			}
 		}
@@ -223,7 +250,7 @@ func validateServerConfig(sc *serverConfig, path string) (err error) {
 		c := sc.API
 		if c.Host == "" {
 			return &ErrorMissing{
-				FilePath: path,
+				FilePath: filepath.Join(basePath, path),
 				Feature:  "api.host",
 			}
 		}
@@ -235,13 +262,13 @@ func validateServerConfig(sc *serverConfig, path string) (err error) {
 			switch {
 			case c.CertFile != "" && c.KeyFile == "":
 				return &ErrorMissing{
-					FilePath: path,
+					FilePath: filepath.Join(basePath, path),
 					Feature:  "api.tls.key-file",
 				}
 			case (c.KeyFile != "" && c.CertFile == "") ||
 				(c.KeyFile == "" && c.CertFile == ""):
 				return &ErrorMissing{
-					FilePath: path,
+					FilePath: filepath.Join(basePath, path),
 					Feature:  "api.tls.cert-file",
 				}
 			}
@@ -251,7 +278,7 @@ func validateServerConfig(sc *serverConfig, path string) (err error) {
 	if sc.Proxy.MaxRequestBodySizeBytes != nil {
 		if *sc.Proxy.MaxRequestBodySizeBytes < MinReqBodySize {
 			return &ErrorIllegal{
-				FilePath: path,
+				FilePath: filepath.Join(basePath, path),
 				Feature:  "proxy.max-request-body-size",
 				Message:  msgMaxReqBodySizeTooSmall,
 			}
@@ -260,13 +287,13 @@ func validateServerConfig(sc *serverConfig, path string) (err error) {
 
 	if sc.ServicesAll == "" {
 		return &ErrorMissing{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "all-services",
 		}
 	}
 	if sc.ServicesEnabled == "" {
 		return &ErrorMissing{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "enabled-services",
 		}
 	}
@@ -274,8 +301,8 @@ func validateServerConfig(sc *serverConfig, path string) (err error) {
 	return
 }
 
-func (c *Config) readAllServices(path string) (err error) {
-	d, err := os.ReadDir(path)
+func (c *Config) readAllServices(fsys fs.FS, basePath, path string) (err error) {
+	d, err := fs.ReadDir(fsys, path)
 	if err != nil {
 		return fmt.Errorf("reading services directory: %w", err)
 	}
@@ -289,16 +316,13 @@ func (c *Config) readAllServices(path string) (err error) {
 			continue
 		}
 
-		file, err := openFile(filepath.Join(path, sf.Name()))
-		if err != nil {
-			return err
-		}
-		h, err := calculateHash(file)
+		filePath := filepath.Join(path, sf.Name())
+		h, err := calculateHash(fsys, filePath)
 		if err != nil {
 			return err
 		}
 
-		s, err := readServiceConfig(file)
+		s, err := readServiceConfig(fsys, basePath, filePath)
 		if err != nil {
 			return err
 		}
@@ -315,8 +339,8 @@ func (c *Config) readAllServices(path string) (err error) {
 	return
 }
 
-func (c *Config) readEnabledServices(path string) (err error) {
-	d, err := os.ReadDir(path)
+func (c *Config) readEnabledServices(fsys fs.FS, path string) (err error) {
+	d, err := fs.ReadDir(fsys, path)
 	if err != nil {
 		return fmt.Errorf("reading enabled services directory: %w", err)
 	}
@@ -332,11 +356,7 @@ func (c *Config) readEnabledServices(path string) (err error) {
 		}
 
 		filePath := filepath.Join(path, sf.Name())
-		file, err := openFile(filePath)
-		if err != nil {
-			return err
-		}
-		h, err := calculateHash(file)
+		h, err := calculateHash(fsys, filePath)
 		if err != nil {
 			return err
 		}
@@ -356,24 +376,27 @@ func (c *Config) readEnabledServices(path string) (err error) {
 	return
 }
 
-func readServiceConfig(file *os.File) (s *Service, err error) {
-	filePath := file.Name()
-	dirPath := filepath.Dir(file.Name())
+func readServiceConfig(fsys fs.FS, basePath, filePath string) (s *Service, err error) {
+	dirPath := filepath.Dir(filePath)
 
 	sc := &serviceConfig{}
 	{
-		d := yaml.NewDecoder(file)
+		c, err := fs.ReadFile(fsys, filePath)
+		if err != nil {
+			return nil, err
+		}
+		d := yaml.NewDecoder(bytes.NewReader(c))
 		d.KnownFields(true)
 		if err := d.Decode(sc); err != nil {
 			return nil, &ErrorIllegal{
-				FilePath: filePath,
+				FilePath: filepath.Join(basePath, filePath),
 				Feature:  "syntax",
 				Message:  err.Error(),
 			}
 		}
 	}
 
-	if err := validateServiceConfig(sc, filePath); err != nil {
+	if err := validateServiceConfig(sc, basePath, filePath); err != nil {
 		return nil, err
 	}
 
@@ -382,7 +405,7 @@ func readServiceConfig(file *os.File) (s *Service, err error) {
 	if sc.Schema != "" {
 		schemaPath = filepath.Join(dirPath, sc.Schema)
 	}
-	schema, gqtParser, err := s.readSchema(schemaPath)
+	schema, gqtParser, err := s.readSchema(fsys, basePath, schemaPath)
 	if err != nil {
 		return nil, err
 	}
@@ -400,7 +423,7 @@ func readServiceConfig(file *os.File) (s *Service, err error) {
 	id := strings.TrimSuffix(filepath.Base(filePath), filepath.Ext(filePath))
 	if err := ValidateID(id); err != "" {
 		return nil, &ErrorIllegal{
-			FilePath: filePath,
+			FilePath: filepath.Join(basePath, filePath),
 			Feature:  "id",
 			Message:  err,
 		}
@@ -411,63 +434,71 @@ func readServiceConfig(file *os.File) (s *Service, err error) {
 		ID:             id,
 		Schema:         schema,
 		Templates:      map[string]*Template{},
-		FilePath:       filePath,
+		FilePath:       filepath.Join(basePath, filePath),
 		Path:           sc.Path,
 		ForwardURL:     sc.ForwardURL,
 		ForwardReduced: sc.ForwardReduced,
 	}
 
 	// reading all templates
-	err = s.readAllTemplates(templatesAllPath, gqtParser)
-	if err != nil {
+	if err := s.readAllTemplates(
+		fsys, basePath, templatesAllPath, gqtParser,
+	); err != nil {
 		return nil, err
 	}
 
+	if len(s.Templates) < 1 {
+		return nil, ErrNoTemplates
+	}
+
 	// reading enabled templates
-	err = s.readEnabledTemplates(templatesEnabledPath)
-	if err != nil {
+	if err := s.readEnabledTemplates(fsys, templatesEnabledPath); err != nil {
 		return nil, err
+	}
+
+	if len(s.TemplatesEnabled) < 1 {
+		return nil, ErrNoTemplatesEnabled
 	}
 
 	return
 }
 
-func validateServiceConfig(sc *serviceConfig, path string) (err error) {
+func validateServiceConfig(sc *serviceConfig, basePath, path string) (err error) {
 	if sc.Path == "" {
 		return &ErrorMissing{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "path",
 		}
 	}
 	if err := validatePath(sc.Path); err != nil {
 		return &ErrorIllegal{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "path",
 			Message:  err.Error(),
 		}
 	}
 	if sc.ForwardURL == "" {
 		return &ErrorMissing{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "forward-url",
 		}
 	}
 	if err := validateURL(sc.ForwardURL); err != nil {
 		return &ErrorIllegal{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "forward-url",
 			Message:  err.Error(),
 		}
 	}
 	if sc.TemplatesAll == "" {
 		return &ErrorMissing{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "all-templates",
 		}
 	}
 	if sc.TemplatesEnabled == "" {
 		return &ErrorMissing{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "enabled-templates",
 		}
 	}
@@ -475,40 +506,44 @@ func validateServiceConfig(sc *serviceConfig, path string) (err error) {
 	return
 }
 
-func (s *Service) readSchema(path string) (*gqlast.Schema, *gqt.Parser, error) {
+func (s *Service) readSchema(fsys fs.FS, basePath, path string) (*gqlast.Schema, *gqt.Parser, error) {
 	if path == "" {
 		p, err := gqt.NewParser(nil)
 		return nil, p, err
 	}
 
-	f, err := os.ReadFile(path)
+	f, err := fs.ReadFile(fsys, path)
 	if err != nil {
 		return nil, nil, &ErrorMissing{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "schema",
 		}
 	}
 
 	schema, err := gqlparser.LoadSchema(&gqlast.Source{
-		Name:  path,
+		Name:  filepath.Join(basePath, path),
 		Input: string(f),
 	})
 	if err != nil {
 		return nil, nil, &ErrorIllegal{
-			FilePath: path,
+			FilePath: filepath.Join(basePath, path),
 			Feature:  "schema",
 			Message:  fmt.Sprintf("invalid schema: %v", err.Error()),
 		}
 	}
 
 	gqtParser, err := gqt.NewParser([]gqt.Source{
-		{Name: path, Content: string(f)},
+		{Name: filepath.Join(basePath, path), Content: string(f)},
 	})
 	return schema, gqtParser, err
 }
 
-func (s *Service) readAllTemplates(path string, p *gqt.Parser) (err error) {
-	dir, err := os.ReadDir(path)
+func (s *Service) readAllTemplates(
+	fsys fs.FS,
+	basePath, path string,
+	p *gqt.Parser,
+) (err error) {
+	dir, err := fs.ReadDir(fsys, path)
 	if err != nil {
 		return fmt.Errorf("reading templates directory: %w", err)
 	}
@@ -522,16 +557,13 @@ func (s *Service) readAllTemplates(path string, p *gqt.Parser) (err error) {
 			continue
 		}
 
-		file, err := openFile(filepath.Join(path, tf.Name()))
-		if err != nil {
-			return err
-		}
-		h, err := calculateHash(file)
+		path := filepath.Join(path, tf.Name())
+		h, err := calculateHash(fsys, path)
 		if err != nil {
 			return err
 		}
 
-		t, err := readTemplate(file, p)
+		t, err := readTemplate(fsys, basePath, path, p)
 		if err != nil {
 			return err
 		}
@@ -549,8 +581,8 @@ func (s *Service) readAllTemplates(path string, p *gqt.Parser) (err error) {
 	return
 }
 
-func (s *Service) readEnabledTemplates(path string) (err error) {
-	dir, err := os.ReadDir(path)
+func (s *Service) readEnabledTemplates(fsys fs.FS, path string) (err error) {
+	dir, err := fs.ReadDir(fsys, path)
 	if err != nil {
 		return fmt.Errorf("reading enabled templates directory: %w", err)
 	}
@@ -565,12 +597,8 @@ func (s *Service) readEnabledTemplates(path string) (err error) {
 			continue
 		}
 
-		file, err := openFile(filepath.Join(path, tf.Name()))
-		if err != nil {
-			return err
-		}
-
-		h, err := calculateHash(file)
+		p := filepath.Join(path, tf.Name())
+		h, err := calculateHash(fsys, p)
 		if err != nil {
 			return err
 		}
@@ -590,9 +618,11 @@ func (s *Service) readEnabledTemplates(path string) (err error) {
 	return
 }
 
-func readTemplate(file *os.File, p *gqt.Parser) (t *Template, err error) {
-	filePath := file.Name()
-
+func readTemplate(
+	fsys fs.FS,
+	basePath, filePath string,
+	p *gqt.Parser,
+) (t *Template, err error) {
 	id := strings.ToLower(
 		strings.TrimSuffix(
 			filepath.Base(filePath), filepath.Ext(filePath),
@@ -600,13 +630,13 @@ func readTemplate(file *os.File, p *gqt.Parser) (t *Template, err error) {
 	)
 	if err := ValidateID(id); err != "" {
 		return nil, &ErrorIllegal{
-			FilePath: filePath,
+			FilePath: filepath.Join(basePath, filePath),
 			Feature:  "id",
 			Message:  err,
 		}
 	}
 
-	b, err := io.ReadAll(file)
+	b, err := fs.ReadFile(fsys, filePath)
 	if err != nil {
 		return nil, fmt.Errorf("reading template %q: %w", filePath, err)
 	}
@@ -614,7 +644,7 @@ func readTemplate(file *os.File, p *gqt.Parser) (t *Template, err error) {
 	meta, template, err := metadata.Parse(b)
 	if err != nil {
 		return nil, &ErrorIllegal{
-			FilePath: filePath,
+			FilePath: filepath.Join(basePath, filePath),
 			Feature:  "metadata",
 			Message:  err.Error(),
 		}
@@ -630,7 +660,7 @@ func readTemplate(file *os.File, p *gqt.Parser) (t *Template, err error) {
 			}
 		}
 		return nil, &ErrorIllegal{
-			FilePath: filePath,
+			FilePath: filepath.Join(basePath, filePath),
 			Feature:  "template",
 			Message:  msg.String(),
 		}
@@ -638,11 +668,11 @@ func readTemplate(file *os.File, p *gqt.Parser) (t *Template, err error) {
 
 	t = &Template{
 		ID:          id,
+		FilePath:    filepath.Join(basePath, filePath),
 		Source:      template,
 		GQTTemplate: doc,
 		Name:        meta.Name,
 		Tags:        meta.Tags,
-		FilePath:    filePath,
 	}
 
 	return
@@ -665,18 +695,20 @@ const IDValidCharDict = "abcdefghijklmnopqrstuvwxyz" +
 	"0123456789" +
 	"_-"
 
-type ErrorDuplicate struct {
-	Original  string
-	Duplicate string
-}
+type ErrorDuplicate struct{ Original, Duplicate string }
 
 func (e ErrorDuplicate) Error() string {
 	return fmt.Sprintf("%s is a duplicate of %s", e.Duplicate, e.Original)
 }
 
-type ErrorAlien struct {
-	Items []string
-}
+var (
+	ErrNoServices         = errors.New("no services defined")
+	ErrNoServicesEnabled  = errors.New("no services enabled")
+	ErrNoTemplates        = errors.New("no templates defined")
+	ErrNoTemplatesEnabled = errors.New("no templates enabled")
+)
+
+type ErrorAlien struct{ Items []string }
 
 func (e ErrorAlien) Error() string {
 	var b strings.Builder
@@ -690,48 +722,26 @@ func (e ErrorAlien) Error() string {
 	return b.String()
 }
 
-type ErrorMissing struct {
-	FilePath string
-	Feature  string
+type ErrorConflict struct{ Feature, Value, Subject1, Subject2 string }
+
+func (e ErrorConflict) Error() string {
+	return "conflict on " + e.Feature + " (" + e.Value +
+		") between " + e.Subject1 + " and " + e.Subject2
 }
+
+type ErrorMissing struct{ FilePath, Feature string }
 
 func (e ErrorMissing) Error() string {
-	var b strings.Builder
 	if e.Feature == "" {
-		b.Grow(len("missing ") + len(e.FilePath))
-		b.WriteString("missing ")
-		b.WriteString(e.FilePath)
-		return b.String()
+		return "missing " + e.FilePath
 	}
-	b.Grow(len("missing ") + len(e.Feature) + len(" in ") + len(e.FilePath))
-	b.WriteString("missing ")
-	b.WriteString(e.Feature)
-	b.WriteString(" in ")
-	b.WriteString(e.FilePath)
-	return b.String()
+	return "missing " + e.Feature + " in " + e.FilePath
 }
 
-type ErrorIllegal struct {
-	FilePath string
-	Feature  string
-	Message  string
-}
+type ErrorIllegal struct{ FilePath, Feature, Message string }
 
 func (e ErrorIllegal) Error() string {
-	var b strings.Builder
-	b.Grow(len("illegal ") +
-		len(e.Feature) +
-		len(" in ") +
-		len(e.FilePath) +
-		len(": ") +
-		len(e.Message))
-	b.WriteString("illegal ")
-	b.WriteString(e.Feature)
-	b.WriteString(" in ")
-	b.WriteString(e.FilePath)
-	b.WriteString(": ")
-	b.WriteString(e.Message)
-	return b.String()
+	return "illegal " + e.Feature + " in " + e.FilePath + ": " + e.Message
 }
 
 var (
@@ -776,35 +786,40 @@ func contains[T any](arr []T, x T, equal func(a, b T) bool) int {
 	return -1
 }
 
-func openFile(path string) (*os.File, error) {
-	info, err := os.Lstat(path)
+func openFile(fsys fs.FS, basePath, path, feature string) (fs.File, error) {
+	f, err := fsys.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("getting information about file: %w", err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		path, err = filepath.EvalSymlinks(path)
-		if err != nil {
-			return nil, fmt.Errorf("reading link: %w", err)
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, &ErrorMissing{
+				FilePath: filepath.Join(basePath, path),
+				Feature:  feature,
+			}
 		}
-	}
-	f, err := os.Open(path)
-	if err != nil {
 		return nil, fmt.Errorf("opening file: %w", err)
 	}
-
 	return f, nil
 }
 
 // calculateHash returns a base32 encoded MD5 hash of file.
-func calculateHash(file *os.File) (string, error) {
+func calculateHash(fsys fs.FS, path string) (string, error) {
 	h := md5.New()
-	if _, err := io.Copy(h, file); err != nil {
-		return "", fmt.Errorf("copying file to md5 hash: %w", err)
+	c, err := fs.ReadFile(fsys, path)
+	if err != nil {
+		return "", fmt.Errorf("reading file: %w", err)
 	}
-	if _, err := file.Seek(0, io.SeekStart); err != nil {
-		return "", fmt.Errorf("seeking start in file: %w", err)
+	if _, err := h.Write(c); err != nil {
+		return "", fmt.Errorf("writing: %w", err)
 	}
 	sum := h.Sum(nil)
 	s := base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(sum)
 	return s, nil
+}
+
+func sortedKeys[T any](m map[string]T) []string {
+	l := make([]string, 0, len(m))
+	for k := range m {
+		l = append(l, k)
+	}
+	slices.Sort(l)
+	return l
 }

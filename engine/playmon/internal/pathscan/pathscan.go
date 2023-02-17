@@ -42,6 +42,7 @@ import (
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/travgqt"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/utilities/stack"
+	"github.com/graph-guard/ggproxy/utilities/xxhash"
 	gqlscan "github.com/graph-guard/gqlscan"
 	gqt "github.com/graph-guard/gqt/v4"
 
@@ -91,9 +92,9 @@ const (
 func (s *PathScanner) InTokens(
 	operation gqlscan.Token,
 	tokens []gqlparse.Token,
-	gqtVarPaths map[string]int,
-	onStructural func(path []byte) (stop bool),
-	onArg, onGQTVarVal func(path []byte, i int) (stop bool),
+	gqtVarPaths map[uint64][]gqlparse.Token,
+	onStructural func(pathHash uint64) (stop bool),
+	onArg, onGQTVarVal func(pathHash uint64, i int) (stop bool),
 ) {
 	s.valPathBuf = s.valPathBuf[:0]
 	s.valStack.Reset()
@@ -151,9 +152,10 @@ func (s *PathScanner) InTokens(
 						}
 						s.argBuf = append(s.argBuf, tokens[i].Value)
 						s.valWithDiv(divArgList, tokens[i].Value)
-						onArg(s.valPathBuf, i)
-						if _, ok := gqtVarPaths[string(s.valPathBuf)]; ok {
-							if onGQTVarVal(s.valPathBuf, i+1) {
+						h := Hash(s.valPathBuf)
+						onArg(h, i)
+						if _, ok := gqtVarPaths[h]; ok {
+							if onGQTVarVal(h, i+1) {
 								return
 							}
 						}
@@ -172,8 +174,9 @@ func (s *PathScanner) InTokens(
 							s.valPop()
 						}
 						s.valWithDiv(divObjField, tokens[i].Value)
-						if _, ok := gqtVarPaths[string(s.valPathBuf)]; ok {
-							if onGQTVarVal(s.valPathBuf, i+1) {
+						h := Hash(s.valPathBuf)
+						if _, ok := gqtVarPaths[h]; ok {
+							if onGQTVarVal(h, i+1) {
 								return
 							}
 						}
@@ -197,7 +200,7 @@ func (s *PathScanner) InTokens(
 
 				// Check for leaf
 				if tokens[i+1].ID != gqlscan.TokenSet {
-					if onStructural(s.structuralPathBuf) {
+					if onStructural(Hash(s.structuralPathBuf)) {
 						return
 					}
 					s.structuralPop()
@@ -208,7 +211,7 @@ func (s *PathScanner) InTokens(
 				s.structuralStack.Push(l)
 			default:
 				s.structuralStack.Push(l)
-				if onStructural(s.structuralPathBuf) {
+				if onStructural(Hash(s.structuralPathBuf)) {
 					return
 				}
 				s.structuralPop()
@@ -258,21 +261,37 @@ func (s *PathScanner) structuralPop() {
 // argument.
 func InAST(
 	o *gqt.Operation,
-	onStructural func(path []byte, e gqt.Expression) (stop bool),
-	onArg func(path []byte, e gqt.Expression) (stop bool),
-	onVariable func(path []byte, e gqt.Expression) (stop bool),
-) {
+	onStructural func(pathHash uint64, e gqt.Expression) (stop bool),
+	onArg func(pathHash uint64, e gqt.Expression) (stop bool),
+	onVariable func(pathHash uint64, e *gqt.VariableDeclaration) (stop bool),
+) (errs []error) {
+	hashes := map[uint64]string{}
+	hash := func(path []byte) uint64 {
+		h := Hash(path)
+		s := string(path)
+		if x, ok := hashes[h]; ok {
+			if x != s {
+				errs = append(errs, fmt.Errorf(
+					"hash collision between %q and %q (%d)",
+					x, s, h,
+				))
+			}
+		}
+		hashes[h] = s
+		return h
+	}
+
 	travgqt.Traverse(o, func(e gqt.Expression) (stop, skipChildren bool) {
 		switch e := e.(type) {
 		case *gqt.SelectionField:
 			for _, a := range e.Arguments {
 				p := makePathVar(a)
-				if onArg(p, a) {
+				if onArg(hash(p), a) {
 					return true, true
 				}
 				if a.AssociatedVariable != nil {
 					p := makePathVar(a)
-					if onVariable(p, e) {
+					if onVariable(hash(p), a.AssociatedVariable) {
 						return true, true
 					}
 				}
@@ -281,19 +300,21 @@ func InAST(
 				break
 			}
 			p := makePathStructural(e)
-			if onStructural(p, e) {
+			hashes[hash(p)] = string(p)
+			if onStructural(hash(p), e) {
 				return true, true
 			}
 		case *gqt.ObjectField:
 			if e.AssociatedVariable != nil {
 				p := makePathVar(e)
-				if onVariable(p, e) {
+				if onVariable(hash(p), e.AssociatedVariable) {
 					return true, true
 				}
 			}
 		}
 		return false, false // Continue traversal
 	})
+	return errs
 }
 
 // makePathStructural generates a structural path for the given expression.
@@ -373,4 +394,10 @@ func makePathVar(e gqt.Expression) []byte {
 		}
 	}
 	return s.Bytes()
+}
+
+func Hash[B []byte | string](b B) uint64 {
+	h := xxhash.New(0)
+	xxhash.Write(&h, b)
+	return h.Sum64()
 }

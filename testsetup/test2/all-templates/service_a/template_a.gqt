@@ -7,7 +7,7 @@ tags:
 mutation {
 	a {
 		a0(
-			a0_0: val = [ val <= 0 ] && val != [ val = -1 ]
+			a0_0: [ <= 0 ] && != [ -1 ]
 		)
 	}
 }
