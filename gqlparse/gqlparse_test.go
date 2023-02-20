@@ -10,10 +10,15 @@ import (
 	"github.com/graph-guard/ggproxy/utilities/decl"
 	"github.com/graph-guard/ggproxy/utilities/testeq"
 	"github.com/graph-guard/gqlscan"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 var testdata = []decl.Declaration[TestSuccess]{
+	/* SCHEMALESS */
+
 	decl.New(TestSuccess{
 		Src:      "query($e: Episode!) {hero(episode: $e) {id}}",
 		VarsJSON: `{"e": "EMPIRE"}`,
@@ -117,7 +122,10 @@ var testdata = []decl.Declaration[TestSuccess]{
 		ExpectOpr: []gqlparse.Token{
 			Token(gqlscan.TokenDefQry),
 			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
 			Token(gqlscan.TokenField, "x"),
+			Token(gqlscan.TokenSetEnd),
 			Token(gqlscan.TokenSetEnd),
 		},
 	}),
@@ -135,18 +143,63 @@ var testdata = []decl.Declaration[TestSuccess]{
 		ExpectOpr: []gqlparse.Token{
 			Token(gqlscan.TokenDefQry),
 			Token(gqlscan.TokenSet),
-			Token(gqlscan.TokenField, "x"),
-			Token(gqlscan.TokenField, "y"),
-			Token(gqlscan.TokenField, "x2"),
-			Token(gqlscan.TokenField, "x"),
-			Token(gqlscan.TokenField, "y"),
-			Token(gqlscan.TokenField, "x2"),
-			Token(gqlscan.TokenField, "x"),
-			Token(gqlscan.TokenField, "y"),
-			Token(gqlscan.TokenField, "s"),
+
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenFragInline, "Query"),
 			Token(gqlscan.TokenSet),
 			Token(gqlscan.TokenField, "x"),
 			Token(gqlscan.TokenField, "y"),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "x2"),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "x"),
+			Token(gqlscan.TokenField, "y"),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "x2"),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "x"),
+			Token(gqlscan.TokenField, "y"),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+
+			Token(gqlscan.TokenField, "s"),
+			Token(gqlscan.TokenSet),
+
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "x"),
+			Token(gqlscan.TokenField, "y"),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+
 			Token(gqlscan.TokenSetEnd),
 			Token(gqlscan.TokenSetEnd),
 		},
@@ -173,11 +226,14 @@ var testdata = []decl.Declaration[TestSuccess]{
 			Token(gqlscan.TokenVarListEnd),
 			Token(gqlscan.TokenSet),
 
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
 			Token(gqlscan.TokenField, "foo"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "bar"),
 			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
+			Token(gqlscan.TokenSetEnd),
 
 			Token(gqlscan.TokenSetEnd),
 		},
@@ -205,29 +261,43 @@ var testdata = []decl.Declaration[TestSuccess]{
 			Token(gqlscan.TokenVarListEnd),
 			Token(gqlscan.TokenSet),
 
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
+
 			Token(gqlscan.TokenField, "foo"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "bar"),
 			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
 
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
 			Token(gqlscan.TokenField, "bar"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "baz"),
 			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
+			Token(gqlscan.TokenSetEnd),
 
+			Token(gqlscan.TokenSetEnd),
+
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
 			Token(gqlscan.TokenField, "bar"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "baz"),
 			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
+			Token(gqlscan.TokenSetEnd),
 
+			Token(gqlscan.TokenFragInline, "Query"),
+			Token(gqlscan.TokenSet),
 			Token(gqlscan.TokenField, "baz"),
 			Token(gqlscan.TokenArgList),
 			Token(gqlscan.TokenArgName, "fuz"),
 			MakeVariableIndexToken(0, "v"),
 			Token(gqlscan.TokenArgListEnd),
+			Token(gqlscan.TokenSetEnd),
 
 			Token(gqlscan.TokenSetEnd),
 		},
@@ -918,6 +988,75 @@ var testdata = []decl.Declaration[TestSuccess]{
 			Token(gqlscan.TokenSetEnd),
 		},
 	}),
+
+	/* SCHEMA AWARE */
+
+	decl.New(TestSuccess{
+		Schema: "type Query { i:Int! }",
+		Src: `
+			query { ...f }
+			fragment f on Query { i }
+		`,
+		ExpectOpr: []gqlparse.Token{
+			Token(gqlscan.TokenDefQry),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "i"),
+			Token(gqlscan.TokenSetEnd),
+		},
+	}),
+	decl.New(TestSuccess{
+		Schema: `
+			type Query {
+				hero(episode: Episode!):Character!
+			}
+			enum Episode { JEDI, EMPIRE }
+			interface Character { id:ID!, name:String! }
+			type Droid implements Character {
+				id:ID!, name:String!, primaryFunction:String! }
+			type Human implements Character {
+				id:ID!, name:String!, mass:Float
+			}
+		`,
+		Src: `
+			query {
+				hero(episode: EMPIRE) {
+					...onChar
+					...onDroid
+					...onHuman
+				}
+			}
+			fragment onChar on Character { id name }
+			fragment onDroid on Droid { primaryFunction }
+			fragment onHuman on Human { mass }		   
+		`,
+		ExpectOpr: []gqlparse.Token{
+			Token(gqlscan.TokenDefQry),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "hero"),
+			Token(gqlscan.TokenArgList),
+			Token(gqlscan.TokenArgName, "episode"),
+			Token(gqlscan.TokenEnumVal, "EMPIRE"),
+			Token(gqlscan.TokenArgListEnd),
+			Token(gqlscan.TokenSet),
+
+			// Inlined directly
+			Token(gqlscan.TokenField, "id"),
+			Token(gqlscan.TokenField, "name"),
+
+			// Type-cond wrapped inlines
+			Token(gqlscan.TokenFragInline, "Droid"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "primaryFunction"),
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenFragInline, "Human"),
+			Token(gqlscan.TokenSet),
+			Token(gqlscan.TokenField, "mass"),
+			Token(gqlscan.TokenSetEnd),
+
+			Token(gqlscan.TokenSetEnd),
+			Token(gqlscan.TokenSetEnd),
+		},
+	}),
 }
 
 func TestOK(t *testing.T) {
@@ -932,7 +1071,17 @@ func TestOK(t *testing.T) {
 			})
 			require.False(t, err.IsErr())
 
-			gqlparse.NewParser().Parse(
+			var schema *ast.Schema
+			if td.Data.Schema != "" {
+				var err error
+				schema, err = gqlparser.LoadSchema(&ast.Source{
+					Name:  "schema.graphqls",
+					Input: td.Data.Schema,
+				})
+				require.NoError(t, err, "parsing schema")
+			}
+
+			gqlparse.NewParser(schema).Parse(
 				[]byte(td.Data.Src),
 				[]byte(td.Data.OprName),
 				[]byte(td.Data.VarsJSON),
@@ -941,53 +1090,55 @@ func TestOK(t *testing.T) {
 					operation []gqlparse.Token,
 					selectionSet []gqlparse.Token,
 				) {
-					// fmt.Printf("expected: (%d)\n", len(td.Data.ExpectOpr))
-					// for i, x := range td.Data.ExpectOpr {
-					// 	fmt.Printf(" %d: ", i)
-					// 	if i := x.VariableIndex(); i > -1 {
-					// 		fmt.Printf("variable value identifier (%d)", i)
-					// 	} else {
-					// 		fmt.Printf(" %v", x.ID)
-					// 	}
-					// 	if x.Value == nil {
-					// 		fmt.Print("\n")
-					// 	} else {
-					// 		fmt.Printf(" (%q)\n", string(x.Value))
-					// 	}
-					// }
-					// fmt.Println(" ")
-					// fmt.Printf("operation: (%d)\n", len(operation))
-					// for i, x := range operation {
-					// 	fmt.Printf(" %d: ", i)
-					// 	if i := x.VariableIndex(); i > -1 {
-					// 		fmt.Printf("variable value identifier (%d)", i)
-					// 	} else {
-					// 		fmt.Printf(" %v", x.ID)
-					// 	}
-					// 	if x.Value == nil {
-					// 		fmt.Print("\n")
-					// 	} else {
-					// 		fmt.Printf(" (%q)\n", string(x.Value))
-					// 	}
-					// }
-					// fmt.Println(" ")
-
-					testeq.Slices(
-						t, "token",
-						td.Data.ExpectOpr, operation,
-						func(expected, actual gqlparse.Token) (errMsg string) {
-							if expected.ID != actual.ID ||
-								string(expected.Value) != string(actual.Value) {
-								return fmt.Sprintf(
-									"expected {%s}; received: {%s}",
-									stringifyToken(expected),
-									stringifyToken(actual),
-								)
+					if !assert.ObjectsAreEqual(td.Data.ExpectOpr, operation) {
+						fmt.Printf("expected: (%d)\n", len(td.Data.ExpectOpr))
+						for i, x := range td.Data.ExpectOpr {
+							fmt.Printf(" %d: ", i)
+							if i := x.VariableIndex(); i > -1 {
+								fmt.Printf("variable value identifier (%d)", i)
+							} else {
+								fmt.Printf(" %v", x.ID)
 							}
-							return ""
-						},
-						stringifyToken,
-					)
+							if x.Value == nil {
+								fmt.Print("\n")
+							} else {
+								fmt.Printf(" (%q)\n", string(x.Value))
+							}
+						}
+						fmt.Println(" ")
+						fmt.Printf("operation: (%d)\n", len(operation))
+						for i, x := range operation {
+							fmt.Printf(" %d: ", i)
+							if i := x.VariableIndex(); i > -1 {
+								fmt.Printf("variable value identifier (%d)", i)
+							} else {
+								fmt.Printf(" %v", x.ID)
+							}
+							if x.Value == nil {
+								fmt.Print("\n")
+							} else {
+								fmt.Printf(" (%q)\n", string(x.Value))
+							}
+						}
+						t.Error("unexpected tokens")
+					}
+
+					// testeq.Slices(
+					// 	t, "token",
+					// 	td.Data.ExpectOpr, operation,
+					// 	func(expected, actual gqlparse.Token) (errMsg string) {
+					// 		if expected.ID != actual.ID ||
+					// 			string(expected.Value) != string(actual.Value) {
+					// 			return fmt.Sprintf(
+					// 				"expected {%s}; received: {%s}",
+					// 				stringifyToken(expected),
+					// 				stringifyToken(actual),
+					// 			)
+					// 		}
+					// 		return ""
+					// 	},
+					// 	stringifyToken,
+					// )
 
 					variableValues := make(map[string][]gqlparse.Token)
 					for _, t := range operation {
@@ -1812,7 +1963,17 @@ var testdataErr = []decl.Declaration[TestError]{
 func TestErr(t *testing.T) {
 	for _, td := range testdataErr {
 		t.Run(td.Decl, func(t *testing.T) {
-			gqlparse.NewParser().Parse(
+			var schema *ast.Schema
+			if td.Data.Schema != "" {
+				var err error
+				schema, err = gqlparser.LoadSchema(&ast.Source{
+					Name:  "schema.graphqls",
+					Input: td.Data.Schema,
+				})
+				require.NoError(t, err, "parsing schema")
+			}
+
+			gqlparse.NewParser(schema).Parse(
 				[]byte(td.Data.Src),
 				[]byte(td.Data.OprName),
 				[]byte(td.Data.VarsJSON),
@@ -1833,6 +1994,7 @@ func TestErr(t *testing.T) {
 }
 
 type TestSuccess struct {
+	Schema        string
 	Src           string
 	VarsJSON      string
 	OprName       string
@@ -1869,6 +2031,7 @@ func Token(t gqlscan.Token, value ...string) gqlparse.Token {
 }
 
 type TestError struct {
+	Schema   string
 	Src      string
 	VarsJSON string
 	OprName  string

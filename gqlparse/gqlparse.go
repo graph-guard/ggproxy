@@ -15,6 +15,7 @@ import (
 	"github.com/graph-guard/ggproxy/utilities/unsafe"
 	"github.com/graph-guard/gqlscan"
 	"github.com/tidwall/gjson"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 type Token struct {
@@ -34,8 +35,18 @@ func (t Token) String() string {
 // VariableIndex returns the index of the varible value if
 // its a variable index token, otherwise returns -1.
 func (t Token) VariableIndex() (index int) {
-	if t.ID >= TokenTypeValIndexOffset {
+	if t.ID >= TokenTypeValIndexOffset &&
+		t.ID < TokenTypeFragHostTypeIndexOffset {
 		return int(t.ID - TokenTypeValIndexOffset)
+	}
+	return -1
+}
+
+// FragHostTypeIndex returns the index of the fragment host type,
+// if it's a host-type reference token, otherwise returns -1.
+func (t Token) FragHostTypeIndex() (index int) {
+	if t.ID >= TokenTypeFragHostTypeIndexOffset {
+		return int(t.ID - TokenTypeFragHostTypeIndexOffset)
 	}
 	return -1
 }
@@ -43,6 +54,11 @@ func (t Token) VariableIndex() (index int) {
 // TokenTypeValIndexOffset defines the offset that needs to be subtracted
 // from Token.ID in order to get the index of the value when Token.ID is > 99
 const TokenTypeValIndexOffset = 100
+
+// TokenTypeFragHostTypeIndexOffset defines the offset that needs to be subtracted
+// from Token.ID in order to get the index of the fragment host type
+// when Token.ID is > 99999
+const TokenTypeFragHostTypeIndexOffset = 100000
 
 type indexRange struct {
 	IndexStart int
@@ -74,8 +90,9 @@ type typeUnion struct {
 // NewParser creates a new parser instance.
 // It's adviced to create only one parser per goroutine
 // as calling (*Parser).Parse will reset it.
-func NewParser() *Parser {
+func NewParser(schema *ast.Schema) *Parser {
 	return &Parser{
+		schema:    schema,
 		gi:        graph.NewInspector(),
 		buffer:    make([]Token, 0),
 		bufferOpr: make([]Token, 0),
@@ -99,6 +116,15 @@ func NewParser() *Parser {
 }
 
 type Parser struct {
+	schema *ast.Schema
+
+	// schemaTypeStack is used during parsing to track the schema type
+	// of a particular token's context.
+	schemaTypeStack stack.Stack[*ast.Definition]
+
+	// fragSpreadHostTypes associates fragment spreads with the host type.
+	fragSpreadHostTypes []*ast.Definition
+
 	// buffer holds the original source tokens
 	buffer []Token
 
@@ -145,6 +171,8 @@ type Parser struct {
 	// fragmentGraphEdges buffers the edges that are passed to gi
 	fragmentGraphEdges []graph.Edge
 
+	errTypeUndef         ErrorTypeUndef
+	errFieldUndef        ErrorFieldUndef
 	errSyntax            ErrorSyntax
 	errOprAnonNonExcl    ErrorOprAnonNonExcl
 	errOprNotFound       ErrorOprNotFound
@@ -163,6 +191,7 @@ type Parser struct {
 }
 
 func (r *Parser) reset() {
+	r.schemaTypeStack.Reset()
 	r.buffer = r.buffer[:0]
 	r.bufferOpr = r.bufferOpr[:0]
 	r.ordered = r.ordered[:0]
@@ -206,18 +235,45 @@ func (r *Parser) Parse(
 		})
 		switch i.Token() {
 		case gqlscan.TokenDefMut:
+			if r.schema != nil {
+				if r.schema.Mutation == nil {
+					r.errTypeUndef.TypeName = "Mutation"
+					isErr = true
+					onError(&r.errTypeUndef)
+					return true
+				}
+				r.schemaTypeStack.Push(r.schema.Mutation)
+			}
 			recentDef = gqlscan.TokenDefMut
 			r.operations = append(r.operations, indexRange{
 				IndexStart: len(r.buffer) - 1,
 			})
 
 		case gqlscan.TokenDefQry:
+			if r.schema != nil {
+				if r.schema.Query == nil {
+					r.errTypeUndef.TypeName = "Query"
+					isErr = true
+					onError(&r.errTypeUndef)
+					return true
+				}
+				r.schemaTypeStack.Push(r.schema.Query)
+			}
 			recentDef = gqlscan.TokenDefQry
 			r.operations = append(r.operations, indexRange{
 				IndexStart: len(r.buffer) - 1,
 			})
 
 		case gqlscan.TokenDefSub:
+			if r.schema != nil {
+				if r.schema.Subscription == nil {
+					r.errTypeUndef.TypeName = "Subscription"
+					isErr = true
+					onError(&r.errTypeUndef)
+					return true
+				}
+				r.schemaTypeStack.Push(r.schema.Subscription)
+			}
 			recentDef = gqlscan.TokenDefSub
 			r.operations = append(r.operations, indexRange{
 				IndexStart: len(r.buffer) - 1,
@@ -236,6 +292,36 @@ func (r *Parser) Parse(
 				break
 			}
 			stackCounter++
+
+			beforeSet := r.buffer[len(r.buffer)-2]
+			if beforeSet.ID == gqlscan.TokenArgListEnd {
+				// Seek field before the argument list
+				i := len(r.buffer) - 3
+				for ; r.buffer[i].ID != gqlscan.TokenArgList; i-- {
+				}
+				beforeSet = r.buffer[i-1]
+			}
+			switch beforeSet.ID {
+			case gqlscan.TokenField:
+				if r.schema != nil {
+					h := r.schemaTypeStack.Top()
+					f := fieldByName(h, beforeSet.Value)
+					if f == nil {
+						r.errFieldUndef.FieldName = beforeSet.Value
+						r.errFieldUndef.HostTypeName = h.Name
+						isErr = true
+						onError(&r.errTypeUndef)
+						return true
+					}
+					tp := r.schema.Types[f.Type.NamedType]
+					r.schemaTypeStack.Push(tp)
+				}
+			case gqlscan.TokenFragInline:
+				if r.schema != nil {
+					tp := r.schema.Types[string(beforeSet.Value)]
+					r.schemaTypeStack.Push(tp)
+				}
+			}
 
 		case gqlscan.TokenSetEnd:
 			if fragStackCounter > 0 {
@@ -259,6 +345,16 @@ func (r *Parser) Parse(
 				recentDef, recentFragDef = 0, nil
 			}
 		case gqlscan.TokenNamedSpread:
+			if r.schema != nil {
+				hostType := r.schemaTypeStack.Top()
+				index := len(r.fragSpreadHostTypes)
+				r.fragSpreadHostTypes = append(r.fragSpreadHostTypes, hostType)
+
+				// Override the spread token to encode
+				// the index of the host type in it.
+				r.buffer[len(r.buffer)-1].ID = makeFragSpreadHostTypeID(index)
+			}
+
 			if recentFragDef == nil {
 				r.entryFrags.Set(
 					r.buffer[len(r.buffer)-1].Value, struct{}{},
@@ -510,25 +606,58 @@ func (r *Parser) Parse(
 	// Fill operation buffer
 	selectionSetIndex := len(r.bufferOpr)
 	for ; i < len(o); i++ {
-		switch o[i].ID {
+		switch id := o[i].ID; {
 		default:
 			r.bufferOpr = append(r.bufferOpr, o[i])
 
-		case gqlscan.TokenNamedSpread:
-			// Inline fragment spread outside of fragment definitions
+		case id >= TokenTypeFragHostTypeIndexOffset && r.schema != nil:
+			fd, _ := r.fragDefs.Get(o[i].Value)
+			host := r.fragSpreadHostTypes[id-TokenTypeFragHostTypeIndexOffset]
+			fragType := r.schema.Types[string(r.buffer[fd.IndexStart+1].Value)]
 			var fragContents []Token
-			r.fragDefs.GetFn(o[i].Value, func(v *fragDef) {
-				fragContents = r.buffer[v.IndexStart+3 : v.IndexEnd-1]
-				v.Used = true
-			})
+			if isTypeDirectlyInlinable(r.schema, host, fragType) {
+				// No need to wrap the contents in a type condition.
+				// Inline fragment spread outside of fragment definitions.
+				if v := r.fragsConstructed.GetItems(o[i].Value); v != nil {
+					fragContents = v[2 : len(v)-1]
+				} else {
+					r.fragDefs.GetFn(o[i].Value, func(v *fragDef) {
+						fragContents = r.buffer[v.IndexStart+3 : v.IndexEnd]
+						fragContents[0].ID = gqlscan.TokenFragInline
+						v.Used = true
+					})
+				}
+			} else {
+				// Wrap inlined fields in a type condition.
+				// Inline fragment spread outside of fragment definitions.
+				if v := r.fragsConstructed.GetItems(o[i].Value); v != nil {
+					fragContents = v
+				} else {
+					var fragContents []Token
+					r.fragDefs.GetFn(o[i].Value, func(v *fragDef) {
+						fragContents = r.buffer[v.IndexStart+1 : v.IndexEnd]
+						fragContents[0].ID = gqlscan.TokenFragInline
+						v.Used = true
+					})
+				}
+			}
+			r.bufferOpr = append(r.bufferOpr, fragContents...)
 
+		case id == gqlscan.TokenNamedSpread:
+			// Inline fragment spread outside of fragment definitions
 			if v := r.fragsConstructed.GetItems(o[i].Value); v != nil {
 				r.bufferOpr = append(r.bufferOpr, v...)
 			} else {
+				var fragContents []Token
+				r.fragDefs.GetFn(o[i].Value, func(v *fragDef) {
+					fragContents = r.buffer[v.IndexStart+1 : v.IndexEnd]
+					fragContents[0].ID = gqlscan.TokenFragInline
+					v.Used = true
+				})
 				r.bufferOpr = append(r.bufferOpr, fragContents...)
 			}
 
-		case gqlscan.TokenVarRef:
+		case id == gqlscan.TokenVarRef:
 			// Append variable value index
 			value := r.varsConstructed.Get(o[i].Value)
 			if value.Index == -1 {
@@ -558,6 +687,24 @@ func (r *Parser) Parse(
 	}
 
 	onSuccess(r.varValues, r.bufferOpr, r.bufferOpr[selectionSetIndex:])
+}
+
+type ErrorTypeUndef struct{ TypeName string }
+
+func (e *ErrorTypeUndef) Error() string {
+	return "undefined type: " + e.TypeName
+}
+
+type ErrorFieldUndef struct {
+	HostTypeName string
+	FieldName    []byte
+}
+
+func (e *ErrorFieldUndef) Error() string {
+	return "undefined field (" +
+		string(e.FieldName) +
+		") in type " +
+		e.HostTypeName
 }
 
 type ErrorSyntax struct {
@@ -1068,7 +1215,7 @@ func (r *Parser) constructFrag(
 	rn indexRange,
 	onError func(err error),
 ) (err bool) {
-	fragSelections := r.buffer[rn.IndexStart+3 : rn.IndexEnd-1]
+	fragSelections := r.buffer[rn.IndexStart+1 : rn.IndexEnd]
 	for _, t := range fragSelections {
 		switch t.ID {
 		case gqlscan.TokenNamedSpread:
@@ -1086,6 +1233,11 @@ func (r *Parser) constructFrag(
 			r.fragsConstructed.Append(
 				makeVarValueRefTok(valueSeg.Index, t.Value),
 			)
+		case gqlscan.TokenFragTypeCond:
+			r.fragsConstructed.Append(Token{
+				ID:    gqlscan.TokenFragInline,
+				Value: t.Value,
+			})
 		default:
 			r.fragsConstructed.Append(t)
 		}
@@ -1099,4 +1251,24 @@ func makeVarValueRefTok(index int, variableName []byte) Token {
 		ID:    gqlscan.Token(TokenTypeValIndexOffset + index),
 		Value: variableName,
 	}
+}
+
+func makeFragSpreadHostTypeID(index int) gqlscan.Token {
+	return gqlscan.Token(TokenTypeFragHostTypeIndexOffset + index)
+}
+
+func fieldByName(d *ast.Definition, name []byte) *ast.FieldDefinition {
+	for _, f := range d.Fields {
+		if f.Name == string(name) {
+			return f
+		}
+	}
+	return nil
+}
+
+// isTypeDirectlyInlinable returns true if properties from child
+// are directly inlinable into type host without the need for a type condition,
+// otherwise returns false.
+func isTypeDirectlyInlinable(schema *ast.Schema, host, child *ast.Definition) bool {
+	return host.Name == child.Name
 }

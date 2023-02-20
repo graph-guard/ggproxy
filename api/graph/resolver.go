@@ -5,7 +5,6 @@ import (
 
 	"github.com/graph-guard/ggproxy/api/graph/model"
 	"github.com/graph-guard/ggproxy/config"
-	"github.com/graph-guard/ggproxy/gqlparse"
 	plog "github.com/phuslu/log"
 )
 
@@ -15,7 +14,6 @@ type Resolver struct {
 	Start    time.Time
 	Version  string
 	Conf     *config.Config
-	Parser   *gqlparse.Parser
 	Services map[string]*model.Service
 	Log      plog.Logger
 }

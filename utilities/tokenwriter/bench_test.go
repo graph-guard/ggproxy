@@ -12,7 +12,7 @@ func BenchmarkWrite(b *testing.B) {
 	for _, td := range testdata {
 		b.Run("", func(b *testing.B) {
 			var opr []gqlparse.Token
-			r := gqlparse.NewParser()
+			r := gqlparse.NewParser(nil)
 			r.Parse(
 				[]byte(td.Request),
 				[]byte(td.OperationName),

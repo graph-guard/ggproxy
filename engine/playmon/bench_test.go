@@ -13,14 +13,14 @@ var GS string
 
 func BenchmarkMatchStarwars(b *testing.B) {
 	s := testsetup.Starwars()
-	e := playmon.New(s.Config.ServicesEnabled[0])
+	service := s.Config.ServicesEnabled[0]
+	e := playmon.New(service)
 
-	p := gqlparse.NewParser()
+	p := gqlparse.NewParser(service.Schema)
 	var varvals [][]gqlparse.Token
 	var opr gqlscan.Token
 	var selset []gqlparse.Token
-	src := s.Tests[0].Client.Input.BodyJSON["query"].(string)
-	b.Logf(src)
+	src := s.Tests[1].Client.Input.BodyJSON["query"].(string)
 	p.Parse(
 		[]byte(src), nil, nil,
 		func(

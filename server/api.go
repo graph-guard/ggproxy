@@ -203,14 +203,12 @@ func makeGraphServer(
 	conf *config.Config,
 	proxyServer *Proxy,
 ) *handler.Server {
-	parser := gqlparse.NewParser()
 	services := makeServices(conf, proxyServer)
 	s := handler.NewDefaultServer(
 		generated.NewExecutableSchema(
 			generated.Config{Resolvers: &graph.Resolver{
 				Start:    start,
 				Conf:     conf,
-				Parser:   parser,
 				Services: services,
 				Log:      proxyServer.log,
 			}},
@@ -253,6 +251,7 @@ func makeService(
 ) *model.Service {
 	stats := proxyServer.GetServiceStatistics(s.ID)
 	service := &model.Service{
+		Parser:           gqlparse.NewParser(s.Schema),
 		Stats:            stats,
 		TemplatesByID:    make(map[string]*model.Template, len(s.Templates)),
 		ID:               s.ID,

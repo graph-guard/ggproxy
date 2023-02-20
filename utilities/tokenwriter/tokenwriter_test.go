@@ -180,7 +180,7 @@ var testdata = []struct {
 func TestWrite(t *testing.T) {
 	for _, td := range testdata {
 		t.Run("", func(t *testing.T) {
-			r := gqlparse.NewParser()
+			r := gqlparse.NewParser(nil)
 			r.Parse(
 				[]byte(td.Request),
 				[]byte(td.OperationName),

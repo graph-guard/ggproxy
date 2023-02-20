@@ -63,7 +63,7 @@ func (r *serviceResolver) MatchAll(ctx context.Context, obj *model.Service, quer
 	}
 
 	startParsing := time.Now()
-	r.Resolver.Parser.Parse(
+	obj.Parser.Parse(
 		[]byte(query), oprName, varsJSON,
 		func(
 			varVals [][]gqlparse.Token,
@@ -118,7 +118,7 @@ func (r *serviceResolver) Match(ctx context.Context, obj *model.Service, query s
 	}
 
 	startParsing := time.Now()
-	r.Resolver.Parser.Parse(
+	obj.Parser.Parse(
 		[]byte(query), oprName, varsJSON,
 		func(
 			varVals [][]gqlparse.Token,

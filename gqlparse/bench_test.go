@@ -4,13 +4,25 @@ import (
 	"testing"
 
 	"github.com/graph-guard/ggproxy/gqlparse"
+	"github.com/vektah/gqlparser/v2"
+	"github.com/vektah/gqlparser/v2/ast"
 )
 
 var GI int
 
 func BenchmarkParse(b *testing.B) {
-	r := gqlparse.NewParser()
 	for _, td := range testdata {
+		var schema *ast.Schema
+		if td.Data.Schema != "" {
+			var err error
+			if schema, err = gqlparser.LoadSchema(&ast.Source{
+				Name: "schema.graphqls", Input: td.Data.Schema,
+			}); err != nil {
+				b.Fatalf("parsing schema: %v", err)
+			}
+		}
+
+		r := gqlparse.NewParser(schema)
 		b.Run(td.Decl, func(b *testing.B) {
 			src := []byte(td.Data.Src)
 			opr := []byte(td.Data.OprName)
@@ -32,8 +44,18 @@ func BenchmarkParse(b *testing.B) {
 }
 
 func BenchmarkParseErr(b *testing.B) {
-	r := gqlparse.NewParser()
 	for _, td := range testdataErr {
+		var schema *ast.Schema
+		if td.Data.Schema != "" {
+			var err error
+			if schema, err = gqlparser.LoadSchema(&ast.Source{
+				Name: "schema.graphqls", Input: td.Data.Schema,
+			}); err != nil {
+				b.Fatalf("parsing schema: %v", err)
+			}
+		}
+
+		r := gqlparse.NewParser(schema)
 		b.Run(td.Decl, func(b *testing.B) {
 			src := []byte(td.Data.Src)
 			opr := []byte(td.Data.OprName)

@@ -97,7 +97,7 @@ func NewProxy(
 					for _, t := range s.TemplatesEnabled {
 						d[t.ID] = t.GQTTemplate
 					}
-					p := gqlparse.NewParser()
+					p := gqlparse.NewParser(s.Schema)
 					e := playmon.New(s)
 					return &engine{
 						Parser: p,

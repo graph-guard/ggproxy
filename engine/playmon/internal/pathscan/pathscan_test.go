@@ -257,7 +257,7 @@ func TestInTokens(t *testing.T) {
 	for _, tt := range testsInTokens {
 		t.Run(tt.Name, func(t *testing.T) {
 			ps := pathscan.New(0, 0)
-			p := gqlparse.NewParser()
+			p := gqlparse.NewParser(nil)
 			actualStructuralPaths := []uint64{}
 			actualArgPaths := make(map[uint64]int)
 			actualVarPaths := make(map[uint64]int)
