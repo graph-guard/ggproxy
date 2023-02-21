@@ -90,7 +90,8 @@ func (e *Engine) Match(
 	variableValues [][]gqlparse.Token,
 	queryType gqlscan.Token,
 	selectionSet []gqlparse.Token,
-) (id string) {
+	onMatch func(*config.Template) (stop bool),
+) {
 	e.reset()
 	var mismatch bool
 	e.pathScanner.InTokens(
@@ -118,7 +119,7 @@ func (e *Engine) Match(
 		},
 	)
 	if mismatch {
-		return ""
+		return
 	}
 
 	e.matcher.Match(e.structuralPaths, func(t *config.Template) (stop bool) {
@@ -130,18 +131,6 @@ func (e *Engine) Match(
 				return false
 			}
 		}
-		id = t.ID
-		return false
+		return onMatch(t)
 	})
-	return id
-}
-
-// MatchAll calls fn for every matching template.
-func (e *Engine) MatchAll(
-	variableValues [][]gqlparse.Token,
-	queryType gqlscan.Token,
-	selectionSet []gqlparse.Token,
-	fn func(id string),
-) {
-	panic("todo")
 }

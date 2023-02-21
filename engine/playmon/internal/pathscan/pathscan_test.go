@@ -1,7 +1,6 @@
 package pathscan_test
 
 import (
-	"fmt"
 	"sort"
 	"testing"
 
@@ -553,8 +552,6 @@ var testsInAST = []struct {
 func TestInAST(t *testing.T) {
 	for _, tt := range testsInAST {
 		t.Run(tt.Name, func(t *testing.T) {
-			x := tt.Name
-			fmt.Println(x)
 			o, _, errs := gqt.Parse([]byte(tt.GQTTemplateSrc))
 			require.Nil(t, errs)
 

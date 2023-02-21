@@ -251,9 +251,12 @@ func makeService(
 ) *model.Service {
 	stats := proxyServer.GetServiceStatistics(s.ID)
 	service := &model.Service{
-		Parser:           gqlparse.NewParser(s.Schema),
-		Stats:            stats,
-		TemplatesByID:    make(map[string]*model.Template, len(s.Templates)),
+		Parser: gqlparse.NewParser(s.Schema),
+		Stats:  stats,
+		Templates: make(
+			map[*config.Template]*model.Template,
+			len(s.Templates),
+		),
 		ID:               s.ID,
 		ForwardURL:       s.ForwardURL,
 		Enabled:          s.Enabled,
@@ -277,7 +280,7 @@ func makeService(
 				Enabled: t.Enabled,
 			}
 			service.TemplatesEnabled = append(service.TemplatesEnabled, tm)
-			service.TemplatesByID[t.ID] = tm
+			service.Templates[t] = tm
 		}
 
 		service.Engine = playmon.New(s)

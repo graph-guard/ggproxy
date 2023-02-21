@@ -1,16 +1,17 @@
 package model
 
 import (
+	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engine/playmon"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/statistics"
 )
 
 type Service struct {
-	Parser        *gqlparse.Parser
-	Engine        *playmon.Engine
-	TemplatesByID map[string]*Template
-	Stats         *statistics.ServiceSync
+	Parser    *gqlparse.Parser
+	Engine    *playmon.Engine
+	Templates map[*config.Template]*Template
+	Stats     *statistics.ServiceSync
 
 	ID                string      `json:"id"`
 	TemplatesEnabled  []*Template `json:"templatesEnabled"`

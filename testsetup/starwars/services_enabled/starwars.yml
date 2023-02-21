@@ -9,5 +9,7 @@ forward-url: "http://localhost:8080/starwars"
 # true for the reduced version.
 forward-reduced: true
 
+schema: starwars.graphqls
+
 all-templates: starwars/templates_enabled
 enabled-templates: starwars/templates_enabled

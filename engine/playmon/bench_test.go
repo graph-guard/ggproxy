@@ -3,6 +3,7 @@ package playmon_test
 import (
 	"testing"
 
+	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engine/playmon"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/testsetup"
@@ -41,7 +42,44 @@ func BenchmarkMatchStarwars(b *testing.B) {
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		GS = e.Match(varvals, opr, selset)
+		e.Match(
+			varvals, opr, selset,
+			func(t *config.Template) (stop bool) {
+				GS = t.ID
+				return false
+			},
+		)
+	}
+}
+
+func BenchmarkMatchStarwarsWithParser(b *testing.B) {
+	s := testsetup.Starwars()
+	service := s.Config.ServicesEnabled[0]
+	e := playmon.New(service)
+
+	p := gqlparse.NewParser(service.Schema)
+	src := []byte(s.Tests[1].Client.Input.BodyJSON["query"].(string))
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		p.Parse(
+			src, nil, nil,
+			func(
+				varValues [][]gqlparse.Token,
+				operation, selectionSet []gqlparse.Token,
+			) {
+				e.Match(
+					varValues, operation[0].ID, selectionSet,
+					func(t *config.Template) (stop bool) {
+						GS = t.ID
+						return false
+					},
+				)
+			},
+			func(err error) {
+				b.Fatalf("parsing request: %v", err)
+			},
+		)
 	}
 }
 

@@ -193,8 +193,15 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 			operation []gqlparse.Token,
 			selectionSet []gqlparse.Token,
 		) {
-			templateID := m.Engine.Match(varVals, operation[0].ID, selectionSet)
-			if templateID == "" {
+			var tmpl *config.Template
+			m.Engine.Match(
+				varVals, operation[0].ID, selectionSet,
+				func(t *config.Template) (stop bool) {
+					tmpl = t
+					return false
+				},
+			)
+			if tmpl == nil {
 				timeProcessing := time.Since(start)
 				service.statistics.Update(
 					len(body), 0,
@@ -207,7 +214,7 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 				return
 			}
 
-			templateStatistics := service.templateStatistics[templateID]
+			templateStatistics := service.templateStatistics[tmpl.ID]
 
 			timeProcessing := time.Since(start)
 			startForward := time.Now()

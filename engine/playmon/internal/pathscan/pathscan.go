@@ -221,11 +221,6 @@ func (s *PathScanner) InTokens(
 	}
 }
 
-func (s *PathScanner) valByte(element byte) {
-	s.valStack.Push(1)
-	s.valPathBuf = append(s.valPathBuf, element)
-}
-
 func (s *PathScanner) valWithDiv(div byte, element []byte) {
 	s.valStack.Push(1 + len(element))
 	s.valPathBuf = append(s.valPathBuf, div)
@@ -236,11 +231,6 @@ func (s *PathScanner) valPop() {
 	t := s.valStack.Top()
 	s.valPathBuf = s.valPathBuf[:len(s.valPathBuf)-t]
 	s.valStack.Pop()
-}
-
-func (s *PathScanner) structuralByte(element byte) {
-	s.structuralStack.Push(1)
-	s.structuralPathBuf = append(s.structuralPathBuf, element)
 }
 
 func (s *PathScanner) structuralWithDiv(div byte, element []byte) {

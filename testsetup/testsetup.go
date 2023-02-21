@@ -113,31 +113,39 @@ func readTests(fsys fs.FS, root string) ([]Test, error) {
 			return nil, fmt.Errorf("decoding YAML %q: %w", p, err)
 		}
 
-		isXOR(
+		if err := isXOR(
 			m.Client.Input.Body,
 			m.Client.Input.BodyJSON,
 			"client.input.body",
 			"client.input.body(JSON)",
-		)
-		isXOR(
+		); err != nil {
+			return nil, err
+		}
+		if err := isXOR(
 			m.Client.ExpectResponse.Body,
 			m.Client.ExpectResponse.BodyJSON,
 			"client.expect-response.body",
 			"client.expect-response.body(JSON)",
-		)
+		); err != nil {
+			return nil, err
+		}
 		if m.Destination != nil {
-			isXOR(
+			if err := isXOR(
 				m.Destination.ExpectForwarded.Body,
 				m.Destination.ExpectForwarded.BodyJSON,
 				"destination.expect-forwarded.body",
 				"destination.expect-forwarded.body(JSON)",
-			)
-			isXOR(
+			); err != nil {
+				return nil, err
+			}
+			if err := isXOR(
 				m.Destination.Response.Body,
 				m.Destination.Response.BodyJSON,
 				"destination.expect-forwarded.body",
 				"destination.expect-forwarded.body(JSON)",
-			)
+			); err != nil {
+				return nil, err
+			}
 		}
 
 		tests = append(tests, Test{
