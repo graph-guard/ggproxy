@@ -126,7 +126,10 @@ func (e *Engine) Match(
 		tm := e.templates[t.ID]
 		for i := range e.argumentsSet {
 			if !tm.ConstraintChecker.Check(
-				e.varValues, e.argumentsSet[i].PathHash, e.argumentsSet[i].Value,
+				variableValues,
+				e.varValues,
+				e.argumentsSet[i].PathHash,
+				e.argumentsSet[i].Value,
 			) {
 				return false
 			}

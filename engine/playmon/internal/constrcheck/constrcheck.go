@@ -26,6 +26,9 @@ type Checker struct {
 	checkers      map[uint64]check
 	pathByVarDecl map[*gqt.VariableDeclaration]uint64
 
+	// gqlVarVals is set in every call to Check.
+	gqlVarVals [][]gqlparse.Token
+
 	// varValues is set in every call to Check.
 	varValues map[uint64][]gqlparse.Token
 
@@ -120,6 +123,7 @@ func (c *Checker) pushStackBool(v bool) {
 // Check returns true if the value for the given path is accepted,
 // otherwise returns false.
 func (c *Checker) Check(
+	gqlVarVals [][]gqlparse.Token,
 	varVals map[uint64][]gqlparse.Token,
 	path uint64,
 	value []gqlparse.Token,
@@ -129,7 +133,10 @@ func (c *Checker) Check(
 	if cf == nil {
 		return false
 	}
-	c.varValues, c.inputValue, c.checkedValue = varVals, value, value
+	c.gqlVarVals = gqlVarVals
+	c.varValues = varVals
+	c.inputValue = value
+	c.checkedValue = value
 	return cf(c)
 }
 
@@ -460,7 +467,9 @@ func makeCheck(
 	switch e := e.(type) {
 	case *gqt.ConstrAny:
 		return func(c *Checker) (match bool) {
-			if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
+			if wrong, _ := isWrongType(
+				c.gqlVarVals, expect, c.checkedValue, schema,
+			); wrong {
 				return false
 			}
 
@@ -850,7 +859,9 @@ func makeCheck(
 		}
 		itemCheck := makeCheck(e.Constraint, expectItem, schema)
 		return func(c *Checker) (match bool) {
-			if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
+			if wrong, _ := isWrongType(
+				c.gqlVarVals, expect, c.checkedValue, schema,
+			); wrong {
 				return false
 			}
 			for c.checkedValue[0].ID != gqlscan.TokenArr {
@@ -1018,7 +1029,7 @@ func Designation(c *Checker, e gqt.Expression) string {
 
 func (c *Checker) expectOrNum(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
+		wrongType, _ = isWrongType(c.gqlVarVals, expect, c.checkedValue, c.schema)
 		return wrongType
 	}
 	return c.checkedValue[0].ID != gqlscan.TokenInt &&
@@ -1027,7 +1038,7 @@ func (c *Checker) expectOrNum(expect *gqlast.Type) (wrongType bool) {
 
 func (c *Checker) expectOrInt(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
+		wrongType, _ = isWrongType(c.gqlVarVals, expect, c.checkedValue, c.schema)
 		return wrongType
 	}
 	return c.checkedValue[0].ID != gqlscan.TokenInt
@@ -1035,7 +1046,7 @@ func (c *Checker) expectOrInt(expect *gqlast.Type) (wrongType bool) {
 
 func (c *Checker) expectOrFloat(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
+		wrongType, _ = isWrongType(c.gqlVarVals, expect, c.checkedValue, c.schema)
 		return wrongType
 	}
 	return c.checkedValue[0].ID != gqlscan.TokenFloat
@@ -1043,7 +1054,7 @@ func (c *Checker) expectOrFloat(expect *gqlast.Type) (wrongType bool) {
 
 func (c *Checker) expectOrString(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
+		wrongType, _ = isWrongType(c.gqlVarVals, expect, c.checkedValue, c.schema)
 		return wrongType
 	}
 	return c.checkedValue[0].ID != gqlscan.TokenStr &&
@@ -1052,7 +1063,7 @@ func (c *Checker) expectOrString(expect *gqlast.Type) (wrongType bool) {
 
 func (c *Checker) expectOrEnum(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
+		wrongType, _ = isWrongType(c.gqlVarVals, expect, c.checkedValue, c.schema)
 		return wrongType
 	}
 	return c.checkedValue[0].ID != gqlscan.TokenEnumVal
@@ -1060,7 +1071,7 @@ func (c *Checker) expectOrEnum(expect *gqlast.Type) (wrongType bool) {
 
 func (c *Checker) expectOrBool(expect *gqlast.Type) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
+		wrongType, _ = isWrongType(c.gqlVarVals, expect, c.checkedValue, c.schema)
 		return wrongType
 	}
 	return c.checkedValue[0].ID != gqlscan.TokenTrue &&
@@ -1071,7 +1082,7 @@ func (c *Checker) expectOrHasLen(
 	expect *gqlast.Type,
 ) (wrongType bool) {
 	if expect != nil {
-		wrongType, _ = isWrongType(expect, c.checkedValue, c.schema)
+		wrongType, _ = isWrongType(c.gqlVarVals, expect, c.checkedValue, c.schema)
 		return wrongType
 	}
 	return c.checkedValue[0].ID != gqlscan.TokenArr &&
@@ -1286,7 +1297,7 @@ func makeEqNull(
 	schema *gqlast.Schema,
 ) check {
 	return func(c *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
+		if wrong, _ := isWrongType(c.gqlVarVals, expect, c.checkedValue, schema); wrong {
 			return false
 		}
 		t := c.checkedValue[0].ID
@@ -1300,7 +1311,9 @@ func makeNotEqNull(
 	schema *gqlast.Schema,
 ) check {
 	return func(c *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
+		if wrong, _ := isWrongType(
+			c.gqlVarVals, expect, c.checkedValue, schema,
+		); wrong {
 			return false
 		}
 		t := c.checkedValue[0].ID
@@ -1367,7 +1380,7 @@ func makeEqObject(
 		fieldChecked[v.Name.Name] = false
 	}
 	return func(c *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
+		if wrong, _ := isWrongType(c.gqlVarVals, expect, c.checkedValue, schema); wrong {
 			return false
 		}
 		if c.checkedValue[0].ID != gqlscan.TokenObj {
@@ -1433,7 +1446,9 @@ func makeNotEqObject(
 		fieldChecked[v.Name.Name] = false
 	}
 	return func(c *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
+		if wrong, _ := isWrongType(
+			c.gqlVarVals, expect, c.checkedValue, schema,
+		); wrong {
 			return false
 		}
 		if c.checkedValue[0].ID != gqlscan.TokenObj {
@@ -1487,7 +1502,9 @@ func makeEqExpression(
 	schema *gqlast.Schema,
 ) check {
 	return func(c *Checker) (match bool) {
-		if wrong, _ := isWrongType(expect, c.checkedValue, schema); wrong {
+		if wrong, _ := isWrongType(
+			c.gqlVarVals, expect, c.checkedValue, schema,
+		); wrong {
 			return false
 		}
 		c.resolveExpr(v)

@@ -9,6 +9,7 @@ import (
 // isWrongType returns true if the value represented in input
 // doesn't correspond to the type defined by expect.
 func isWrongType(
+	gqlVarValues [][]gqlparse.Token,
 	expect *gqlast.Type,
 	input []gqlparse.Token,
 	schema *gqlast.Schema,
@@ -16,6 +17,16 @@ func isWrongType(
 	var def *gqlast.Definition
 	if expect != nil {
 		def = schema.Types[expect.NamedType]
+	}
+
+	if input[0].ID >= gqlparse.TokenTypeValIndexOffset &&
+		input[0].ID < gqlparse.TokenTypeFragHostTypeIndexOffset {
+		return isWrongType(
+			gqlVarValues,
+			expect,
+			gqlVarValues[input[0].VariableIndex()],
+			schema,
+		)
 	}
 
 	switch input[0].ID {
@@ -38,7 +49,7 @@ func isWrongType(
 				return false, input
 			}
 			var wrongType bool
-			wrongType, input = isWrongType(expect, input, schema)
+			wrongType, input = isWrongType(gqlVarValues, expect, input, schema)
 			if wrongType {
 				return true, nil
 			}
@@ -131,7 +142,7 @@ func isWrongType(
 					// Check field value
 					var wrongType bool
 					wrongType, input = isWrongType(
-						def.Fields[i].Type, input[1:], schema,
+						gqlVarValues, def.Fields[i].Type, input[1:], schema,
 					)
 					if wrongType {
 						return true, nil

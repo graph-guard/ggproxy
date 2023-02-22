@@ -14,6 +14,7 @@ func TestIsWrongType_False(t *testing.T) {
 	for _, tt := range []struct {
 		Name       string
 		Schema     string
+		GQLVarVals [][]gqlparse.Token
 		ExpectType *gqlast.Type
 		Input      []gqlparse.Token
 	}{
@@ -334,6 +335,18 @@ func TestIsWrongType_False(t *testing.T) {
 				{ID: gqlscan.TokenInt, Value: []byte("42")},
 			},
 		},
+		{
+			Name:       "expect_float_get_int",
+			Schema:     `type Query { x:Int }`,
+			ExpectType: &gqlast.Type{NamedType: "Float"},
+			GQLVarVals: [][]gqlparse.Token{
+				{ /*Not to be used*/ },
+				{{ID: gqlscan.TokenInt, Value: []byte("42")}},
+			},
+			Input: []gqlparse.Token{
+				{ID: gqlparse.TokenTypeValIndexOffset + 1},
+			},
+		},
 	} {
 		t.Run(tt.Name, func(t *testing.T) {
 			var s *gqlast.Schema
@@ -351,7 +364,7 @@ func TestIsWrongType_False(t *testing.T) {
 				)
 			}
 
-			r, _ := isWrongType(tt.ExpectType, tt.Input, s)
+			r, _ := isWrongType(tt.GQLVarVals, tt.ExpectType, tt.Input, s)
 			require.False(t, r)
 		})
 	}
@@ -361,9 +374,22 @@ func TestIsWrongType_True(t *testing.T) {
 	for _, tt := range []struct {
 		Name       string
 		Schema     string
+		GQLVarVals [][]gqlparse.Token
 		ExpectType *gqlast.Type
 		Input      []gqlparse.Token
 	}{
+		{
+			Name:   "expect_non-null_int_get_null",
+			Schema: `type Query { x:Int }`,
+			GQLVarVals: [][]gqlparse.Token{
+				{ /*Not used*/ },
+				{{ID: gqlscan.TokenNull}},
+			},
+			ExpectType: &gqlast.Type{NamedType: "Int", NonNull: true},
+			Input: []gqlparse.Token{
+				{ID: gqlparse.TokenTypeValIndexOffset + 1},
+			},
+		},
 		{
 			Name:       "expect_non-null_int_get_null",
 			Schema:     `type Query { x:Int }`,
@@ -500,7 +526,7 @@ func TestIsWrongType_True(t *testing.T) {
 					"type expectations are always schema-aware",
 				)
 			}
-			r, _ := isWrongType(tt.ExpectType, tt.Input, s)
+			r, _ := isWrongType(tt.GQLVarVals, tt.ExpectType, tt.Input, s)
 			require.True(t, r)
 		})
 	}
