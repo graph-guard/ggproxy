@@ -26,6 +26,12 @@ type Token struct {
 }
 
 func (t Token) String() string {
+	if t.ID >= TokenTypeValIndexOffset &&
+		t.ID < TokenTypeFragHostTypeIndexOffset {
+		return fmt.Sprintf("gqlparse_var_index [%d]", t.VariableIndex())
+	} else if t.ID >= TokenTypeFragHostTypeIndexOffset {
+		return fmt.Sprintf("gqlparse_fht_index [%d]", t.FragHostTypeIndex())
+	}
 	if t.Value == nil {
 		return t.ID.String()
 	}
