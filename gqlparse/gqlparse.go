@@ -942,6 +942,14 @@ func (r *Parser) validateAndIndexVars(
 						string(expect.TypeName) != "ID" {
 						isErr = true
 					}
+				case gqlscan.TokenEnumVal:
+					i++
+					if r.schema != nil {
+						if t := r.schema.Types[string(expect.TypeName)]; t != nil &&
+							t.Kind != ast.Enum {
+							isErr = true
+						}
+					}
 				case gqlscan.TokenObj:
 					i++
 				SKIP_OBJ_INTERNALS:
