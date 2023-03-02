@@ -137,7 +137,7 @@ func GetSetups(t *testing.T) []testsetup.Setup {
 	return []testsetup.Setup{
 		testsetup.Starwars(),
 		testsetup.Test1(),
-		testsetup.Test2(),
+		testsetup.InputsSchema(),
 	}
 }
 

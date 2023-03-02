@@ -1,14 +1,16 @@
-package gqlparse_test
+package scanval_test
 
 import (
 	"testing"
 
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/scanval"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetValLen(t *testing.T) {
+func TestLength(t *testing.T) {
 	for _, tt := range []struct {
 		Name   string
 		Input  []gqlparse.Token
@@ -169,7 +171,7 @@ func TestGetValLen(t *testing.T) {
 		},
 	} {
 		t.Run(tt.Name, func(t *testing.T) {
-			a := gqlparse.GetValLen(tt.Input)
+			a := scanval.Length(&tokenreader.Reader{Main: tt.Input})
 			require.Equal(t, tt.Expect, a)
 		})
 	}

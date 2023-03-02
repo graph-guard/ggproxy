@@ -20,12 +20,12 @@ var fsStarwars embed.FS
 //go:embed test1
 var fsTest1 embed.FS
 
-//go:embed test2
-var fsTest2 embed.FS
+//go:embed inputs_schema
+var fsInputsSchema embed.FS
 
-func Starwars() Setup { return read(fsStarwars, "starwars") }
-func Test1() Setup    { return read(fsTest1, "test1") }
-func Test2() Setup    { return read(fsTest2, "test2") }
+func Starwars() Setup     { return read(fsStarwars, "starwars") }
+func Test1() Setup        { return read(fsTest1, "test1") }
+func InputsSchema() Setup { return read(fsInputsSchema, "inputs_schema") }
 
 func read(fsys fs.FS, root string) Setup {
 	c, err := config.Read(fsys, root, filepath.Join(root, "config.yml"))

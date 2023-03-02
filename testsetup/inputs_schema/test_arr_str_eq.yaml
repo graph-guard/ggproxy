@@ -3,8 +3,13 @@ client:
     method: POST
     endpoint: /service_a
     body(JSON):
-      query: 'mutation X { a { a0(a0_0: [ 0 ]) } }'
-      operationName: 'X'
+      query: >
+        mutation(
+          $foo:String! = "foo",
+          $bar:String! = "bar",
+        ) {
+          arr_str_eq(a: [$foo, $bar])
+        }
 
   expect-response:
     status: 200
@@ -16,8 +21,7 @@ client:
       X-Custom-Header: value
     body(JSON):
       data:
-        a:
-          a0: 'foo'
+        arr_str_eq: ["foo", "bar"]
 
 destination:
   expect-forwarded:
@@ -31,8 +35,13 @@ destination:
       User-Agent: ^fasthttp$
       Date: .
     body(JSON):
-      query: 'mutation X { a { a0(a0_0: [ 0 ]) } }'
-      operationName: 'X'
+      query: >
+        mutation(
+          $foo:String! = "foo",
+          $bar:String! = "bar",
+        ) {
+          arr_str_eq(a: [$foo, $bar])
+        }
 
   response:
     status: 200
@@ -40,8 +49,7 @@ destination:
       X-Custom-Header: value
     body(JSON):
       data:
-        a:
-          a0: 'foo'
+        arr_str_eq: ["foo", "bar"]
 
 logs:
   - level: info
@@ -55,4 +63,10 @@ logs:
     path: /service_a
   - level: debug
     path: /service_a
-    query: '{"operationName":"X","query":"mutation X { a { a0(a0_0: [ 0 ]) } }"}'
+    query: >
+      mutation(
+        $foo:String! = "foo",
+        $bar:String! = "bar",
+      ) {
+        arr_str_eq(a: [$foo, $bar])
+      }

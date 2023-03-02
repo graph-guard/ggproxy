@@ -59,6 +59,34 @@ func TestTop(t *testing.T) {
 	require.Equal(t, 0, st.Top())
 }
 
+func TestTopOffset(t *testing.T) {
+	st := stack.New[int](2)
+	st.Push(1)
+	st.Push(2)
+	st.Push(3)
+	require.Equal(t, 3, st.TopOffset(0))
+	require.Equal(t, 2, st.TopOffset(1))
+	require.Equal(t, 1, st.TopOffset(2))
+	require.Zero(t, st.TopOffset(3))
+	st.Pop()
+	require.Equal(t, 2, st.TopOffset(0))
+	require.Equal(t, 1, st.TopOffset(1))
+	require.Zero(t, st.TopOffset(2))
+	require.Zero(t, st.TopOffset(3))
+}
+
+func TestTopOffsetNeg(t *testing.T) {
+	st := stack.New[int](2)
+	st.Push(1)
+	st.Push(2)
+	require.Panics(t, func() {
+		require.Zero(t, st.TopOffset(-1))
+	})
+	require.Panics(t, func() {
+		require.Zero(t, st.TopOffset(-2))
+	})
+}
+
 func TestTopOffsetFn(t *testing.T) {
 	st := stack.New[int](2)
 	st.Push(0)
@@ -74,6 +102,18 @@ func TestTopOffsetFn(t *testing.T) {
 	require.Equal(t, 20, st.TopPop())
 	st.Pop() // 10
 	require.Equal(t, 0, st.Top())
+}
+
+func TestTopOffsetFnNeg(t *testing.T) {
+	st := stack.New[int](2)
+	st.Push(1)
+	st.Push(2)
+	require.Panics(t, func() {
+		st.TopOffsetFn(-1, func(t *int) {})
+	})
+	require.Panics(t, func() {
+		st.TopOffsetFn(-2, func(t *int) {})
+	})
 }
 
 func TestGet(t *testing.T) {

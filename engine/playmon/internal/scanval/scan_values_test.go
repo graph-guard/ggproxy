@@ -1,9 +1,11 @@
-package gqlparse_test
+package scanval_test
 
 import (
 	"fmt"
 	"testing"
 
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/scanval"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/assert"
@@ -433,12 +435,16 @@ func TestScanValues(t *testing.T) {
 	} {
 		t.Run(tt.Name, func(t *testing.T) {
 			actual := [][]gqlparse.Token{}
-			stopped := gqlparse.ScanValues(
-				tt.Input,
-				func(t []gqlparse.Token) (stop bool) {
-					cp := make([]gqlparse.Token, len(t))
-					copy(cp, t)
+			actualCounter := 0
+			stopped := scanval.ScanValues(
+				&tokenreader.Reader{Main: tt.Input},
+				func(r *tokenreader.Reader) (stop bool) {
+					var cp []gqlparse.Token
+					for i := 0; !r.EOF() && i < len(tt.Expect[actualCounter]); i++ {
+						cp = append(cp, r.ReadOne())
+					}
 					actual = append(actual, cp)
+					actualCounter++
 					return false
 				},
 			)

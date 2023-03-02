@@ -3,6 +3,7 @@ package constrcheck
 import (
 	"testing"
 
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"
@@ -364,7 +365,7 @@ func TestIsWrongType_False(t *testing.T) {
 				)
 			}
 
-			r, _ := isWrongType(tt.GQLVarVals, tt.ExpectType, tt.Input, s)
+			r := isWrongType(&tokenreader.Reader{Main: tt.Input}, tt.ExpectType, s)
 			require.False(t, r)
 		})
 	}
@@ -526,7 +527,7 @@ func TestIsWrongType_True(t *testing.T) {
 					"type expectations are always schema-aware",
 				)
 			}
-			r, _ := isWrongType(tt.GQLVarVals, tt.ExpectType, tt.Input, s)
+			r := isWrongType(&tokenreader.Reader{Main: tt.Input}, tt.ExpectType, s)
 			require.True(t, r)
 		})
 	}

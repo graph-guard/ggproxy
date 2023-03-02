@@ -121,12 +121,17 @@ func NewParser(schema *ast.Schema) *Parser {
 	}
 }
 
+type typeStackFrame struct {
+	HostType  *ast.Definition
+	FieldType *ast.Definition
+}
+
 type Parser struct {
 	schema *ast.Schema
 
 	// schemaTypeStack is used during parsing to track the schema type
 	// of a particular token's context.
-	schemaTypeStack stack.Stack[*ast.Definition]
+	schemaTypeStack stack.Stack[typeStackFrame]
 
 	// fragSpreadHostTypes associates fragment spreads with the host type.
 	fragSpreadHostTypes []*ast.Definition
@@ -179,6 +184,7 @@ type Parser struct {
 
 	errTypeUndef         ErrorTypeUndef
 	errFieldUndef        ErrorFieldUndef
+	errCantBeOfType      ErrorCantBeOfType
 	errSyntax            ErrorSyntax
 	errOprAnonNonExcl    ErrorOprAnonNonExcl
 	errOprNotFound       ErrorOprNotFound
@@ -212,6 +218,12 @@ func (r *Parser) reset() {
 	r.fragmentGraphEdges = r.fragmentGraphEdges[:0]
 }
 
+var (
+	typeNameQuery        = []byte("Query")
+	typeNameMutation     = []byte("Mutation")
+	typeNameSubscription = []byte("Subscription")
+)
+
 // Parse calls onSuccess in case of success where operation
 // only contains the relevant set of tokens.
 // onError is called in case of an error.
@@ -233,22 +245,25 @@ func (r *Parser) Parse(
 	var stackCounter int
 	var fragStackCounter int
 	var recentFragDef []byte
+	var recentHost Token
 
 	if serr := gqlscan.Scan(src, func(i *gqlscan.Iterator) bool {
-		r.buffer = append(r.buffer, Token{
+		tk := Token{
 			ID:    i.Token(),
 			Value: i.Value(),
-		})
+		}
+		r.buffer = append(r.buffer, tk)
 		switch i.Token() {
 		case gqlscan.TokenDefMut:
 			if r.schema != nil {
 				if r.schema.Mutation == nil {
-					r.errTypeUndef.TypeName = "Mutation"
+					r.errTypeUndef.Location = locFromItr(i)
+					r.errTypeUndef.TypeName = typeNameMutation
 					isErr = true
 					onError(&r.errTypeUndef)
 					return true
 				}
-				r.schemaTypeStack.Push(r.schema.Mutation)
+				recentHost = tk
 			}
 			recentDef = gqlscan.TokenDefMut
 			r.operations = append(r.operations, indexRange{
@@ -258,12 +273,13 @@ func (r *Parser) Parse(
 		case gqlscan.TokenDefQry:
 			if r.schema != nil {
 				if r.schema.Query == nil {
-					r.errTypeUndef.TypeName = "Query"
+					r.errTypeUndef.Location = locFromItr(i)
+					r.errTypeUndef.TypeName = typeNameQuery
 					isErr = true
 					onError(&r.errTypeUndef)
 					return true
 				}
-				r.schemaTypeStack.Push(r.schema.Query)
+				recentHost = tk
 			}
 			recentDef = gqlscan.TokenDefQry
 			r.operations = append(r.operations, indexRange{
@@ -273,24 +289,66 @@ func (r *Parser) Parse(
 		case gqlscan.TokenDefSub:
 			if r.schema != nil {
 				if r.schema.Subscription == nil {
-					r.errTypeUndef.TypeName = "Subscription"
+					r.errTypeUndef.Location = locFromItr(i)
+					r.errTypeUndef.TypeName = typeNameSubscription
 					isErr = true
 					onError(&r.errTypeUndef)
 					return true
 				}
-				r.schemaTypeStack.Push(r.schema.Subscription)
+				recentHost = tk
 			}
 			recentDef = gqlscan.TokenDefSub
 			r.operations = append(r.operations, indexRange{
 				IndexStart: len(r.buffer) - 1,
 			})
 
-		case gqlscan.TokenFragInline:
-			if i.Value() != nil {
-				break
+		case gqlscan.TokenField:
+			recentHost = tk
+			name := i.Value()
+			if r.schema != nil {
+				h := r.schemaTypeStack.Top()
+				f := fieldByName(h.HostType, name)
+				if f == nil {
+					r.errFieldUndef.Location = locFromItr(i)
+					r.errFieldUndef.FieldName = name
+					r.errFieldUndef.HostTypeName = h.HostType.Name
+					isErr = true
+					onError(&r.errFieldUndef)
+					return true
+				}
+				tp := r.schema.Types[f.Type.NamedType]
+				r.schemaTypeStack.TopOffsetFn(0, func(f *typeStackFrame) {
+					f.FieldType = tp
+				})
 			}
-			r.buffer = r.buffer[:len(r.buffer)-1]
-			fragStackCounter++
+
+		case gqlscan.TokenFragInline:
+			recentHost.ID = 0
+			if typeName := i.Value(); typeName == nil {
+				// Anonymous fragment
+				r.buffer = r.buffer[:len(r.buffer)-1]
+				fragStackCounter++
+			} else if r.schema != nil {
+				tp := r.schema.Types[string(typeName)]
+				if tp == nil {
+					r.errTypeUndef.Location = locFromItr(i)
+					r.errTypeUndef.TypeName = typeName
+					isErr = true
+					onError(&r.errTypeUndef)
+					return true
+				}
+				host := r.schemaTypeStack.Top().HostType
+				if !isPossibleType(r.schema, typeName, host) {
+					r.errCantBeOfType.Location = locFromItr(i)
+					r.errCantBeOfType.Kind = astTypeKindToString(host)
+					r.errCantBeOfType.HostTypeName = host.Name
+					r.errCantBeOfType.SpreadTypeName = typeName
+					isErr = true
+					onError(&r.errCantBeOfType)
+					return true
+				}
+				r.schemaTypeStack.Push(typeStackFrame{HostType: tp})
+			}
 
 		case gqlscan.TokenSet:
 			if fragStackCounter > 0 {
@@ -298,38 +356,30 @@ func (r *Parser) Parse(
 				break
 			}
 			stackCounter++
-
-			beforeSet := r.buffer[len(r.buffer)-2]
-			if beforeSet.ID == gqlscan.TokenArgListEnd {
-				// Seek field before the argument list
-				i := len(r.buffer) - 3
-				for ; r.buffer[i].ID != gqlscan.TokenArgList; i-- {
-				}
-				beforeSet = r.buffer[i-1]
-			}
-			switch beforeSet.ID {
-			case gqlscan.TokenField:
-				if r.schema != nil {
-					h := r.schemaTypeStack.Top()
-					f := fieldByName(h, beforeSet.Value)
-					if f == nil {
-						r.errFieldUndef.FieldName = beforeSet.Value
-						r.errFieldUndef.HostTypeName = h.Name
-						isErr = true
-						onError(&r.errTypeUndef)
-						return true
-					}
-					tp := r.schema.Types[f.Type.NamedType]
-					r.schemaTypeStack.Push(tp)
-				}
-			case gqlscan.TokenFragInline:
-				if r.schema != nil {
-					tp := r.schema.Types[string(beforeSet.Value)]
-					r.schemaTypeStack.Push(tp)
+			if r.schema != nil {
+				switch recentHost.ID {
+				case gqlscan.TokenDefQry:
+					r.schemaTypeStack.Push(typeStackFrame{
+						HostType: r.schema.Query,
+					})
+				case gqlscan.TokenDefMut:
+					r.schemaTypeStack.Push(typeStackFrame{
+						HostType: r.schema.Mutation,
+					})
+				case gqlscan.TokenDefSub:
+					r.schemaTypeStack.Push(typeStackFrame{
+						HostType: r.schema.Subscription,
+					})
+				case gqlscan.TokenField, gqlscan.TokenFragInline:
+					r.schemaTypeStack.Push(typeStackFrame{
+						HostType: r.schemaTypeStack.Top().FieldType,
+					})
 				}
 			}
 
 		case gqlscan.TokenSetEnd:
+			recentHost.ID = 0
+			r.schemaTypeStack.Pop()
 			if fragStackCounter > 0 {
 				r.buffer = r.buffer[:len(r.buffer)-1]
 				fragStackCounter--
@@ -352,7 +402,12 @@ func (r *Parser) Parse(
 			}
 		case gqlscan.TokenNamedSpread:
 			if r.schema != nil {
-				hostType := r.schemaTypeStack.Top()
+				t := r.schemaTypeStack.Top()
+				r.schemaTypeStack.Push(typeStackFrame{
+					HostType: t.HostType,
+				})
+
+				hostType := r.schemaTypeStack.Top().HostType
 				index := len(r.fragSpreadHostTypes)
 				r.fragSpreadHostTypes = append(r.fragSpreadHostTypes, hostType)
 
@@ -392,12 +447,27 @@ func (r *Parser) Parse(
 					IndexStart: len(r.buffer) - 1,
 				},
 			})
+		case gqlscan.TokenFragTypeCond:
+			if r.schema != nil {
+				r.schemaTypeStack.Reset()
+				d := r.schema.Types[string(i.Value())]
+				if d == nil {
+					r.errTypeUndef.Location = locFromItr(i)
+					r.errTypeUndef.TypeName = i.Value()
+					isErr = true
+					onError(&r.errTypeUndef)
+					return true
+				}
+				r.schemaTypeStack.Push(typeStackFrame{HostType: d})
+			}
 		}
 		return false
 	}); serr.IsErr() {
 		if isErr {
 			return
 		}
+		r.errSyntax.Location.IndexHead = serr.Index
+		r.errSyntax.Location.IndexTail = serr.Index + 1
 		r.errSyntax.ScanErr = serr
 		onError(&r.errSyntax)
 		return
@@ -695,13 +765,23 @@ func (r *Parser) Parse(
 	onSuccess(r.varValues, r.bufferOpr, r.bufferOpr[selectionSetIndex:])
 }
 
-type ErrorTypeUndef struct{ TypeName string }
+type Location struct{ IndexHead, IndexTail int }
+
+func locFromItr(i *gqlscan.Iterator) Location {
+	return Location{IndexHead: i.IndexHead(), IndexTail: i.IndexTail()}
+}
+
+type ErrorTypeUndef struct {
+	Location
+	TypeName []byte
+}
 
 func (e *ErrorTypeUndef) Error() string {
-	return "undefined type: " + e.TypeName
+	return "undefined type: " + string(e.TypeName)
 }
 
 type ErrorFieldUndef struct {
+	Location
 	HostTypeName string
 	FieldName    []byte
 }
@@ -713,7 +793,22 @@ func (e *ErrorFieldUndef) Error() string {
 		e.HostTypeName
 }
 
+type ErrorCantBeOfType struct {
+	Location
+	Kind           string
+	HostTypeName   string
+	SpreadTypeName []byte
+}
+
+func (e *ErrorCantBeOfType) Error() string {
+	return e.Kind + " " +
+		e.HostTypeName +
+		" can never be of type " +
+		string(e.SpreadTypeName)
+}
+
 type ErrorSyntax struct {
+	Location
 	ScanErr gqlscan.Error
 }
 
@@ -1285,4 +1380,24 @@ func fieldByName(d *ast.Definition, name []byte) *ast.FieldDefinition {
 // otherwise returns false.
 func isTypeDirectlyInlinable(schema *ast.Schema, host, child *ast.Definition) bool {
 	return host.Name == child.Name
+}
+
+func isPossibleType(schema *ast.Schema, typeName []byte, host *ast.Definition) bool {
+	possibleTypes := schema.PossibleTypes[host.Name]
+	for i := range possibleTypes {
+		if possibleTypes[i].Name == string(typeName) {
+			return true
+		}
+	}
+	return false
+}
+
+func astTypeKindToString(d *ast.Definition) string {
+	switch d.Kind {
+	case ast.Union:
+		return "union"
+	case ast.Interface:
+		return "interface"
+	}
+	return string(d.Kind)
 }

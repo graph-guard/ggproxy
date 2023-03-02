@@ -1,13 +1,16 @@
-package gqlparse
+package countval
 
-import "github.com/graph-guard/gqlscan"
+import (
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
+	"github.com/graph-guard/gqlscan"
+)
 
-// CountValuesUntil counts the number of tokens and values
+// Until counts the number of tokens and values
 // until term is reached.
 // Immediately returns true if any call to fn returned true as well.
-func CountValuesUntil(a []Token, term gqlscan.Token) (values, tokens int) {
-	for ; tokens < len(a) && a[tokens].ID != term; tokens++ {
-		switch a[tokens].ID {
+func Until(r *tokenreader.Reader, term gqlscan.Token) (values, tokens int) {
+	for ; !r.EOF() && r.PeekOne().ID != term; tokens++ {
+		switch r.ReadOne().ID {
 		case gqlscan.TokenTrue,
 			gqlscan.TokenFalse,
 			gqlscan.TokenStr,
@@ -21,7 +24,7 @@ func CountValuesUntil(a []Token, term gqlscan.Token) (values, tokens int) {
 			tokens++
 		SCAN_OBJ:
 			for levelObj := 1; ; tokens++ {
-				switch a[tokens].ID {
+				switch r.ReadOne().ID {
 				case gqlscan.TokenObj:
 					levelObj++
 				case gqlscan.TokenObjEnd:
@@ -36,7 +39,7 @@ func CountValuesUntil(a []Token, term gqlscan.Token) (values, tokens int) {
 			tokens++
 		SCAN_ARR:
 			for levelArr := 1; ; tokens++ {
-				switch a[tokens].ID {
+				switch r.ReadOne().ID {
 				case gqlscan.TokenArr:
 					levelArr++
 				case gqlscan.TokenArrEnd:

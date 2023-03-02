@@ -1,6 +1,8 @@
 package playmon
 
 import (
+	"fmt"
+
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/constrcheck"
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/pathmatch"
@@ -124,6 +126,7 @@ func (e *Engine) Match(
 
 	e.matcher.Match(e.structuralPaths, func(t *config.Template) (stop bool) {
 		tm := e.templates[t.ID]
+		fmt.Println("\nTEMPORARILY MATCHED ", tm.ID)
 		for i := range e.argumentsSet {
 			if !tm.ConstraintChecker.Check(
 				variableValues,

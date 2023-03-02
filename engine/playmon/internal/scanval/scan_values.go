@@ -1,15 +1,19 @@
-package gqlparse
+package scanval
 
-import "github.com/graph-guard/gqlscan"
+import (
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
+	"github.com/graph-guard/gqlscan"
+)
 
 // ScanValues calls fn for every value in a.
 // Immediately returns true if any call to fn returned true as well.
 func ScanValues(
-	a []Token,
-	fn func([]Token) (stop bool),
+	r *tokenreader.Reader,
+	fn func(r *tokenreader.Reader) (stop bool),
 ) (stopped bool) {
-	for i := 0; i < len(a); i++ {
-		switch a[i].ID {
+	for !r.EOF() {
+		rBefore := *r
+		switch r.ReadOne().ID {
 		case gqlscan.TokenTrue,
 			gqlscan.TokenFalse,
 			gqlscan.TokenStr,
@@ -18,15 +22,16 @@ func ScanValues(
 			gqlscan.TokenInt,
 			gqlscan.TokenEnumVal,
 			gqlscan.TokenNull:
-			if fn(a[i : i+1]) {
+			rAfter := *r
+			*r = rBefore
+			if fn(r) {
 				return true
 			}
+			*r = rAfter
 		case gqlscan.TokenObj:
-			s := i
-			i++
 		SCAN_OBJ:
-			for levelObj := 1; ; i++ {
-				switch a[i].ID {
+			for levelObj := 1; ; {
+				switch r.ReadOne().ID {
 				case gqlscan.TokenObj:
 					levelObj++
 				case gqlscan.TokenObjEnd:
@@ -36,15 +41,16 @@ func ScanValues(
 					}
 				}
 			}
-			if fn(a[s : i+1]) {
+			rAfter := *r
+			*r = rBefore
+			if fn(r) {
 				return true
 			}
+			*r = rAfter
 		case gqlscan.TokenArr:
-			s := i
-			i++
 		SCAN_ARR:
-			for levelArr := 1; ; i++ {
-				switch a[i].ID {
+			for levelArr := 1; ; {
+				switch r.ReadOne().ID {
 				case gqlscan.TokenArr:
 					levelArr++
 				case gqlscan.TokenArrEnd:
@@ -54,9 +60,12 @@ func ScanValues(
 					}
 				}
 			}
-			if fn(a[s : i+1]) {
+			rAfter := *r
+			*r = rBefore
+			if fn(r) {
 				return true
 			}
+			*r = rAfter
 		}
 	}
 	return false

@@ -56,10 +56,18 @@ func (s *Stack[T]) Top() (top T) {
 	return top
 }
 
+// TopOffset returns the last stack element relative to the offset.
+func (s *Stack[T]) TopOffset(offset int) (top T) {
+	if l := len(s.s) - (1 + offset); l >= 0 {
+		return (s.s)[l]
+	}
+	return top
+}
+
 // TopOffsetFn calls fn with the last stack element at offset.
 func (s *Stack[T]) TopOffsetFn(offset int, fn func(*T)) {
-	if l := len(s.s) - 1; l >= 0 {
-		fn(&(s.s)[l-offset])
+	if l := len(s.s) - (1 + offset); l >= 0 {
+		fn(&(s.s)[l])
 	}
 }
 

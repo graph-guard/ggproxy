@@ -1,8 +1,10 @@
-package gqlparse_test
+package countval_test
 
 import (
 	"testing"
 
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/countval"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/require"
@@ -11,7 +13,7 @@ import (
 func TestCountValuesUntil(t *testing.T) {
 	for _, tt := range []struct {
 		Name         string
-		Input        []gqlparse.Token
+		Input        *tokenreader.Reader
 		Term         gqlscan.Token
 		ExpectValues int
 		ExpectTokens int
@@ -19,43 +21,45 @@ func TestCountValuesUntil(t *testing.T) {
 		{
 			Name: "sequence",
 			Term: gqlscan.TokenArrEnd,
-			Input: []gqlparse.Token{
-				{ID: gqlscan.TokenStr, Value: []byte("text")},
-				{ID: gqlscan.TokenEnumVal, Value: []byte("red")},
-				{ID: gqlscan.TokenInt, Value: []byte("42")},
-				{ID: gqlscan.TokenFloat, Value: []byte("3.1415")},
-				{ID: gqlscan.TokenTrue},
-				{ID: gqlscan.TokenFalse},
-				{ID: gqlscan.TokenNull},
-				{ID: gqlscan.TokenStrBlock},
-				// {o:{f:[[null]]}}
-				{ID: gqlscan.TokenObj},
-				{ID: gqlscan.TokenObjField, Value: []byte("o")},
-				{ID: gqlscan.TokenObj},
-				{ID: gqlscan.TokenObjField, Value: []byte("f")},
-				{ID: gqlscan.TokenArr},
-				{ID: gqlscan.TokenArr},
-				{ID: gqlscan.TokenNull},
-				{ID: gqlscan.TokenArrEnd},
-				{ID: gqlscan.TokenArrEnd},
-				{ID: gqlscan.TokenObjEnd},
-				{ID: gqlscan.TokenObjEnd},
-				// {f:42}
-				{ID: gqlscan.TokenObj},
-				{ID: gqlscan.TokenObjField, Value: []byte("f")},
-				{ID: gqlscan.TokenInt, Value: []byte("42")},
-				{ID: gqlscan.TokenObjEnd},
-				// []
-				{ID: gqlscan.TokenArr},
-				{ID: gqlscan.TokenArrEnd},
-				// [[]]
-				{ID: gqlscan.TokenArr},
-				{ID: gqlscan.TokenArr},
-				{ID: gqlscan.TokenArrEnd},
-				{ID: gqlscan.TokenArrEnd},
+			Input: &tokenreader.Reader{
+				Main: []gqlparse.Token{
+					{ID: gqlscan.TokenStr, Value: []byte("text")},
+					{ID: gqlscan.TokenEnumVal, Value: []byte("red")},
+					{ID: gqlscan.TokenInt, Value: []byte("42")},
+					{ID: gqlscan.TokenFloat, Value: []byte("3.1415")},
+					{ID: gqlscan.TokenTrue},
+					{ID: gqlscan.TokenFalse},
+					{ID: gqlscan.TokenNull},
+					{ID: gqlscan.TokenStrBlock},
+					// {o:{f:[[null]]}}
+					{ID: gqlscan.TokenObj},
+					{ID: gqlscan.TokenObjField, Value: []byte("o")},
+					{ID: gqlscan.TokenObj},
+					{ID: gqlscan.TokenObjField, Value: []byte("f")},
+					{ID: gqlscan.TokenArr},
+					{ID: gqlscan.TokenArr},
+					{ID: gqlscan.TokenNull},
+					{ID: gqlscan.TokenArrEnd},
+					{ID: gqlscan.TokenArrEnd},
+					{ID: gqlscan.TokenObjEnd},
+					{ID: gqlscan.TokenObjEnd},
+					// {f:42}
+					{ID: gqlscan.TokenObj},
+					{ID: gqlscan.TokenObjField, Value: []byte("f")},
+					{ID: gqlscan.TokenInt, Value: []byte("42")},
+					{ID: gqlscan.TokenObjEnd},
+					// []
+					{ID: gqlscan.TokenArr},
+					{ID: gqlscan.TokenArrEnd},
+					// [[]]
+					{ID: gqlscan.TokenArr},
+					{ID: gqlscan.TokenArr},
+					{ID: gqlscan.TokenArrEnd},
+					{ID: gqlscan.TokenArrEnd},
 
-				// Term
-				{ID: gqlscan.TokenArrEnd},
+					// Term
+					{ID: gqlscan.TokenArrEnd},
+				},
 			},
 			ExpectValues: 12,
 			ExpectTokens: 29,
@@ -383,7 +387,7 @@ func TestCountValuesUntil(t *testing.T) {
 		// },
 	} {
 		t.Run(tt.Name, func(t *testing.T) {
-			values, tokens := gqlparse.CountValuesUntil(tt.Input, tt.Term)
+			values, tokens := countval.Until(tt.Input, tt.Term)
 			require.Equal(t, tt.ExpectValues, values)
 			require.Equal(t, tt.ExpectTokens, tokens)
 		})

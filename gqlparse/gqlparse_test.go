@@ -1958,11 +1958,273 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.Equal(t, "fragment limit (128) exceeded", err.Error())
 		},
 	}),
+
+	/* TYPE ERRORS */
+
+	decl.New(TestError{
+		Name:   "undefined_field_in_query_type",
+		Schema: "type Query { foo:String! }",
+		Src:    `{ bar }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 2, IndexHead: 5},
+				FieldName:    []byte("bar"),
+				HostTypeName: "Query",
+			}, err)
+			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name:   "undefined_field_in_mutation_type",
+		Schema: "type Mutation { foo:String! }",
+		Src:    `mutation { bar }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 11, IndexHead: 14},
+				FieldName:    []byte("bar"),
+				HostTypeName: "Mutation",
+			}, err)
+			require.Equal(t, `undefined field (bar) in type Mutation`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name:   "undefined_field_in_subscription_type",
+		Schema: "type Subscription { foo:String! }",
+		Src:    `subscription { bar }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 15, IndexHead: 18},
+				FieldName:    []byte("bar"),
+				HostTypeName: "Subscription",
+			}, err)
+			require.Equal(t, `undefined field (bar) in type Subscription`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_field_in_named_type",
+		Schema: `
+			type Query { foo:Foo! }
+			type Foo { bar:String! }
+		`,
+		Src: `{ foo { bazz } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 8, IndexHead: 12},
+				FieldName:    []byte("bazz"),
+				HostTypeName: "Foo",
+			}, err)
+			require.Equal(t, `undefined field (bazz) in type Foo`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_field_in_named_subtype",
+		Schema: `
+			type Query { foo:Foo! }
+			type Foo { bar:Bar! }
+			type Bar { bar:String! }
+		`,
+		Src: `{ foo { bar { bazz } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 14, IndexHead: 18},
+				FieldName:    []byte("bazz"),
+				HostTypeName: "Bar",
+			}, err)
+			require.Equal(t, `undefined field (bazz) in type Bar`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_field_in_interface",
+		Schema: `
+			type Query { interface:Interface! x:X! }
+			interface Interface { bar:String! }
+			type X implements Interface { bar:String! }
+		`,
+		Src: `{ interface { bazz } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 14, IndexHead: 18},
+				FieldName:    []byte("bazz"),
+				HostTypeName: "Interface",
+			}, err)
+			require.Equal(t, `undefined field (bazz) in type Interface`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_field_in_inline_frag",
+		Schema: `
+			type Query { u:U }
+			union U = Foo | Bar
+			type Foo { foo:String }
+			type Bar { bar:String }
+		`,
+		Src: `{ u { ... on Foo { bar } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 19, IndexHead: 22},
+				FieldName:    []byte("bar"),
+				HostTypeName: "Foo",
+			}, err)
+			require.Equal(t, `undefined field (bar) in type Foo`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_field_in_sametype_inline_frag_inside_query",
+		Schema: `
+			type Query { foo:String! }
+		`,
+		Src: `{ ... on Query { bar } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 17, IndexHead: 20},
+				FieldName:    []byte("bar"),
+				HostTypeName: "Query",
+			}, err)
+			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_field_in_2d_sametype_inline_frag_inside_query",
+		Schema: `
+			type Query { foo:String! }
+		`,
+		Src: `{ ... on Query { ... on Query { bar } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 32, IndexHead: 35},
+				FieldName:    []byte("bar"),
+				HostTypeName: "Query",
+			}, err)
+			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_field_in_anonymous_inline_frag_inside_query",
+		Schema: `
+			type Query { foo:String! }
+		`,
+		Src: `{ ... { bar } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 8, IndexHead: 11},
+				FieldName:    []byte("bar"),
+				HostTypeName: "Query",
+			}, err)
+			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_field_in_2d_anonymous_inline_frag_inside_query",
+		Schema: `
+			type Query { foo:String! }
+		`,
+		Src: `{ ... { ... { bar } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorFieldUndef{
+				Location:     gqlparse.Location{IndexTail: 14, IndexHead: 17},
+				FieldName:    []byte("bar"),
+				HostTypeName: "Query",
+			}, err)
+			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
+		},
+	}),
+
+	decl.New(TestError{
+		Name: "undefined_type_in_inline_fragment",
+		Schema: `
+			type Query { u: U! }
+			union U = Bar | Bazz
+			type Bar { bar:String! }
+			type Bazz { bazz:String! }
+		`,
+		Src: `{ u { ... on Foo { foo } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorTypeUndef{
+				Location: gqlparse.Location{IndexTail: 13, IndexHead: 16},
+				TypeName: []byte("Foo"),
+			}, err)
+			require.Equal(t, `undefined type: Foo`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "undefined_type_in_fragment",
+		Schema: `
+			type Query { foo:String }
+		`,
+		Src: `{ ...f } fragment f on Foo { foo }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorTypeUndef{
+				Location: gqlparse.Location{IndexTail: 23, IndexHead: 26},
+				TypeName: []byte("Foo"),
+			}, err)
+			require.Equal(t, `undefined type: Foo`, err.Error())
+		},
+	}),
+
+	decl.New(TestError{
+		Name: "unsupported_type_in_union",
+		Schema: `
+			type Query { u: U! }
+			union U = Bar | Baz
+			type Foo { foo:String! }
+			type Bar { bar:String! }
+			type Baz { baz:String! }
+		`,
+		Src: `{ u { ... on Foo { foo } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorCantBeOfType{
+				Location:       gqlparse.Location{IndexTail: 13, IndexHead: 16},
+				Kind:           "union",
+				HostTypeName:   "U",
+				SpreadTypeName: []byte("Foo"),
+			}, err)
+			require.Equal(t, `union U can never be of type Foo`, err.Error())
+		},
+	}),
+	decl.New(TestError{
+		Name: "unsupported_type_in_interface",
+		Schema: `
+			type Query { i:Iface! }
+			interface Iface { x:String! }
+			type Foo { x:String! }
+			type Bar implements Iface { x:String! }
+			type Baz implements Iface { x:String! }
+		`,
+		Src: `{ i { ... on Foo { x } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorCantBeOfType{
+				Location:       gqlparse.Location{IndexTail: 13, IndexHead: 16},
+				Kind:           "interface",
+				HostTypeName:   "Iface",
+				SpreadTypeName: []byte("Foo"),
+			}, err)
+			require.Equal(t, `interface Iface can never be of type Foo`, err.Error())
+		},
+	}),
 }
 
 func TestErr(t *testing.T) {
 	for _, td := range testdataErr {
-		t.Run(td.Decl, func(t *testing.T) {
+		name := td.Decl
+		if td.Data.Name != "" {
+			name = td.Data.Name
+		}
+		t.Run(name, func(t *testing.T) {
 			var schema *ast.Schema
 			if td.Data.Schema != "" {
 				var err error
@@ -2031,6 +2293,7 @@ func Token(t gqlscan.Token, value ...string) gqlparse.Token {
 }
 
 type TestError struct {
+	Name     string
 	Schema   string
 	Src      string
 	VarsJSON string

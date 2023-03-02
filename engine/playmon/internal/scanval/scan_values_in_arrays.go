@@ -1,15 +1,19 @@
-package gqlparse
+package scanval
 
-import "github.com/graph-guard/gqlscan"
+import (
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
+	"github.com/graph-guard/gqlscan"
+)
 
-// ScanValuesInArrays calls fn for every non-array value contained in x recursively.
+// InArrays calls fn for every non-array value contained in x recursively.
 // Immediately returns true if any call to fn returned true as well.
-func ScanValuesInArrays(
-	x []Token,
-	fn func([]Token) (stop bool),
+func InArrays(
+	r *tokenreader.Reader,
+	fn func(r *tokenreader.Reader) (stop bool),
 ) (stopped bool) {
-	for levelArr, i := 0, 0; i < len(x); i++ {
-		switch x[i].ID {
+	for levelArr := 0; !r.EOF(); {
+		rBefore := *r
+		switch r.ReadOne().ID {
 		case gqlscan.TokenTrue,
 			gqlscan.TokenFalse,
 			gqlscan.TokenStr,
@@ -18,68 +22,71 @@ func ScanValuesInArrays(
 			gqlscan.TokenInt,
 			gqlscan.TokenEnumVal,
 			gqlscan.TokenNull:
-			if fn(x[i : i+1]) {
+			rAfter := *r
+			*r = rBefore
+			if fn(r) {
 				return true
 			}
+			*r = rAfter
 		case gqlscan.TokenObj:
-			s := i
-			i++
 		OBJ_SCAN_1:
-			for levelObj := 1; ; i++ {
-				switch x[i].ID {
+			for levelObj := 1; ; {
+				switch r.ReadOne().ID {
 				case gqlscan.TokenObj:
 					levelObj++
 				case gqlscan.TokenObjEnd:
 					levelObj--
 					if levelObj < 1 {
-						i++
 						break OBJ_SCAN_1
 					}
 				}
 			}
-			if fn(x[s:i]) {
+			rAfter := *r
+			*r = rBefore
+			if fn(r) {
 				return true
 			}
+			*r = rAfter
 		case gqlscan.TokenArr:
 			levelArr++
-			i++
 		VAL_SCAN:
 			for levelArr > 0 {
-				switch x[i].ID {
+				rBefore := *r
+				switch r.ReadOne().ID {
 				case gqlscan.TokenArrEnd:
-					i++
 					levelArr--
 					if levelArr < 1 {
 						break VAL_SCAN
 					}
 					goto VAL_SCAN
 				case gqlscan.TokenArr:
-					i++
 					levelArr++
 				case gqlscan.TokenObj:
-					s := i
-					i++
 				OBJ_SCAN_2:
-					for levelObj := 1; ; i++ {
-						switch x[i].ID {
+					for levelObj := 1; ; {
+						switch r.ReadOne().ID {
 						case gqlscan.TokenObj:
 							levelObj++
 						case gqlscan.TokenObjEnd:
 							levelObj--
 							if levelObj < 1 {
-								i++
 								break OBJ_SCAN_2
 							}
 						}
 					}
-					if fn(x[s:i]) {
+					rAfter := *r
+					*r = rBefore
+					if fn(r) {
 						return true
 					}
+					*r = rAfter
 				default:
-					if fn(x[i : i+1]) {
+					rAfter := *r
+					*r = rBefore
+					if fn(r) {
 						return true
 					}
-					i++
+					*r = rAfter
 				}
 			}
 		}

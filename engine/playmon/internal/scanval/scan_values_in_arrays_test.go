@@ -1,9 +1,11 @@
-package gqlparse_test
+package scanval_test
 
 import (
 	"fmt"
 	"testing"
 
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/scanval"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
 	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/gqlscan"
 	"github.com/stretchr/testify/assert"
@@ -27,7 +29,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "string block",
+			Name: "string_block",
 			Input: []gqlparse.Token{
 				// """text"""
 				{ID: gqlscan.TokenStrBlock},
@@ -86,7 +88,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "object with array inside",
+			Name: "object_with_array_inside",
 			Input: []gqlparse.Token{
 				// {field:["text"]}
 				{ID: gqlscan.TokenObj},
@@ -108,7 +110,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "object nested",
+			Name: "object_nested",
 			Input: []gqlparse.Token{
 				// {x:{y:{z:1}}}
 				{ID: gqlscan.TokenObj},
@@ -138,7 +140,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "empty array",
+			Name: "empty_array",
 			Input: []gqlparse.Token{
 				// []
 				{ID: gqlscan.TokenArr},
@@ -147,7 +149,7 @@ func TestInValues(t *testing.T) {
 			Expect: [][]gqlparse.Token{},
 		},
 		{
-			Name: "array with 1 int",
+			Name: "array_with_1_int",
 			Input: []gqlparse.Token{
 				// [42]
 				{ID: gqlscan.TokenArr},
@@ -159,7 +161,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 3 int",
+			Name: "array_with_3_int",
 			Input: []gqlparse.Token{
 				// [42, 0, 100500]
 				{ID: gqlscan.TokenArr},
@@ -175,7 +177,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 1 string",
+			Name: "array_with_1_string",
 			Input: []gqlparse.Token{
 				// ["text"]
 				{ID: gqlscan.TokenArr},
@@ -187,7 +189,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 1 string block",
+			Name: "array_with_1_string_block",
 			Input: []gqlparse.Token{
 				// ["""text"""]
 				{ID: gqlscan.TokenArr},
@@ -199,7 +201,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 1 float",
+			Name: "array_with_1_float",
 			Input: []gqlparse.Token{
 				// [3.14]
 				{ID: gqlscan.TokenArr},
@@ -211,7 +213,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 1 enum",
+			Name: "array_with_1_enum",
 			Input: []gqlparse.Token{
 				// [red]
 				{ID: gqlscan.TokenArr},
@@ -223,7 +225,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 1 boolean(true)",
+			Name: "array_with_1_boolean(true)",
 			Input: []gqlparse.Token{
 				// [true]
 				{ID: gqlscan.TokenArr},
@@ -235,7 +237,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 1 boolean(false)",
+			Name: "array_with_1_boolean(false)",
 			Input: []gqlparse.Token{
 				// [false]
 				{ID: gqlscan.TokenArr},
@@ -247,7 +249,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 1 null",
+			Name: "array_with_1_null",
 			Input: []gqlparse.Token{
 				// [null]
 				{ID: gqlscan.TokenArr},
@@ -259,7 +261,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with 1 object",
+			Name: "array_with_1_object",
 			Input: []gqlparse.Token{
 				// [{x:0}]
 				{ID: gqlscan.TokenArr},
@@ -279,7 +281,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "3d array string",
+			Name: "3d_array_string",
 			Input: []gqlparse.Token{
 				// [[["1"],["2"]],[["3"]]]
 				{ID: gqlscan.TokenArr},
@@ -305,7 +307,7 @@ func TestInValues(t *testing.T) {
 			},
 		},
 		{
-			Name: "array with null and nested object with array inside",
+			Name: "array_with_null_and_nested_object_with_array_inside",
 			Input: []gqlparse.Token{
 				// [null, {object:{array:["text"]}}]
 				{ID: gqlscan.TokenArr},
@@ -339,12 +341,16 @@ func TestInValues(t *testing.T) {
 	} {
 		t.Run(tt.Name, func(t *testing.T) {
 			actual := [][]gqlparse.Token{}
-			stopped := gqlparse.ScanValuesInArrays(
-				tt.Input,
-				func(t []gqlparse.Token) (stop bool) {
-					cp := make([]gqlparse.Token, len(t))
-					copy(cp, t)
+			actualCounter := 0
+			stopped := scanval.InArrays(
+				&tokenreader.Reader{Main: tt.Input},
+				func(r *tokenreader.Reader) (stop bool) {
+					var cp []gqlparse.Token
+					for i := 0; !r.EOF() && i < len(tt.Expect[actualCounter]); i++ {
+						cp = append(cp, r.ReadOne())
+					}
 					actual = append(actual, cp)
+					actualCounter++
 					return false
 				},
 			)

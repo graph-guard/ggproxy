@@ -1,7 +1,7 @@
 package constrcheck
 
 import (
-	"github.com/graph-guard/ggproxy/gqlparse"
+	"github.com/graph-guard/ggproxy/engine/playmon/internal/tokenreader"
 	"github.com/graph-guard/gqlscan"
 	gqlast "github.com/vektah/gqlparser/v2/ast"
 )
@@ -9,49 +9,35 @@ import (
 // isWrongType returns true if the value represented in input
 // doesn't correspond to the type defined by expect.
 func isWrongType(
-	gqlVarValues [][]gqlparse.Token,
+	r *tokenreader.Reader,
 	expect *gqlast.Type,
-	input []gqlparse.Token,
 	schema *gqlast.Schema,
-) (bool, []gqlparse.Token) {
+) bool {
 	var def *gqlast.Definition
 	if expect != nil {
 		def = schema.Types[expect.NamedType]
 	}
 
-	if input[0].ID >= gqlparse.TokenTypeValIndexOffset &&
-		input[0].ID < gqlparse.TokenTypeFragHostTypeIndexOffset {
-		return isWrongType(
-			gqlVarValues,
-			expect,
-			gqlVarValues[input[0].VariableIndex()],
-			schema,
-		)
-	}
-
-	switch input[0].ID {
+	switch read := r.ReadOne(); read.ID {
 	case gqlscan.TokenNull:
 		if expect == nil {
-			return false, input[1:]
+			return false
 		}
-		return expect.NonNull, input[1:]
+		return expect.NonNull
 	case gqlscan.TokenArr:
 		if expect != nil {
 			if expect.Elem == nil {
-				return true, nil
+				return true
 			}
 			expect = expect.Elem
 		}
-		input = input[1:]
 		for {
-			if input[0].ID == gqlscan.TokenArrEnd {
-				input = input[1:]
-				return false, input
+			rBefore := r
+			if r.ReadOne().ID == gqlscan.TokenArrEnd {
+				return false
 			}
-			var wrongType bool
-			wrongType, input = isWrongType(gqlVarValues, expect, input, schema)
-			if wrongType {
-				return true, nil
+			if isWrongType(rBefore, expect, schema) {
+				return true
 			}
 		}
 	case gqlscan.TokenTrue, gqlscan.TokenFalse:
@@ -60,36 +46,36 @@ func isWrongType(
 			def.Name != "Int" &&
 			def.Name != "Float" &&
 			def.Name != "String") {
-			return false, input[1:]
+			return false
 		}
-		return expect.NamedType != "Boolean", input[1:]
+		return expect.NamedType != "Boolean"
 	case gqlscan.TokenInt:
 		if expect == nil || (def != nil && def.Kind == gqlast.Scalar &&
 			def.Name != "ID" &&
 			def.Name != "String" &&
 			def.Name != "Boolean") {
-			return false, input[1:]
+			return false
 		}
 		return expect.NamedType != "Int" &&
-			expect.NamedType != "Float", input[1:]
+			expect.NamedType != "Float"
 	case gqlscan.TokenFloat:
 		if expect == nil || (def != nil && def.Kind == gqlast.Scalar &&
 			def.Name != "ID" &&
 			def.Name != "Int" &&
 			def.Name != "String" &&
 			def.Name != "Boolean") {
-			return false, input[1:]
+			return false
 		}
-		return expect.NamedType != "Float", input[1:]
+		return expect.NamedType != "Float"
 	case gqlscan.TokenStr, gqlscan.TokenStrBlock:
 		if expect == nil || (def != nil && def.Kind == gqlast.Scalar &&
 			def.Name != "Int" &&
 			def.Name != "Float" &&
 			def.Name != "Boolean") {
-			return false, input[1:]
+			return false
 		}
 		return expect.NamedType != "String" &&
-			expect.NamedType != "ID", input[1:]
+			expect.NamedType != "ID"
 	case gqlscan.TokenEnumVal:
 		if def == nil || def.Kind == gqlast.Scalar &&
 			def.Name != "ID" &&
@@ -98,63 +84,53 @@ func isWrongType(
 			def.Name != "String" &&
 			def.Name != "Boolean" {
 			// No expectation or custom scalar.
-			return false, input[1:]
+			return false
 		}
 		for i := range def.EnumValues {
-			if def.EnumValues[i].Name == string(input[0].Value) {
-				return false, input[1:]
+			if def.EnumValues[i].Name == string(read.Value) {
+				return false
 			}
 		}
-		return true, nil
+		return true
 	case gqlscan.TokenObj:
 		if def == nil || def.Kind == gqlast.Scalar {
 			// No expectation or custom scalar type.
-			input = input[1:]
+			// r.ReadOne()
 		SKIP_OBJECT:
-			for levelObj := 1; ; input = input[1:] {
-				switch input[0].ID {
+			for levelObj := 1; ; {
+				switch r.ReadOne().ID {
 				case gqlscan.TokenObj:
 					levelObj++
 				case gqlscan.TokenObjEnd:
 					levelObj--
 					if levelObj < 1 {
-						input = input[1:]
 						break SKIP_OBJECT
 					}
 				}
 			}
-			return false, input
+			return false
 		} else if def.Kind != gqlast.InputObject {
-			return true, nil
+			return true
 		}
-
-		input = input[1:]
 	SCAN_OBJECT:
-		for len(input) > 0 {
-			if input[0].ID == gqlscan.TokenObjEnd {
-				input = input[1:]
+		for !r.EOF() {
+			if read = r.ReadOne(); read.ID == gqlscan.TokenObjEnd {
 				break SCAN_OBJECT
 			}
 
-			field := input[0]
 			for i := range def.Fields {
-				if def.Fields[i].Name == string(field.Value) {
+				if def.Fields[i].Name == string(read.Value) {
 					// Check field value
-					var wrongType bool
-					wrongType, input = isWrongType(
-						gqlVarValues, def.Fields[i].Type, input[1:], schema,
-					)
-					if wrongType {
-						return true, nil
+					if isWrongType(r, def.Fields[i].Type, schema) {
+						return true
 					}
 					continue SCAN_OBJECT
 				}
 			}
 			// Field not found in expected input object type
-			return true, nil
+			return true
 		}
-		return false, input
+		return false
 	}
-
-	return true, nil
+	return true
 }
