@@ -1197,18 +1197,20 @@ func TestOK(t *testing.T) {
 	}
 }
 
-var testdataErr = []decl.Declaration[TestError]{
+var testsErr = []TestError{
 	// Operation not found
-	decl.New(TestError{
-		Src: `query A {x}, query B {x}`,
+	{
+		Name: "operation_not_found_empty_operation_name",
+		Src:  `query A {x}, query B {x}`,
 		Check: func(t *testing.T, err error) {
 			require.Equal(t, &gqlparse.ErrorOprNotFound{
 				OperationName: []byte(""),
 			}, err)
 			require.Equal(t, `operation "" not found`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:    "operation_not_found",
 		Src:     `query A {x}, query B {x}`,
 		OprName: "C",
 		Check: func(t *testing.T, err error) {
@@ -1217,8 +1219,9 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `operation "C" not found`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:    "operation_not_found_single_anonymous",
 		Src:     `{x}`,
 		OprName: "A",
 		Check: func(t *testing.T, err error) {
@@ -1227,62 +1230,77 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `operation "A" not found`, err.Error())
 		},
-	}),
+	},
 
 	// Non-exclusive anonymous operation
-	decl.New(TestError{
-		Src: `{x}, query{x}`,
+	{
+		Name: "non_exclusive_anonymous_operation_query_1",
+		Src:  `{x}, query{x}`,
 		Check: func(t *testing.T, err error) {
 			require.Equal(t, &gqlparse.ErrorOprAnonNonExcl{}, err)
 			require.Equal(t, `non-exclusive anonymous operation`, err.Error())
 		},
-	}),
-	decl.New(TestError{
-		Src: `{x}, mutation M {x}`,
+	},
+	{
+		Name: "non_exclusive_anonymous_operation_query_2",
+		Src:  `query A {x}, query {x}`,
 		Check: func(t *testing.T, err error) {
 			require.Equal(t, &gqlparse.ErrorOprAnonNonExcl{}, err)
 			require.Equal(t, `non-exclusive anonymous operation`, err.Error())
 		},
-	}),
-	decl.New(TestError{
-		Src: `query A {x}, query {x}`,
+	},
+	{
+		Name: "non_exclusive_anonymous_operation_mutation",
+		Src:  `{x}, mutation M {x}`,
 		Check: func(t *testing.T, err error) {
 			require.Equal(t, &gqlparse.ErrorOprAnonNonExcl{}, err)
 			require.Equal(t, `non-exclusive anonymous operation`, err.Error())
 		},
-	}),
+	},
+	{
+		Name: "non_exclusive_anonymous_operation_subscription",
+		Src:  `{x}, subscription S {x}`,
+		Check: func(t *testing.T, err error) {
+			require.Equal(t, &gqlparse.ErrorOprAnonNonExcl{}, err)
+			require.Equal(t, `non-exclusive anonymous operation`, err.Error())
+		},
+	},
 
 	// Redeclared operation
-	decl.New(TestError{
-		Src: `query A {x}, query A {x}`,
+	{
+		Name: "redeclared_operation_query",
+		Src:  `query A {x}, query A {x}`,
 		Check: func(t *testing.T, err error) {
 			require.Equal(t, &gqlparse.ErrorRedecOpr{
 				OperationName: []byte("A"),
 			}, err)
 			require.Equal(t, `operation "A" redeclared`, err.Error())
 		},
-	}),
-	decl.New(TestError{
-		Src: `query M {x}, mutation M {x}`,
+	},
+	{
+		Name: "redeclared_operation_query_mutation",
+		Src:  `query M {x}, mutation M {x}`,
 		Check: func(t *testing.T, err error) {
 			require.Equal(t, &gqlparse.ErrorRedecOpr{
 				OperationName: []byte("M"),
 			}, err)
 			require.Equal(t, `operation "M" redeclared`, err.Error())
 		},
-	}),
-	decl.New(TestError{
-		Src: `query S {x}, subscription S {x}`,
+	},
+	{
+		Name: "redeclared_operation_subscription",
+		Src:  `query S {x}, subscription S {x}`,
 		Check: func(t *testing.T, err error) {
 			require.Equal(t, &gqlparse.ErrorRedecOpr{
 				OperationName: []byte("S"),
 			}, err)
 			require.Equal(t, `operation "S" redeclared`, err.Error())
 		},
-	}),
+	},
 
 	// Redeclared fragment
-	decl.New(TestError{
+	{
+		Name: "redeclared_fragment",
 		Src: `{...f}
 			fragment f on Query {x}
 			fragment f on Query {x}`,
@@ -1292,10 +1310,11 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `fragment "f" redeclared`, err.Error())
 		},
-	}),
+	},
 
 	// Unused fragment
-	decl.New(TestError{
+	{
+		Name: "unused_fragment",
 		Src: `{...f}
 			fragment f on Query {x}
 			fragment a on Query {x}`,
@@ -1305,10 +1324,11 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `fragment "a" unused`, err.Error())
 		},
-	}),
+	},
 
 	// Recursive fragment
-	decl.New(TestError{
+	{
+		Name: "recursive_fragment",
 		Src: `{...a}
 			fragment a on Query {...a}`,
 		Check: func(t *testing.T, err error) {
@@ -1322,8 +1342,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				t, `fragment recursion detected at: a.a`, err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name: "redeclared_fragment_level2",
 		Src: `{...a}
 			fragment a on Query {...b}
 			fragment b on Query {...a}`,
@@ -1339,8 +1360,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				t, `fragment recursion detected at: a.b.a`, err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name: "redeclared_fragment_complex",
 		Src: `{...a, ...a1}
 			fragment a on Query {...b}
 			fragment a1 on Query {...b}
@@ -1359,19 +1381,21 @@ var testdataErr = []decl.Declaration[TestError]{
 				t, `fragment recursion detected at: b.c.a1.b`, err.Error(),
 			)
 		},
-	}),
+	},
 
 	// Redeclared variable
-	decl.New(TestError{
-		Src: `query($v1:String, $v1:Int){f(a:$v1)}`,
+	{
+		Name: "redeclared_variable",
+		Src:  `query($v1:String, $v1:Int){f(a:$v1)}`,
 		Check: func(t *testing.T, err error) {
 			require.Equal(t, &gqlparse.ErrorRedeclVar{
 				VariableName: []byte("v1"),
 			}, err)
 			require.Equal(t, `variable "v1" redeclared`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:    "redeclared_variable_in_named_query",
 		Src:     `query Q ($v2:String, $v2:Int){f(a:$v2)}`,
 		OprName: "Q",
 		Check: func(t *testing.T, err error) {
@@ -1380,11 +1404,12 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `variable "v2" redeclared`, err.Error())
 		},
-	}),
+	},
 
 	// Default value wrong type
-	decl.New(TestError{
-		Src: `query ($v:String=true) { f(a:$v) }`,
+	{
+		Name: "default_value_wrong_type_boolean_as_string",
+		Src:  `query ($v:String=true) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1396,9 +1421,11 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:[String]="okay") { f(a:$v) }`,
+	},
+	{
+		// TODO: make sure this is really illegal and not a case of legal coersion
+		Name: "default_value_wrong_type_string_as_array_string",
+		Src:  `query ($v:[String]="okay") { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1410,9 +1437,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:Int=42.5) { f(a:$v) }`,
+	},
+	{
+		Name: "default_value_wrong_type_float_as_int",
+		Src:  `query ($v:Int=42.5) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1424,9 +1452,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:Float=false) { f(a:$v) }`,
+	},
+	{
+		Name: "default_value_wrong_type_boolean_as_float",
+		Src:  `query ($v:Float=false) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1438,9 +1467,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:Boolean=1) { f(a:$v) }`,
+	},
+	{
+		Name: "default_value_wrong_type_int_as_boolean",
+		Src:  `query ($v:Boolean=1) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1452,9 +1482,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:Input=1) { f(a:$v) }`,
+	},
+	{
+		Name: "default_value_wrong_type_int_as_input",
+		Src:  `query ($v:Input=1) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1466,9 +1497,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:Int={foo:"bar", baz:42}) { f(a:$v) }`,
+	},
+	{
+		Name: "default_value_wrong_type_input_as_int",
+		Src:  `query ($v:Int={foo:"bar", baz:42}) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1480,9 +1512,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:Int=[]) { f(a:$v) }`,
+	},
+	{
+		Name: "default_value_wrong_type_array_empty_as_int",
+		Src:  `query ($v:Int=[]) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1494,9 +1527,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:Int=[{x:2,y:4}, null, {x:8,y:8}]) { f(a:$v) }`,
+	},
+	{
+		Name: "default_value_wrong_type_array_input_as_int",
+		Src:  `query ($v:Int=[{x:2,y:4}, null, {x:8,y:8}]) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1508,9 +1542,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
-		Src: `query ($v:Int! = null) { f(a:$v) }`,
+	},
+	{
+		Name: "default_value_wrong_type_null_as_int_notnull",
+		Src:  `query ($v:Int! = null) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorUnexpValType{}, err)
@@ -1522,10 +1557,11 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
+	},
 
 	// JSON variable wrong type
-	decl.New(TestError{
+	{
+		Name:     "json_variable_wrong_type_boolean_as_string",
 		Src:      `query ($v:String) { f(a:$v) }`,
 		VarsJSON: `{"v":true}`,
 		Check: func(t *testing.T, err error) {
@@ -1539,8 +1575,10 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		// TODO: make sure this is really illegal and not a case of legal coersion
+		Name:     "json_variable_wrong_type_string_as_array_string",
 		Src:      `query ($v:[String]) { f(a:$v) }`,
 		VarsJSON: `{"v":"okay"}`,
 		Check: func(t *testing.T, err error) {
@@ -1554,8 +1592,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "json_variable_wrong_type_float_as_int",
 		Src:      `query ($v:Int) { f(a:$v) }`,
 		VarsJSON: `{"v":42.5}`,
 		Check: func(t *testing.T, err error) {
@@ -1569,8 +1608,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "json_variable_wrong_type_boolean_as_float",
 		Src:      `query ($v:Float) { f(a:$v) }`,
 		VarsJSON: `{"v":false}`,
 		Check: func(t *testing.T, err error) {
@@ -1584,8 +1624,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "json_variable_wrong_type_int_as_boolean",
 		Src:      `query ($v:Boolean) { f(a:$v) }`,
 		VarsJSON: `{"v":1}`,
 		Check: func(t *testing.T, err error) {
@@ -1599,8 +1640,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "json_variable_wrong_type_int_as_input",
 		Src:      `query ($v:Input) { f(a:$v) }`,
 		VarsJSON: `{"v":1}`,
 		Check: func(t *testing.T, err error) {
@@ -1614,8 +1656,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "json_variable_wrong_type_input_as_int",
 		Src:      `query ($v:Int) { f(a:$v) }`,
 		VarsJSON: `{"v":{"foo":"bar","baz":42}}`,
 		Check: func(t *testing.T, err error) {
@@ -1629,8 +1672,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "json_variable_wrong_type_array_empty_as_int",
 		Src:      `query ($v:Int) { f(a:$v) }`,
 		VarsJSON: `{"v":[]}`,
 		Check: func(t *testing.T, err error) {
@@ -1644,8 +1688,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "json_variable_wrong_type_array_input_as_int",
 		Src:      `query ($v:Int) { f(a:$v) }`,
 		VarsJSON: `{"v":[{"x":2,"y":4}, null, {"x":8,"y":8}]}`,
 		Check: func(t *testing.T, err error) {
@@ -1659,8 +1704,9 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "json_variable_wrong_type_null_as_int_notnull",
 		Src:      `query ($v:Int!) { f(a:$v) }`,
 		VarsJSON: `{"v":null}`,
 		Check: func(t *testing.T, err error) {
@@ -1674,10 +1720,11 @@ var testdataErr = []decl.Declaration[TestError]{
 				err.Error(),
 			)
 		},
-	}),
+	},
 
 	// Invalid variables JSON (non-object)
-	decl.New(TestError{
+	{
+		Name:     "invalid_variable_json_array_string",
 		Src:      `query ($v:String) { f(a:$v) }`,
 		VarsJSON: `["okay"]`,
 		Check: func(t *testing.T, err error) {
@@ -1686,8 +1733,9 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.Equal(t, `expected JSON object for variables, `+
 				`received: ["okay"]`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "invalid_variable_json_int",
 		Src:      `query ($v:Int!) { f(a:$v) }`,
 		VarsJSON: `42`,
 		Check: func(t *testing.T, err error) {
@@ -1696,21 +1744,23 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.Equal(t, `expected JSON object for variables, `+
 				`received: 42`, err.Error())
 		},
-	}),
+	},
 
 	// Query syntax error
-	decl.New(TestError{
-		Src: `query ($v:String = ) { f(a:$v) }`,
+	{
+		Name: "invalid_query_syntax",
+		Src:  `query ($v:String = ) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorSyntax{}, err)
 			require.Equal(t, `syntax error: error at index 19 (')'):`+
 				` unexpected token; expected enum value`, err.Error())
 		},
-	}),
+	},
 
 	// Invalid variables JSON (syntax error)
-	decl.New(TestError{
+	{
+		Name:     "invalid_variable_json_syntax_missing_comma",
 		Src:      `query ($v:String) { f(a:$v) }`,
 		VarsJSON: `{"v":"first" "missing-comma": "second"}`,
 		Check: func(t *testing.T, err error) {
@@ -1718,8 +1768,9 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.IsType(t, &gqlparse.ErrorVarJSONSyntax{}, err)
 			require.Equal(t, `variables JSON syntax error`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "invalid_variable_json_syntax_noquotes_key",
 		Src:      `query ($v:Int!) { f(a:$v) }`,
 		VarsJSON: `{v:42}`,
 		Check: func(t *testing.T, err error) {
@@ -1727,8 +1778,9 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.IsType(t, &gqlparse.ErrorVarJSONSyntax{}, err)
 			require.Equal(t, `variables JSON syntax error`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "invalid_variable_json_syntax_noquotes_value",
 		Src:      `query ($v:String!) { f(a:$v) }`,
 		VarsJSON: `{"v": missing_quotes}`,
 		Check: func(t *testing.T, err error) {
@@ -1736,10 +1788,11 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.IsType(t, &gqlparse.ErrorVarJSONSyntax{}, err)
 			require.Equal(t, `variables JSON syntax error`, err.Error())
 		},
-	}),
+	},
 
 	// Undeclared variable
-	decl.New(TestError{
+	{
+		Name:     "undeclared_variable",
 		Src:      `{ f(a:$u) }`,
 		VarsJSON: `{"u":42}`,
 		Check: func(t *testing.T, err error) {
@@ -1747,8 +1800,9 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.IsType(t, &gqlparse.ErrorVarUndeclared{}, err)
 			require.Equal(t, `variable "u" undeclared`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
+		Name:     "undeclared_variable_json",
 		Src:      `query ($v:String!) { f(a:$u) }`,
 		VarsJSON: `{"v":"okay","u":42}`,
 		Check: func(t *testing.T, err error) {
@@ -1756,21 +1810,23 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.IsType(t, &gqlparse.ErrorVarUndeclared{}, err)
 			require.Equal(t, `variable "u" undeclared`, err.Error())
 		},
-	}),
+	},
 
 	// Undefined variable value
-	decl.New(TestError{
-		Src: `query ($v:String!) { f(a:$v) }`,
+	{
+		Name: "undefined_variable_value",
+		Src:  `query ($v:String!) { f(a:$v) }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.IsType(t, &gqlparse.ErrorVarUndefined{}, err)
 			require.Equal(t, `variable "v" undefined`, err.Error())
 		},
-	}),
+	},
 
 	// Fragment undefined
-	decl.New(TestError{
-		Src: `{ ...f }`,
+	{
+		Name: "fragment_undefined",
+		Src:  `{ ...f }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.Equal(t, &gqlparse.ErrorFragUndefined{
@@ -1778,9 +1834,10 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `fragment "f" undefined`, err.Error())
 		},
-	}),
-	decl.New(TestError{
-		Src: `{ ...f }, fragment f on Query { ...x }`,
+	},
+	{
+		Name: "fragment_undefined_level2",
+		Src:  `{ ...f }, fragment f on Query { ...x }`,
 		Check: func(t *testing.T, err error) {
 			require.Error(t, err)
 			require.Equal(t, &gqlparse.ErrorFragUndefined{
@@ -1788,10 +1845,11 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `fragment "x" undefined`, err.Error())
 		},
-	}),
+	},
 
 	// Fragment limit exceeded
-	decl.New(TestError{
+	{
+		Name: "fragment_limit_exceeded",
 		Src: `{
 			...f0, ...f1, ...f2, ...f3, ...f4,
 			...f5, ...f6, ...f7, ...f8, ...f9,
@@ -1957,11 +2015,11 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, "fragment limit (128) exceeded", err.Error())
 		},
-	}),
+	},
 
 	/* TYPE ERRORS */
 
-	decl.New(TestError{
+	{
 		Name:   "undefined_field_in_query_type",
 		Schema: "type Query { foo:String! }",
 		Src:    `{ bar }`,
@@ -1974,8 +2032,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name:   "undefined_field_in_mutation_type",
 		Schema: "type Mutation { foo:String! }",
 		Src:    `mutation { bar }`,
@@ -1988,8 +2046,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bar) in type Mutation`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name:   "undefined_field_in_subscription_type",
 		Schema: "type Subscription { foo:String! }",
 		Src:    `subscription { bar }`,
@@ -2002,8 +2060,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bar) in type Subscription`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_field_in_named_type",
 		Schema: `
 			type Query { foo:Foo! }
@@ -2019,8 +2077,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bazz) in type Foo`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_field_in_named_subtype",
 		Schema: `
 			type Query { foo:Foo! }
@@ -2037,8 +2095,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bazz) in type Bar`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_field_in_interface",
 		Schema: `
 			type Query { interface:Interface! x:X! }
@@ -2055,8 +2113,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bazz) in type Interface`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_field_in_inline_frag",
 		Schema: `
 			type Query { u:U }
@@ -2074,8 +2132,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bar) in type Foo`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_field_in_sametype_inline_frag_inside_query",
 		Schema: `
 			type Query { foo:String! }
@@ -2090,8 +2148,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_field_in_2d_sametype_inline_frag_inside_query",
 		Schema: `
 			type Query { foo:String! }
@@ -2106,8 +2164,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_field_in_anonymous_inline_frag_inside_query",
 		Schema: `
 			type Query { foo:String! }
@@ -2122,8 +2180,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_field_in_2d_anonymous_inline_frag_inside_query",
 		Schema: `
 			type Query { foo:String! }
@@ -2138,9 +2196,9 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined field (bar) in type Query`, err.Error())
 		},
-	}),
+	},
 
-	decl.New(TestError{
+	{
 		Name: "undefined_type_in_inline_fragment",
 		Schema: `
 			type Query { u: U! }
@@ -2157,8 +2215,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined type: Foo`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "undefined_type_in_fragment",
 		Schema: `
 			type Query { foo:String }
@@ -2172,9 +2230,9 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `undefined type: Foo`, err.Error())
 		},
-	}),
+	},
 
-	decl.New(TestError{
+	{
 		Name: "unsupported_type_in_union",
 		Schema: `
 			type Query { u: U! }
@@ -2194,8 +2252,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `union U can never be of type Foo`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "unsupported_type_in_interface",
 		Schema: `
 			type Query { i:Iface! }
@@ -2215,8 +2273,8 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `interface Iface can never be of type Foo`, err.Error())
 		},
-	}),
-	decl.New(TestError{
+	},
+	{
 		Name: "unsupported_type_in_object",
 		Schema: `
 			type Query { foo:Foo! }
@@ -2234,30 +2292,26 @@ var testdataErr = []decl.Declaration[TestError]{
 			}, err)
 			require.Equal(t, `OBJECT Foo can never be of type Bar`, err.Error())
 		},
-	}),
+	},
 }
 
 func TestErr(t *testing.T) {
-	for _, td := range testdataErr {
-		name := td.Decl
-		if td.Data.Name != "" {
-			name = td.Data.Name
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, td := range testsErr {
+		t.Run(td.Name, func(t *testing.T) {
 			var schema *ast.Schema
-			if td.Data.Schema != "" {
+			if td.Schema != "" {
 				var err error
 				schema, err = gqlparser.LoadSchema(&ast.Source{
 					Name:  "schema.graphqls",
-					Input: td.Data.Schema,
+					Input: td.Schema,
 				})
 				require.NoError(t, err, "parsing schema")
 			}
 
 			gqlparse.NewParser(schema).Parse(
-				[]byte(td.Data.Src),
-				[]byte(td.Data.OprName),
-				[]byte(td.Data.VarsJSON),
+				[]byte(td.Src),
+				[]byte(td.OprName),
+				[]byte(td.VarsJSON),
 				func(
 					varVals [][]gqlparse.Token,
 					operation []gqlparse.Token,
@@ -2267,7 +2321,7 @@ func TestErr(t *testing.T) {
 				},
 				func(err error) {
 					require.Error(t, err)
-					td.Data.Check(t, err)
+					td.Check(t, err)
 				},
 			)
 		})
