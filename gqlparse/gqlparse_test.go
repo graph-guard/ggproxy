@@ -2216,6 +2216,25 @@ var testdataErr = []decl.Declaration[TestError]{
 			require.Equal(t, `interface Iface can never be of type Foo`, err.Error())
 		},
 	}),
+	decl.New(TestError{
+		Name: "unsupported_type_in_object",
+		Schema: `
+			type Query { foo:Foo! }
+			type Foo { foo:String! }
+			type Bar { bar:String! }
+		`,
+		Src: `{ foo { ... on Bar { bar } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorCantBeOfType{
+				Location:       gqlparse.Location{IndexTail: 15, IndexHead: 18},
+				Kind:           "OBJECT",
+				HostTypeName:   "Foo",
+				SpreadTypeName: []byte("Bar"),
+			}, err)
+			require.Equal(t, `OBJECT Foo can never be of type Bar`, err.Error())
+		},
+	}),
 }
 
 func TestErr(t *testing.T) {
