@@ -2199,6 +2199,67 @@ var testsErr = []TestError{
 	},
 
 	{
+		Name:   "undefined_argument_1",
+		Schema: "type Query { foo(ok:String!):String! }",
+		Src:    `{ foo(ok:"ok", inexistent:"inexistent") }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorArgUndef{
+				Location:     gqlparse.Location{IndexTail: 15, IndexHead: 25},
+				ArgName:      []byte("inexistent"),
+				FieldName:    "foo",
+				HostTypeName: "Query",
+			}, err)
+			require.Equal(
+				t,
+				`undefined argument (inexistent) on field Query.foo`,
+				err.Error(),
+			)
+		},
+	},
+	{
+		Name: "undefined_argument_2",
+		Schema: `
+			type Query { foo:Foo! }
+			type Foo { i:Int! }
+		`,
+		Src: `{ foo { i(x:null) } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorArgUndef{
+				Location:     gqlparse.Location{IndexTail: 10, IndexHead: 11},
+				ArgName:      []byte("x"),
+				FieldName:    "i",
+				HostTypeName: "Foo",
+			}, err)
+			require.Equal(
+				t, `undefined argument (x) on field Foo.i`, err.Error(),
+			)
+		},
+	},
+	{
+		Name: "undefined_argument_2",
+		Schema: `
+			type Query { mainCharacter:Character! }
+			interface Character { name: String! }
+			type Droid implements Character { name: String! }
+		`,
+		Src: `{ mainCharacter { ... on Droid { name(lang:DE) } } }`,
+		Check: func(t *testing.T, err error) {
+			require.Error(t, err)
+			require.Equal(t, &gqlparse.ErrorArgUndef{
+				Location:     gqlparse.Location{IndexTail: 38, IndexHead: 42},
+				ArgName:      []byte("lang"),
+				FieldName:    "name",
+				HostTypeName: "Droid",
+			}, err)
+			require.Equal(
+				t, `undefined argument (lang) on field Droid.name`, err.Error(),
+			)
+		},
+	},
+
+	{
 		Name: "undefined_type_in_inline_fragment",
 		Schema: `
 			type Query { u: U! }

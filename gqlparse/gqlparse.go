@@ -184,6 +184,7 @@ type Parser struct {
 
 	errTypeUndef         ErrorTypeUndef
 	errFieldUndef        ErrorFieldUndef
+	errArgUndef          ErrorArgUndef
 	errCantBeOfType      ErrorCantBeOfType
 	errSyntax            ErrorSyntax
 	errOprAnonNonExcl    ErrorOprAnonNonExcl
@@ -246,6 +247,7 @@ func (r *Parser) Parse(
 	var fragStackCounter int
 	var recentFragDef []byte
 	var recentHost Token
+	var recentField *ast.FieldDefinition
 
 	if serr := gqlscan.Scan(src, func(i *gqlscan.Iterator) bool {
 		tk := Token{
@@ -302,13 +304,28 @@ func (r *Parser) Parse(
 				IndexStart: len(r.buffer) - 1,
 			})
 
+		case gqlscan.TokenArgName:
+			if r.schema != nil {
+				name := i.Value()
+				h := r.schemaTypeStack.Top()
+				a := argByName(recentField, name)
+				if a == nil {
+					r.errArgUndef.Location = locFromItr(i)
+					r.errArgUndef.ArgName = name
+					r.errArgUndef.FieldName = recentField.Name
+					r.errArgUndef.HostTypeName = h.HostType.Name
+					isErr = true
+					onError(&r.errArgUndef)
+					return true
+				}
+			}
+
 		case gqlscan.TokenField:
 			recentHost = tk
-			name := i.Value()
 			if r.schema != nil {
+				name := i.Value()
 				h := r.schemaTypeStack.Top()
-				f := fieldByName(h.HostType, name)
-				if f == nil {
+				if recentField = fieldByName(h.HostType, name); recentField == nil {
 					r.errFieldUndef.Location = locFromItr(i)
 					r.errFieldUndef.FieldName = name
 					r.errFieldUndef.HostTypeName = h.HostType.Name
@@ -316,7 +333,7 @@ func (r *Parser) Parse(
 					onError(&r.errFieldUndef)
 					return true
 				}
-				tp := r.schema.Types[f.Type.NamedType]
+				tp := r.schema.Types[recentField.Type.NamedType]
 				r.schemaTypeStack.TopOffsetFn(0, func(f *typeStackFrame) {
 					f.FieldType = tp
 				})
@@ -791,6 +808,22 @@ func (e *ErrorFieldUndef) Error() string {
 		string(e.FieldName) +
 		") in type " +
 		e.HostTypeName
+}
+
+type ErrorArgUndef struct {
+	Location
+	ArgName      []byte
+	HostTypeName string
+	FieldName    string
+}
+
+func (e *ErrorArgUndef) Error() string {
+	return "undefined argument (" +
+		string(e.ArgName) +
+		") on field " +
+		e.HostTypeName +
+		"." +
+		string(e.FieldName)
 }
 
 type ErrorCantBeOfType struct {
@@ -1368,6 +1401,15 @@ func makeFragSpreadHostTypeID(index int) gqlscan.Token {
 
 func fieldByName(d *ast.Definition, name []byte) *ast.FieldDefinition {
 	for _, f := range d.Fields {
+		if f.Name == string(name) {
+			return f
+		}
+	}
+	return nil
+}
+
+func argByName(d *ast.FieldDefinition, name []byte) *ast.ArgumentDefinition {
+	for _, f := range d.Arguments {
 		if f.Name == string(name) {
 			return f
 		}
