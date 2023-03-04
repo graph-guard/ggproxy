@@ -20,7 +20,6 @@ import (
 	"github.com/graph-guard/ggproxy/api/graph/model"
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engine/playmon"
-	"github.com/graph-guard/ggproxy/gqlparse"
 	gqt "github.com/graph-guard/gqt/v4"
 	plog "github.com/phuslu/log"
 	"github.com/valyala/fasthttp"
@@ -251,8 +250,7 @@ func makeService(
 ) *model.Service {
 	stats := proxyServer.GetServiceStatistics(s.ID)
 	service := &model.Service{
-		Parser: gqlparse.NewParser(s.Schema),
-		Stats:  stats,
+		Stats: stats,
 		Templates: make(
 			map[*config.Template]*model.Template,
 			len(s.Templates),

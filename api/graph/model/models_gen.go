@@ -7,10 +7,10 @@ import (
 )
 
 type MatchResult struct {
-	Templates      []*Template `json:"templates"`
-	Forwarded      *string     `json:"forwarded"`
-	TimeParsingNs  float64     `json:"timeParsingNS"`
-	TimeMatchingNs float64     `json:"timeMatchingNS"`
+	Template       *Template `json:"template"`
+	Forwarded      *string   `json:"forwarded"`
+	TimeParsingNs  float64   `json:"timeParsingNS"`
+	TimeMatchingNs float64   `json:"timeMatchingNS"`
 }
 
 type ServiceStatistics struct {

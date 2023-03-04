@@ -1,8 +1,6 @@
 package playmon
 
 import (
-	"fmt"
-
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/constrcheck"
 	"github.com/graph-guard/ggproxy/engine/playmon/internal/pathmatch"
@@ -18,6 +16,7 @@ type arg struct {
 }
 
 type Engine struct {
+	parser        *gqlparse.Parser
 	pathScanner   *pathscan.PathScanner
 	matcher       *pathmatch.Matcher
 	templates     map[string]*template
@@ -38,6 +37,7 @@ type template struct {
 // New expects templates to be initialized and valid.
 func New(s *config.Service) *Engine {
 	e := &Engine{
+		parser:        gqlparse.NewParser(s.Schema),
 		pathScanner:   pathscan.New(128, 2048),
 		templates:     make(map[string]*template, len(s.Templates)),
 		argumentPaths: make(map[uint64]struct{}),
@@ -87,8 +87,8 @@ func (e *Engine) reset() {
 	}
 }
 
-// Match returns the ID of the first matching template or "" if none was matched.
-func (e *Engine) Match(
+// match returns the ID of the first matching template or "" if none was matched.
+func (e *Engine) match(
 	variableValues [][]gqlparse.Token,
 	queryType gqlscan.Token,
 	selectionSet []gqlparse.Token,
@@ -126,7 +126,6 @@ func (e *Engine) Match(
 
 	e.matcher.Match(e.structuralPaths, func(t *config.Template) (stop bool) {
 		tm := e.templates[t.ID]
-		fmt.Println("\nTEMPORARILY MATCHED ", tm.ID)
 		for i := range e.argumentsSet {
 			if !tm.ConstraintChecker.Check(
 				variableValues,
@@ -139,4 +138,32 @@ func (e *Engine) Match(
 		}
 		return onMatch(t)
 	})
+}
+
+// Match calls onMatch for every matched template until onMatch returns true.
+// onErr is invoked in case of an error.
+func (e *Engine) Match(
+	query, operationName, variablesJSON []byte,
+	onParsed func(operation, selectionSet []gqlparse.Token) (stop bool),
+	onMatch func(template *config.Template) (stop bool),
+	onErr func(err error),
+) {
+	e.parser.Parse(
+		query, operationName, variablesJSON,
+		func(
+			varVals [][]gqlparse.Token,
+			operation, selectionSet []gqlparse.Token,
+		) {
+			if onParsed(operation, selectionSet) {
+				return
+			}
+			e.match(
+				varVals, operation[0].ID, selectionSet,
+				func(t *config.Template) (stop bool) {
+					return onMatch(t)
+				},
+			)
+		},
+		onErr,
+	)
 }

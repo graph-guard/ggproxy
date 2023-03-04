@@ -3,12 +3,10 @@ package model
 import (
 	"github.com/graph-guard/ggproxy/config"
 	"github.com/graph-guard/ggproxy/engine/playmon"
-	"github.com/graph-guard/ggproxy/gqlparse"
 	"github.com/graph-guard/ggproxy/statistics"
 )
 
 type Service struct {
-	Parser    *gqlparse.Parser
 	Engine    *playmon.Engine
 	Templates map[*config.Template]*Template
 	Stats     *statistics.ServiceSync

@@ -186,22 +186,15 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 	m := service.enginePool.Get().(*engine)
 	defer service.enginePool.Put(m)
 
-	m.Parser.Parse(
+	var operation []gqlparse.Token
+	m.Engine.Match(
 		query, operationName, variablesJSON,
-		func(
-			varVals [][]gqlparse.Token,
-			operation []gqlparse.Token,
-			selectionSet []gqlparse.Token,
-		) {
-			var tmpl *config.Template
-			m.Engine.Match(
-				varVals, operation[0].ID, selectionSet,
-				func(t *config.Template) (stop bool) {
-					tmpl = t
-					return false
-				},
-			)
-			if tmpl == nil {
+		func(o, selectionSet []gqlparse.Token) (stop bool) {
+			operation = o
+			return false
+		},
+		func(t *config.Template) (stop bool) {
+			if t == nil {
 				timeProcessing := time.Since(start)
 				service.statistics.Update(
 					len(body), 0,
@@ -214,7 +207,7 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 				return
 			}
 
-			templateStatistics := service.templateStatistics[tmpl.ID]
+			templateStatistics := service.templateStatistics[t.ID]
 
 			timeProcessing := time.Since(start)
 			startForward := time.Now()
@@ -231,8 +224,7 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 
 			if service.forwardReduced {
 				if err := tokenwriter.Write(
-					ctx.Request.BodyWriter(),
-					operation,
+					ctx.Request.BodyWriter(), operation,
 				); err != nil {
 					s.log.Error().
 						Err(err).
@@ -280,6 +272,7 @@ func (s *Proxy) handle(ctx *fasthttp.RequestCtx) {
 			templateStatistics.Update(
 				timeProcessing, timeForwarding,
 			)
+			return false
 		},
 		func(err error) {
 			s.log.Error().Err(err).Msg("parser error")

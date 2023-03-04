@@ -48,109 +48,102 @@ func (r *queryResolver) Services(ctx context.Context) ([]*model.Service, error) 
 }
 
 // MatchAll is the resolver for the matchAll field.
-func (r *serviceResolver) MatchAll(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) (*model.MatchResult, error) {
-	// Declare here instead of using named return variables
-	// to avoid code generation overriding them.
-	m := new(model.MatchResult)
+func (r *serviceResolver) MatchAll(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) ([]*model.MatchResult, error) {
+	m := []*model.MatchResult{}
 	var err error
 
-	oprName := []byte(nil)
+	var oprName []byte
 	if operationName != nil {
 		oprName = []byte(*operationName)
 	}
 
-	varsJSON := []byte(nil)
+	var varsJSON []byte
 	if variablesJSON != nil {
 		varsJSON = []byte(*variablesJSON)
 	}
 
-	startParsing := time.Now()
-	obj.Parser.Parse(
+	start := time.Now()
+	var durParsing float64
+	var forwarded string
+	obj.Engine.Match(
 		[]byte(query), oprName, varsJSON,
-		func(
-			varVals [][]gqlparse.Token,
-			operation []gqlparse.Token,
-			selectionSet []gqlparse.Token,
-		) {
-			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
-			startMatching := time.Now()
-			obj.Engine.Match(
-				varVals,
-				operation[0].ID,
-				selectionSet,
-				func(t *config.Template) (stop bool) {
-					m.Templates = append(m.Templates, obj.Templates[t])
-					return false
-				},
-			)
-			m.TimeMatchingNs = nsToF64(time.Since(startMatching).Nanoseconds())
-			var forwarded bytes.Buffer
-			if err = tokenwriter.Write(&forwarded, operation); err != nil {
+		func(operation, selectionSet []gqlparse.Token) (stop bool) {
+			durParsing = nsToF64(time.Since(start).Nanoseconds())
+
+			var b bytes.Buffer
+			if err = tokenwriter.Write(&b, operation); err != nil {
 				r.Log.Error().
 					Err(err).
 					Msg("writing parsed")
-				return
+				return true
 			}
-			forwardStr := forwarded.String()
-			m.Forwarded = &forwardStr
+			forwarded = b.String()
+
+			start = time.Now()
+			return false
 		},
-		func(errParser error) {
-			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
-			err = errParser
+		func(template *config.Template) (stop bool) {
+			sinceStart := time.Since(start)
+			m = append(m, &model.MatchResult{
+				Template:       obj.Templates[template],
+				TimeMatchingNs: nsToF64(sinceStart.Nanoseconds()),
+				TimeParsingNs:  durParsing,
+				Forwarded:      &forwarded,
+			})
+
+			start = time.Now()
+			return false
 		},
+		func(errParser error) { err = errParser },
 	)
 	return m, err
 }
 
 // Match is the resolver for the match field.
-func (r *serviceResolver) Match(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) (*model.MatchResult, error) {
-	// Declare here instead of using named return variables
-	// to avoid code generation overriding them.
-	m := new(model.MatchResult)
-	var err error
+func (r *serviceResolver) Match(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) (m *model.MatchResult, err error) {
+	m = &model.MatchResult{}
 
-	oprName := []byte(nil)
+	var oprName []byte
 	if operationName != nil {
 		oprName = []byte(*operationName)
 	}
 
-	varsJSON := []byte(nil)
+	var varsJSON []byte
 	if variablesJSON != nil {
 		varsJSON = []byte(*variablesJSON)
 	}
 
-	startParsing := time.Now()
-	obj.Parser.Parse(
+	start := time.Now()
+	var durParsing float64
+	var forwarded string
+	obj.Engine.Match(
 		[]byte(query), oprName, varsJSON,
-		func(
-			varVals [][]gqlparse.Token,
-			operation []gqlparse.Token,
-			selectionSet []gqlparse.Token,
-		) {
-			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
-			startMatching := time.Now()
-			obj.Engine.Match(
-				varVals, operation[0].ID, selectionSet,
-				func(t *config.Template) (stop bool) {
-					m.Templates = []*model.Template{obj.Templates[t]}
-					return true
-				},
-			)
-			m.TimeMatchingNs = nsToF64(time.Since(startMatching).Nanoseconds())
-			var forwarded bytes.Buffer
-			if err = tokenwriter.Write(&forwarded, operation); err != nil {
+		func(operation, selectionSet []gqlparse.Token) (stop bool) {
+			durParsing = nsToF64(time.Since(start).Nanoseconds())
+
+			var b bytes.Buffer
+			if err = tokenwriter.Write(&b, operation); err != nil {
 				r.Log.Error().
 					Err(err).
 					Msg("writing parsed")
-				return
+				return true
 			}
-			forwardStr := forwarded.String()
-			m.Forwarded = &forwardStr
+			forwarded = b.String()
+
+			start = time.Now()
+			return false
 		},
-		func(errParser error) {
-			m.TimeParsingNs = nsToF64(time.Since(startParsing).Nanoseconds())
-			err = errParser
+		func(template *config.Template) (stop bool) {
+			sinceStart := time.Since(start)
+			m = &model.MatchResult{
+				Template:       obj.Templates[template],
+				TimeMatchingNs: nsToF64(sinceStart.Nanoseconds()),
+				TimeParsingNs:  durParsing,
+				Forwarded:      &forwarded,
+			}
+			return true // Stop after first match
 		},
+		func(errParser error) { err = errParser },
 	)
 	return m, err
 }
@@ -194,6 +187,8 @@ func (r *Resolver) Service() generated.ServiceResolver { return &serviceResolver
 // Template returns generated.TemplateResolver implementation.
 func (r *Resolver) Template() generated.TemplateResolver { return &templateResolver{r} }
 
-type queryResolver struct{ *Resolver }
-type serviceResolver struct{ *Resolver }
-type templateResolver struct{ *Resolver }
+type (
+	queryResolver    struct{ *Resolver }
+	serviceResolver  struct{ *Resolver }
+	templateResolver struct{ *Resolver }
+)

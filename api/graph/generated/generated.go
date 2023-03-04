@@ -48,7 +48,7 @@ type DirectiveRoot struct {
 type ComplexityRoot struct {
 	MatchResult struct {
 		Forwarded      func(childComplexity int) int
-		Templates      func(childComplexity int) int
+		Template       func(childComplexity int) int
 		TimeMatchingNs func(childComplexity int) int
 		TimeParsingNs  func(childComplexity int) int
 	}
@@ -110,7 +110,7 @@ type QueryResolver interface {
 	Services(ctx context.Context) ([]*model.Service, error)
 }
 type ServiceResolver interface {
-	MatchAll(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) (*model.MatchResult, error)
+	MatchAll(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) ([]*model.MatchResult, error)
 	Match(ctx context.Context, obj *model.Service, query string, operationName *string, variablesJSON *string) (*model.MatchResult, error)
 	Statistics(ctx context.Context, obj *model.Service) (*model.ServiceStatistics, error)
 }
@@ -141,12 +141,12 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.MatchResult.Forwarded(childComplexity), true
 
-	case "MatchResult.templates":
-		if e.complexity.MatchResult.Templates == nil {
+	case "MatchResult.template":
+		if e.complexity.MatchResult.Template == nil {
 			break
 		}
 
-		return e.complexity.MatchResult.Templates(childComplexity), true
+		return e.complexity.MatchResult.Template(childComplexity), true
 
 	case "MatchResult.timeMatchingNS":
 		if e.complexity.MatchResult.TimeMatchingNs == nil {
@@ -518,7 +518,7 @@ type Service {
 		query: String!
 		operationName: String
 		variablesJSON: String
-	): MatchResult!
+	): [MatchResult]!
 
 	# match provides matching results for the given query.
 	# It's similar to matchAll except that it matches one template only.
@@ -533,9 +533,9 @@ type Service {
 }
 
 type MatchResult {
-	# templates provides all templates that matched the query.
+	# template provides the template that matched the query.
 	# Provides an empty array if there was no match.
-	templates: [Template!]!
+	template: Template!
 	
 	# forwarded provides the forwarded query.
 	# Provides null if there was no match.
@@ -763,8 +763,8 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 
 // region    **************************** field.gotpl *****************************
 
-func (ec *executionContext) _MatchResult_templates(ctx context.Context, field graphql.CollectedField, obj *model.MatchResult) (ret graphql.Marshaler) {
-	fc, err := ec.fieldContext_MatchResult_templates(ctx, field)
+func (ec *executionContext) _MatchResult_template(ctx context.Context, field graphql.CollectedField, obj *model.MatchResult) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_MatchResult_template(ctx, field)
 	if err != nil {
 		return graphql.Null
 	}
@@ -777,7 +777,7 @@ func (ec *executionContext) _MatchResult_templates(ctx context.Context, field gr
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return obj.Templates, nil
+		return obj.Template, nil
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -789,12 +789,12 @@ func (ec *executionContext) _MatchResult_templates(ctx context.Context, field gr
 		}
 		return graphql.Null
 	}
-	res := resTmp.([]*model.Template)
+	res := resTmp.(*model.Template)
 	fc.Result = res
-	return ec.marshalNTemplate2ᚕᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐTemplateᚄ(ctx, field.Selections, res)
+	return ec.marshalNTemplate2ᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐTemplate(ctx, field.Selections, res)
 }
 
-func (ec *executionContext) fieldContext_MatchResult_templates(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+func (ec *executionContext) fieldContext_MatchResult_template(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "MatchResult",
 		Field:      field,
@@ -1663,9 +1663,9 @@ func (ec *executionContext) _Service_matchAll(ctx context.Context, field graphql
 		}
 		return graphql.Null
 	}
-	res := resTmp.(*model.MatchResult)
+	res := resTmp.([]*model.MatchResult)
 	fc.Result = res
-	return ec.marshalNMatchResult2ᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐMatchResult(ctx, field.Selections, res)
+	return ec.marshalNMatchResult2ᚕᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐMatchResult(ctx, field.Selections, res)
 }
 
 func (ec *executionContext) fieldContext_Service_matchAll(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
@@ -1676,8 +1676,8 @@ func (ec *executionContext) fieldContext_Service_matchAll(ctx context.Context, f
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "templates":
-				return ec.fieldContext_MatchResult_templates(ctx, field)
+			case "template":
+				return ec.fieldContext_MatchResult_template(ctx, field)
 			case "forwarded":
 				return ec.fieldContext_MatchResult_forwarded(ctx, field)
 			case "timeParsingNS":
@@ -1741,8 +1741,8 @@ func (ec *executionContext) fieldContext_Service_match(ctx context.Context, fiel
 		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
-			case "templates":
-				return ec.fieldContext_MatchResult_templates(ctx, field)
+			case "template":
+				return ec.fieldContext_MatchResult_template(ctx, field)
 			case "forwarded":
 				return ec.fieldContext_MatchResult_forwarded(ctx, field)
 			case "timeParsingNS":
@@ -4536,9 +4536,9 @@ func (ec *executionContext) _MatchResult(ctx context.Context, sel ast.SelectionS
 		switch field.Name {
 		case "__typename":
 			out.Values[i] = graphql.MarshalString("MatchResult")
-		case "templates":
+		case "template":
 
-			out.Values[i] = ec._MatchResult_templates(ctx, field, obj)
+			out.Values[i] = ec._MatchResult_template(ctx, field, obj)
 
 			if out.Values[i] == graphql.Null {
 				invalids++
@@ -5431,6 +5431,44 @@ func (ec *executionContext) marshalNMatchResult2githubᚗcomᚋgraphᚑguardᚋg
 	return ec._MatchResult(ctx, sel, &v)
 }
 
+func (ec *executionContext) marshalNMatchResult2ᚕᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐMatchResult(ctx context.Context, sel ast.SelectionSet, v []*model.MatchResult) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalOMatchResult2ᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐMatchResult(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	return ret
+}
+
 func (ec *executionContext) marshalNMatchResult2ᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐMatchResult(ctx context.Context, sel ast.SelectionSet, v *model.MatchResult) graphql.Marshaler {
 	if v == nil {
 		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
@@ -5920,6 +5958,13 @@ func (ec *executionContext) marshalOBoolean2ᚖbool(ctx context.Context, sel ast
 	}
 	res := graphql.MarshalBoolean(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOMatchResult2ᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐMatchResult(ctx context.Context, sel ast.SelectionSet, v *model.MatchResult) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._MatchResult(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOService2ᚖgithubᚗcomᚋgraphᚑguardᚋggproxyᚋapiᚋgraphᚋmodelᚐService(ctx context.Context, sel ast.SelectionSet, v *model.Service) graphql.Marshaler {
