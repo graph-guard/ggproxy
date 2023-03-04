@@ -17,15 +17,15 @@ builds:
       - linux
       - darwin
     goarch:
-      - 386
-      - amd64
-      - arm
-      - arm64
+      - "386"
+      - "amd64"
+      - "arm"
+      - "arm64"
 archives:
   - id: ggproxy
     name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     replacements:
-      386: i386
+      "386": "i386"
     files:
       - src: assets/etc/
         info:
@@ -39,7 +39,7 @@ snapshot:
 release:
   draft: false
   replace_existing_draft: true
-  prerelease: true
+  prerelease: auto
   mode: append
   header: |
     **[CHANGELOG.md](https://github.com/graph-guard/ggproxy/blob/ci/CHANGELOG.md#{{ .Env.COMPACT_TAG }})**
