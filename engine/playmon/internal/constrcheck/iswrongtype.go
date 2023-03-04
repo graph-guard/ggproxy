@@ -33,7 +33,8 @@ func isWrongType(
 		}
 		for {
 			rBefore := r
-			if r.ReadOne().ID == gqlscan.TokenArrEnd {
+			if r.PeekOne().ID == gqlscan.TokenArrEnd {
+				r.ReadOne()
 				return false
 			}
 			if isWrongType(rBefore, expect, schema) {

@@ -365,7 +365,12 @@ func TestIsWrongType_False(t *testing.T) {
 				)
 			}
 
-			r := isWrongType(&tokenreader.Reader{Main: tt.Input}, tt.ExpectType, s)
+			r := isWrongType(
+				&tokenreader.Reader{
+					Main: tt.Input,
+					Vars: tt.GQLVarVals,
+				}, tt.ExpectType, s,
+			)
 			require.False(t, r)
 		})
 	}
@@ -527,7 +532,12 @@ func TestIsWrongType_True(t *testing.T) {
 					"type expectations are always schema-aware",
 				)
 			}
-			r := isWrongType(&tokenreader.Reader{Main: tt.Input}, tt.ExpectType, s)
+			r := isWrongType(
+				&tokenreader.Reader{
+					Main: tt.Input,
+					Vars: tt.GQLVarVals,
+				}, tt.ExpectType, s,
+			)
 			require.True(t, r)
 		})
 	}
