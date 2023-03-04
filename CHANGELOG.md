@@ -29,7 +29,6 @@
 ### Fix
 
 * Fix comparison of byte slices
-* Fix lvs failure on empty license
 * Reset segmented array index counter
 * Accept enum values
 * Fix broken pipe handling
@@ -77,8 +76,6 @@
 * Add 'null' support
 * Add processing of enums
 * Prepare to Beta release
-* Use LVS validation and rename 'licence' to 'license'
-* Add licence key environment variable
 * Add support for basic auth in API server
 * Add service and template statistics
 * Add ggproxy GraphQL API
@@ -107,7 +104,6 @@
 
 ### Refactor
 
-* Refactor LVS ([#4](https://github.com/graph-guard/ggproxy/issues/4))
 * Get rid of the matcher interface
 * Simplify code
 

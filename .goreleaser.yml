@@ -11,8 +11,6 @@ builds:
     gobinary: garble
     env:
       - CGO_ENABLED=0
-    ldflags:
-      - -X 'github.com/graph-guard/ggproxy/lvs.PublicKey={{ .Env.PUB_KEY }}'
     goos:
       - linux
       - darwin
