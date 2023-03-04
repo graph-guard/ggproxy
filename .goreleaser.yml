@@ -37,7 +37,7 @@ snapshot:
 release:
   draft: false
   replace_existing_draft: true
-  prerelease: auto
+  prerelease: "true" # Don't remove the quotes, it's supposed to be a string, not a boolean.
   mode: append
   header: |
     **[CHANGELOG.md](https://github.com/graph-guard/ggproxy/blob/ci/CHANGELOG.md#{{ .Env.COMPACT_TAG }})**
