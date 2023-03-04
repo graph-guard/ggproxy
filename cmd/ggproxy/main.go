@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/graph-guard/ggproxy/cli"
+	"github.com/graph-guard/ggproxy/pkg/cli"
 )
 
 func main() {

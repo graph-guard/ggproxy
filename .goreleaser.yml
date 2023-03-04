@@ -24,12 +24,6 @@ archives:
     name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     replacements:
       "386": "i386"
-    files:
-      - src: assets/etc/
-        info:
-          owner: root
-          group: ggproxy
-          mode: 0664
 checksum:
   name_template: "{{ .ProjectName }}-{{ .Tag }}-checksums.txt"
 snapshot:

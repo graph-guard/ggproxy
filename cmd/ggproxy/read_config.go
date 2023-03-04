@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/graph-guard/ggproxy/config"
+	"github.com/graph-guard/ggproxy/pkg/config"
 )
 
 func ReadConfig(
