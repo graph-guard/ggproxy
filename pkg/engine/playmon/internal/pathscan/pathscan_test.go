@@ -362,16 +362,16 @@ var testsInAST = []struct {
 		Name:           "subscription_multiple",
 		GQTTemplateSrc: `subscription{foo bar}`,
 		ExpectStructural: []string{
-			"S.foo",
 			"S.bar",
+			"S.foo",
 		},
 	},
 	{
 		Name:           "args",
 		GQTTemplateSrc: `query{foo(b:*,a:"t") bar(c:42)}`,
 		ExpectStructural: []string{
-			"Q.foo|a,b,",
 			"Q.bar|c,",
+			"Q.foo|a,b,",
 		},
 		ExpectedArgPaths: []string{
 			"Q.foo|b",
@@ -383,8 +383,8 @@ var testsInAST = []struct {
 		Name:           "args_with_subselections",
 		GQTTemplateSrc: `query{foo(b:*,a:"t") { fraz kraz(c:*) }}`,
 		ExpectStructural: []string{
-			"Q.foo|a,b,.fraz",
 			"Q.foo|a,b,.kraz|c,",
+			"Q.foo|a,b,.fraz",
 		},
 		ExpectedArgPaths: []string{
 			"Q.foo|b",
@@ -418,10 +418,10 @@ var testsInAST = []struct {
 			bazz(x:*)
 		}`,
 		ExpectStructural: []string{
-			"M.foo|bar,.fa2",
-			"M.foo|bar,.fo2|a,b,.fo3|c,",
-			"M.foo|bar,.fo2|a,b,.fa3",
 			"M.bazz|x,",
+			"M.foo|bar,.fa2",
+			"M.foo|bar,.fo2|a,b,.fa3",
+			"M.foo|bar,.fo2|a,b,.fo3|c,",
 		},
 		ExpectedArgPaths: []string{
 			"M.foo|bar",
@@ -489,10 +489,10 @@ var testsInAST = []struct {
 			}
 		}`,
 		ExpectStructural: []string{
-			"Q.u|u1,u2,&Foo.foo1|x,y,",
-			"Q.u|u1,u2,&Foo.foo2|x,",
-			"Q.u|u1,u2,&Bar.bar1|x,",
 			"Q.u|u1,u2,&Bar.bar2|x,y,",
+			"Q.u|u1,u2,&Bar.bar1|x,",
+			"Q.u|u1,u2,&Foo.foo2|x,",
+			"Q.u|u1,u2,&Foo.foo1|x,y,",
 		},
 		ExpectedArgPaths: []string{
 			"Q.u|u2",
@@ -532,12 +532,12 @@ var testsInAST = []struct {
 			mazz
 		}`,
 		ExpectStructural: []string{
-			"Q.foo.bar.burr|x,",
-			"Q.foo.baz&Kraz.fraz",
-			"Q.foo.baz&Kraz.graz|argument,.lum",
+			"Q.mazz",
 			"Q.foo.baz&Guz.guz",
 			"Q.foo.baz.buzz|a,b,c,",
-			"Q.mazz",
+			"Q.foo.baz&Kraz.graz|argument,.lum",
+			"Q.foo.baz&Kraz.fraz",
+			"Q.foo.bar.burr|x,",
 		},
 		ExpectedArgPaths: []string{
 			"Q.foo.bar.burr|x",
@@ -555,20 +555,34 @@ func TestInAST(t *testing.T) {
 			o, _, errs := gqt.Parse([]byte(tt.GQTTemplateSrc))
 			require.Nil(t, errs)
 
+			var actualPathNames []string
 			var actualPaths, actualArgPaths []uint64
 			actualVarPaths := map[uint64]string{} // Hash -> variable name
 			errsP := pathscan.InAST(
 				o,
-				func(pathHash uint64, e gqt.Expression) (stop bool) {
+				func(
+					path string,
+					pathHash uint64,
+					e gqt.Expression,
+				) (stop bool) {
 					// On structural
+					actualPathNames = append(actualPathNames, path)
 					actualPaths = append(actualPaths, pathHash)
 					require.NotNil(t, e)
 					return false
-				}, func(pathHash uint64, e gqt.Expression) (stop bool) {
+				}, func(
+					path string,
+					pathHash uint64,
+					e gqt.Expression,
+				) (stop bool) {
 					// On argument
 					actualArgPaths = append(actualArgPaths, pathHash)
 					return false
-				}, func(pathHash uint64, e *gqt.VariableDeclaration) (stop bool) {
+				}, func(
+					path string,
+					pathHash uint64,
+					e *gqt.VariableDeclaration,
+				) (stop bool) {
 					// On variable
 					actualVarPaths[pathHash] = e.Name
 					return false
@@ -576,6 +590,7 @@ func TestInAST(t *testing.T) {
 			)
 			require.Nil(t, errsP)
 
+			require.Equal(t, tt.ExpectStructural, actualPathNames)
 			compareStringsByHash(
 				t, tt.ExpectStructural, actualPaths, "structural paths",
 			)

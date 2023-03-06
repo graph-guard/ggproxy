@@ -28,8 +28,8 @@ github.com/gorilla/websocket v1.5.0 h1:PPwGk2jz7EePpoHN/+ClbZu8SPxiqlu12wZP/3sWm
 github.com/gorilla/websocket v1.5.0/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/graph-guard/gqlscan v1.0.0 h1:hUEDqnJQJ7nV9S8hCPJuYI/H97KP3unu0Gu7wd0wV8A=
 github.com/graph-guard/gqlscan v1.0.0/go.mod h1:A7TeIFxoiP39gw/r4sWjDnTZJnNy+4kaytP9Kh7Luuk=
-github.com/graph-guard/gqt/v4 v4.0.9 h1:rqCwhrns1u65a3GVutFQEPXWxO8Y6R3fv+t8oPsFhVU=
-github.com/graph-guard/gqt/v4 v4.0.9/go.mod h1:tXBLe4Gr3S/y8pM6ABkcIWFcspyU1c1YfrsXdBf0hKE=
+github.com/graph-guard/gqt/v4 v4.0.10 h1:keAxTwkopb44eR1CwRYL4/u0PGUHHEd6d8RjR85b3c0=
+github.com/graph-guard/gqt/v4 v4.0.10/go.mod h1:tXBLe4Gr3S/y8pM6ABkcIWFcspyU1c1YfrsXdBf0hKE=
 github.com/hashicorp/golang-lru v0.5.4 h1:YDjusn29QI/Das2iO9M0BHnIbxPeyuCHsjMW+lJfyTc=
 github.com/hashicorp/golang-lru v0.5.4/go.mod h1:iADmTwqILo4mZ8BN3D2Q6+9jd8WM5uGBxy+E8yxSoD4=
 github.com/kevinmbeaulieu/eq-go v1.0.0/go.mod h1:G3S8ajA56gKBZm4UB9AOyoOS37JO3roToPzKNM8dtdM=

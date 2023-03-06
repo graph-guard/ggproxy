@@ -58,16 +58,30 @@ func New(s *config.Service) *Engine {
 		e.templates[tmpl.ID] = tmpl
 		if errs := pathscan.InAST(
 			tmpl.GQTOpr,
-			func(path uint64, e gqt.Expression) (stop bool) {
+			func(
+				path string,
+				pathHash uint64,
+				e gqt.Expression,
+			) (stop bool) {
 				// Structural
 				return false
-			}, func(path uint64, _ gqt.Expression) (stop bool) {
+			},
+			func(
+				path string,
+				pathHash uint64,
+				_ gqt.Expression,
+			) (stop bool) {
 				// Argument
-				e.argumentPaths[path] = struct{}{}
+				e.argumentPaths[pathHash] = struct{}{}
 				return false
-			}, func(path uint64, _ *gqt.VariableDeclaration) (stop bool) {
+			},
+			func(
+				path string,
+				pathHash uint64,
+				_ *gqt.VariableDeclaration,
+			) (stop bool) {
 				// Variable
-				e.varValues[path] = nil
+				e.varValues[pathHash] = nil
 				return false
 			},
 		); errs != nil {

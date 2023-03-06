@@ -251,9 +251,21 @@ func (s *PathScanner) structuralPop() {
 // argument.
 func InAST(
 	o *gqt.Operation,
-	onStructural func(pathHash uint64, e gqt.Expression) (stop bool),
-	onArg func(pathHash uint64, e gqt.Expression) (stop bool),
-	onVariable func(pathHash uint64, e *gqt.VariableDeclaration) (stop bool),
+	onStructural func(
+		path string,
+		pathHash uint64,
+		e gqt.Expression,
+	) (stop bool),
+	onArg func(
+		path string,
+		pathHash uint64,
+		e gqt.Expression,
+	) (stop bool),
+	onVariable func(
+		path string,
+		pathHash uint64,
+		e *gqt.VariableDeclaration,
+	) (stop bool),
 ) (errs []error) {
 	hashes := map[uint64]string{}
 	hash := func(path []byte) uint64 {
@@ -276,12 +288,12 @@ func InAST(
 		case *gqt.SelectionField:
 			for _, a := range e.Arguments {
 				p := makePathVar(a)
-				if onArg(hash(p), a) {
+				if onArg(string(p), hash(p), a) {
 					return true, true
 				}
 				if a.AssociatedVariable != nil {
 					p := makePathVar(a)
-					if onVariable(hash(p), a.AssociatedVariable) {
+					if onVariable(string(p), hash(p), a.AssociatedVariable) {
 						return true, true
 					}
 				}
@@ -291,13 +303,13 @@ func InAST(
 			}
 			p := makePathStructural(e)
 			hashes[hash(p)] = string(p)
-			if onStructural(hash(p), e) {
+			if onStructural(string(p), hash(p), e) {
 				return true, true
 			}
 		case *gqt.ObjectField:
 			if e.AssociatedVariable != nil {
 				p := makePathVar(e)
-				if onVariable(hash(p), e.AssociatedVariable) {
+				if onVariable(string(p), hash(p), e.AssociatedVariable) {
 					return true, true
 				}
 			}

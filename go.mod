@@ -7,7 +7,7 @@ require (
 	github.com/dustin/go-humanize v1.0.0
 	github.com/google/go-cmp v0.5.8
 	github.com/graph-guard/gqlscan v1.0.0
-	github.com/graph-guard/gqt/v4 v4.0.9
+	github.com/graph-guard/gqt/v4 v4.0.10
 	github.com/phuslu/log v1.0.81
 	github.com/pierrec/xxHash v0.1.5
 	github.com/stretchr/testify v1.7.2

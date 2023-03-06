@@ -1,0 +1,10 @@
+type Query {
+    a: A!
+    b: Int!
+    c: Int!
+}
+type A {
+    a_0: Int!
+    a_1: Int!
+    a_2: Int!
+}

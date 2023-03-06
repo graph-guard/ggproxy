@@ -438,10 +438,19 @@ func New(o *gqt.Operation, s *gqlast.Schema) *Checker {
 	}
 	if errs := pathscan.InAST(
 		o,
-		func(path uint64, e gqt.Expression) (stop bool) {
+		func(
+			path string,
+			pathHash uint64,
+			e gqt.Expression,
+		) (stop bool) {
 			// On structural
 			return false
-		}, func(path uint64, e gqt.Expression) (stop bool) {
+		},
+		func(
+			path string,
+			pathHash uint64,
+			e gqt.Expression,
+		) (stop bool) {
 			// On argument
 			a := e.(*gqt.Argument)
 			var expect *gqlast.Type
@@ -449,13 +458,17 @@ func New(o *gqt.Operation, s *gqlast.Schema) *Checker {
 				expect = a.Def.Type
 			}
 			if fn := makeCheck(a.Constraint, expect, s); fn != nil {
-				c.checkers[path] = fn
+				c.checkers[pathHash] = fn
 			}
 			return false
 		},
-		func(path uint64, e *gqt.VariableDeclaration) (stop bool) {
+		func(
+			path string,
+			pathHash uint64,
+			e *gqt.VariableDeclaration,
+		) (stop bool) {
 			// On variable
-			c.pathByVarDecl[e] = path
+			c.pathByVarDecl[e] = pathHash
 			return false
 		},
 	); errs != nil {
