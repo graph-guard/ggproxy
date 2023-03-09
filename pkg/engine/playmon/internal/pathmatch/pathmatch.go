@@ -1,20 +1,17 @@
 package pathmatch
 
 import (
-	"fmt"
-
 	"github.com/graph-guard/ggproxy/pkg/bitmask"
 	"github.com/graph-guard/ggproxy/pkg/config"
 	"github.com/graph-guard/ggproxy/pkg/engine/playmon/internal/pathinfo"
 	"github.com/graph-guard/ggproxy/pkg/engine/playmon/internal/pathscan"
-	"github.com/graph-guard/ggproxy/pkg/math"
 	"github.com/graph-guard/gqt/v4"
 )
 
 type structuralPath struct {
-	Name         string
-	Mask         *bitmask.Set
-	Combinations []combination
+	Name        string
+	Mask        *bitmask.Set
+	Combinators []combination
 }
 
 type combination struct {
@@ -33,15 +30,15 @@ type Matcher struct {
 	templates []template
 	paths     map[uint64]structuralPath
 
-	// maxSetLimits defines the limit of the `max` set of every combination.
-	maxSetLimits []int
+	// combinatorsLimits defines the limit of the `max` set of every combination.
+	combinatorsLimits []int
 
 	lengths []int
 
 	/* Operational data, reset for every match call */
 
-	// maxCounters keeps the counters for every combination.
-	maxCounters []int
+	// combinatorCounters keeps the counters for every combination.
+	combinatorCounters []int
 
 	matchMask, rejectedMask *bitmask.Set
 	matchesPerTemplate      []int
@@ -53,8 +50,8 @@ func (m *Matcher) reset() {
 	for i := range m.matchesPerTemplate {
 		m.matchesPerTemplate[i] = 0
 	}
-	for i := range m.maxCounters {
-		m.maxCounters[i] = 0
+	for i := range m.combinatorCounters {
+		m.combinatorCounters[i] = 0
 	}
 }
 
@@ -71,11 +68,15 @@ func (m *Matcher) Match(
 			return // Unknown path, can't match any template
 		}
 
-		for _, c := range b.Combinations {
-			for i := math.Max(0, c.Index-c.Depth); i <= c.Index; i++ {
-				m.maxCounters[i]++
-				if m.maxSetLimits[i] < m.maxCounters[i] {
-					m.rejectedMask.Add(i)
+		for _, c := range b.Combinators {
+			depth := 0
+			if m.combinatorCounters[c.Index] < 1 {
+				depth = c.Depth
+			}
+			for i := c.Index - depth; i <= c.Index; i++ {
+				m.combinatorCounters[i]++
+				if m.combinatorsLimits[i] < m.combinatorCounters[i] {
+					m.rejectedMask.Add(c.TemplateIndex)
 				}
 			}
 		}
@@ -105,8 +106,7 @@ func New(conf *config.Service) *Matcher {
 		rejectedMask:       bitmask.New(),
 		matchesPerTemplate: make([]int, len(conf.TemplatesEnabled)),
 	}
-	var paths, templateIDs []string
-	var combinations []combination
+	var maxCombinators []*gqt.SelectionMax
 	for i := range conf.TemplatesEnabled {
 		{ // Associate paths with templates by index
 			if errs := pathscan.InAST(
@@ -128,23 +128,23 @@ func New(conf *config.Service) *Matcher {
 					}
 
 					if depth, parentMax := pathinfo.Info(e); depth > 0 {
-						// Register combinations for paths inside `max` sets
-						paths = append(paths, path)
-						templateIDs = append(templateIDs, conf.TemplatesEnabled[i].ID)
-						v.Combinations = append(v.Combinations, combination{
-							Index:         len(m.maxSetLimits),
-							Depth:         depth - 1,
-							TemplateIndex: i,
-						})
-						combinations = append(combinations, combination{
-							Index:         len(m.maxSetLimits),
+						index := indexOf(maxCombinators, parentMax)
+						if index < 0 {
+							index = len(maxCombinators)
+							maxCombinators = append(maxCombinators, parentMax)
+							m.combinatorsLimits = append(
+								m.combinatorsLimits, parentMax.Limit,
+							)
+							m.combinatorCounters = append(m.combinatorCounters, 0)
+						}
+
+						// Register combinator for paths inside `max` sets
+						v.Combinators = append(v.Combinators, combination{
+							Index:         index,
 							Depth:         depth - 1,
 							TemplateIndex: i,
 						})
 						m.paths[pathHash] = v
-
-						m.maxSetLimits = append(m.maxSetLimits, parentMax.Limit)
-						m.maxCounters = append(m.maxCounters, 0)
 					}
 					return false
 				},
@@ -176,34 +176,20 @@ func New(conf *config.Service) *Matcher {
 		m.lengths[i] = len(m.templates[i].paths)
 	}
 
-	/*DUMP*/
-	fmt.Println("\n<################# ENGINE DUMP>")
-	fmt.Println("paths: ", len(m.paths))
-	for pathHash, p := range m.paths {
-		fmt.Printf(" %s: %d\n", p.Name, pathHash)
-		for _, c := range p.Combinations {
-			fmt.Printf(
-				" - CombinationIndex: %d; Depth: %d; Template: %d\n",
-				c.Index, c.Depth, c.TemplateIndex,
-			)
+	return m
+}
+
+func reverseSlice[T any](s []T) {
+	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
+		s[i], s[j] = s[j], s[i]
+	}
+}
+
+func indexOf[T comparable](s []T, x T) (index int) {
+	for i := range s {
+		if s[i] == x {
+			return i
 		}
 	}
-	fmt.Println("combinations: ", len(combinations))
-	for i, c := range combinations {
-		fmt.Printf(
-			" - CombinationIndex: %d; Depth: %d; Template: %d // %s: %s\n",
-			c.Index, c.Depth, c.TemplateIndex, templateIDs[i], paths[i],
-		)
-	}
-	fmt.Println("maxSetLimits: ", len(m.maxSetLimits))
-	for i := range m.maxSetLimits {
-		fmt.Printf(" %d: %d\n", i, m.maxSetLimits[i])
-	}
-	fmt.Println("maxCounters: ", len(m.maxCounters))
-	for i := range m.maxCounters {
-		fmt.Printf(" %d: %d\n", i, m.maxCounters[i])
-	}
-	fmt.Println("<################# ENGINE DUMP/>")
-
-	return m
+	return -1
 }
