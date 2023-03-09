@@ -108,65 +108,63 @@ func New(conf *config.Service) *Matcher {
 	}
 	var maxCombinators []*gqt.SelectionMax
 	for i := range conf.TemplatesEnabled {
-		{ // Associate paths with templates by index
-			if errs := pathscan.InAST(
-				conf.TemplatesEnabled[i].GQTTemplate,
-				func(
-					path string,
-					pathHash uint64,
-					e gqt.Expression,
-				) (stop bool) {
-					// On structural
-					m.templates[i].paths = append(m.templates[i].paths, pathHash)
+		if errs := pathscan.InAST(
+			conf.TemplatesEnabled[i].GQTTemplate,
+			func(
+				path string,
+				pathHash uint64,
+				e gqt.Expression,
+			) (stop bool) {
+				// On structural
+				m.templates[i].paths = append(m.templates[i].paths, pathHash)
 
-					var v structuralPath
-					var ok bool
-					if v, ok = m.paths[pathHash]; !ok {
-						v.Mask = bitmask.New()
-						v.Name = path
-						m.paths[pathHash] = v
+				var v structuralPath
+				var ok bool
+				if v, ok = m.paths[pathHash]; !ok {
+					v.Mask = bitmask.New()
+					v.Name = path
+					m.paths[pathHash] = v
+				}
+
+				if depth, parentMax := pathinfo.Info(e); depth > 0 {
+					index := indexOf(maxCombinators, parentMax)
+					if index < 0 {
+						index = len(maxCombinators)
+						maxCombinators = append(maxCombinators, parentMax)
+						m.combinatorsLimits = append(
+							m.combinatorsLimits, parentMax.Limit,
+						)
+						m.combinatorCounters = append(m.combinatorCounters, 0)
 					}
 
-					if depth, parentMax := pathinfo.Info(e); depth > 0 {
-						index := indexOf(maxCombinators, parentMax)
-						if index < 0 {
-							index = len(maxCombinators)
-							maxCombinators = append(maxCombinators, parentMax)
-							m.combinatorsLimits = append(
-								m.combinatorsLimits, parentMax.Limit,
-							)
-							m.combinatorCounters = append(m.combinatorCounters, 0)
-						}
-
-						// Register combinator for paths inside `max` sets
-						v.Combinators = append(v.Combinators, combination{
-							Index:         index,
-							Depth:         depth - 1,
-							TemplateIndex: i,
-						})
-						m.paths[pathHash] = v
-					}
-					return false
-				},
-				func(
-					path string,
-					pathHash uint64,
-					e gqt.Expression,
-				) (stop bool) {
-					// On argument
-					return false
-				},
-				func(
-					path string,
-					pathHash uint64,
-					e *gqt.VariableDeclaration,
-				) (stop bool) {
-					// On variable
-					return false
-				},
-			); errs != nil {
-				panic(errs)
-			}
+					// Register combinator for paths inside `max` sets
+					v.Combinators = append(v.Combinators, combination{
+						Index:         index,
+						Depth:         depth - 1,
+						TemplateIndex: i,
+					})
+					m.paths[pathHash] = v
+				}
+				return false
+			},
+			func(
+				path string,
+				pathHash uint64,
+				e gqt.Expression,
+			) (stop bool) {
+				// On argument
+				return false
+			},
+			func(
+				path string,
+				pathHash uint64,
+				e *gqt.VariableDeclaration,
+			) (stop bool) {
+				// On variable
+				return false
+			},
+		); errs != nil {
+			panic(errs)
 		}
 
 		// Initialize path bitmasks
@@ -177,12 +175,6 @@ func New(conf *config.Service) *Matcher {
 	}
 
 	return m
-}
-
-func reverseSlice[T any](s []T) {
-	for i, j := 0, len(s)-1; i < j; i, j = i+1, j-1 {
-		s[i], s[j] = s[j], s[i]
-	}
 }
 
 func indexOf[T comparable](s []T, x T) (index int) {
