@@ -1,0 +1,16 @@
+---
+tags:
+  - query
+  - field:human
+  - constraint:any
+  - expression:max2
+---
+query {
+    human(id: *) {
+        max 2 {
+            id
+            name
+            appearsIn
+        }
+    }
+}

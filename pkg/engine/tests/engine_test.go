@@ -1,202 +1,94 @@
 package engine_test
 
-// TODO: either reimplement the tests or make them playmon compatible.
+import (
+	"embed"
+	_ "embed"
+	"io/fs"
+	"path/filepath"
+	"strings"
+	"testing"
 
-// import (
-// 	"bytes"
-// 	"embed"
-// 	_ "embed"
-// 	"fmt"
-// 	"io"
-// 	"io/fs"
-// 	"path/filepath"
-// 	"strings"
-// 	"testing"
+	"github.com/graph-guard/ggproxy/pkg/config"
+	"github.com/graph-guard/ggproxy/pkg/engine/playmon"
+	"github.com/graph-guard/ggproxy/pkg/gqlparse"
+	"github.com/graph-guard/ggproxy/pkg/testsetup"
+	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
+)
 
-// 	"github.com/graph-guard/ggproxy/pkg/config"
-// 	"github.com/graph-guard/ggproxy/pkg/config/metadata"
-// 	"github.com/graph-guard/ggproxy/pkg/gqlparse"
-// 	"github.com/graph-guard/ggproxy/pkg/container/hamap"
-// 	"github.com/graph-guard/ggproxy/pkg/xxhash"
-// 	"github.com/graph-guard/gqt"
-// 	"github.com/stretchr/testify/require"
-// 	"gopkg.in/yaml.v3"
-// )
+//go:embed tests
+var testsFS embed.FS
 
-// func TestConstraintIdAndValue(t *testing.T) {
-// 	for _, td := range []struct {
-// 		input gqt.Constraint
-// 		id    rmap.Constraint
-// 		value any
-// 		err   error
-// 	}{
-// 		{
-// 			input: gqt.ConstraintMap{
-// 				Constraint: new(gqt.Constraint),
-// 			},
-// 			id:    rmap.ConstraintMap,
-// 			value: new(gqt.Constraint),
-// 		},
-// 		{
-// 			input: gqt.ConstraintAny{},
-// 			id:    rmap.ConstraintAny,
-// 			value: nil,
-// 		},
-// 		{
-// 			input: gqt.ConstraintValEqual{
-// 				Value: gqt.ValueObject{
-// 					Fields: []gqt.ObjectField{
-// 						{
-// 							Name: "a",
-// 							Value: gqt.ConstraintValLessOrEqual{
-// 								Value: 42.0,
-// 							},
-// 						},
-// 					},
-// 				},
-// 			},
-// 			id: rmap.ConstraintValEqual,
-// 			value: gqt.ValueObject{
-// 				Fields: []gqt.ObjectField{
-// 					{
-// 						Name: "a",
-// 						Value: gqt.ConstraintValLessOrEqual{
-// 							Value: 42.0,
-// 						},
-// 					},
-// 				},
-// 			},
-// 		},
-// 		{
-// 			input: gqt.ConstraintValGreater{
-// 				Value: 42.0,
-// 			},
-// 			id:    rmap.ConstraintValGreater,
-// 			value: 42.0,
-// 		},
-// 		{
-// 			input: gqt.ConstraintValLess{
-// 				Value: 42.0,
-// 			},
-// 			id:    rmap.ConstraintValLess,
-// 			value: 42.0,
-// 		},
-// 		{
-// 			input: gqt.ConstraintValGreaterOrEqual{
-// 				Value: 69.0,
-// 			},
-// 			id:    rmap.ConstraintValGreaterOrEqual,
-// 			value: 69.0,
-// 		},
-// 		{
-// 			input: gqt.ConstraintValLessOrEqual{
-// 				Value: 69.0,
-// 			},
-// 			id:    rmap.ConstraintValLessOrEqual,
-// 			value: 69.0,
-// 		},
-// 		{
-// 			input: gqt.ConstraintBytelenEqual{
-// 				Value: 1984,
-// 			},
-// 			id:    rmap.ConstraintBytelenEqual,
-// 			value: uint(1984),
-// 		},
-// 		{
-// 			input: gqt.ConstraintBytelenNotEqual{
-// 				Value: 1984,
-// 			},
-// 			id:    rmap.ConstraintBytelenNotEqual,
-// 			value: uint(1984),
-// 		},
-// 		{
-// 			input: gqt.ConstraintBytelenGreater{
-// 				Value: 282,
-// 			},
-// 			id:    rmap.ConstraintBytelenGreater,
-// 			value: uint(282),
-// 		},
-// 		{
-// 			input: gqt.ConstraintBytelenLess{
-// 				Value: 282,
-// 			},
-// 			id:    rmap.ConstraintBytelenLess,
-// 			value: uint(282),
-// 		},
-// 		{
-// 			input: gqt.ConstraintBytelenGreaterOrEqual{
-// 				Value: 27015,
-// 			},
-// 			id:    rmap.ConstraintBytelenGreaterOrEqual,
-// 			value: uint(27015),
-// 		},
-// 		{
-// 			input: gqt.ConstraintBytelenLessOrEqual{
-// 				Value: 27015,
-// 			},
-// 			id:    rmap.ConstraintBytelenLessOrEqual,
-// 			value: uint(27015),
-// 		},
-// 		{
-// 			input: gqt.ConstraintLenEqual{
-// 				Value: 997,
-// 			},
-// 			id:    rmap.ConstraintLenEqual,
-// 			value: uint(997),
-// 		},
-// 		{
-// 			input: gqt.ConstraintLenNotEqual{
-// 				Value: 997,
-// 			},
-// 			id:    rmap.ConstraintLenNotEqual,
-// 			value: uint(997),
-// 		},
-// 		{
-// 			input: gqt.ConstraintLenGreater{
-// 				Value: 47,
-// 			},
-// 			id:    rmap.ConstraintLenGreater,
-// 			value: uint(47),
-// 		},
-// 		{
-// 			input: gqt.ConstraintLenLess{
-// 				Value: 47,
-// 			},
-// 			id:    rmap.ConstraintLenLess,
-// 			value: uint(47),
-// 		},
-// 		{
-// 			input: gqt.ConstraintLenGreaterOrEqual{
-// 				Value: 404,
-// 			},
-// 			id:    rmap.ConstraintLenGreaterOrEqual,
-// 			value: uint(404),
-// 		},
-// 		{
-// 			input: gqt.ConstraintLenLessOrEqual{
-// 				Value: 404,
-// 			},
-// 			id:    rmap.ConstraintLenLessOrEqual,
-// 			value: uint(404),
-// 		},
-// 	} {
-// 		t.Run("", func(t *testing.T) {
-// 			id, value := rmap.ConstraintIdAndValue(td.input)
-// 			require.Equal(t, td.id, id)
-// 			require.Equal(t, td.value, value)
-// 		})
-// 	}
-// }
+func TestPlaymonMatch(t *testing.T) {
+	testSets, err := testsFS.ReadDir("tests")
+	require.NoError(t, err)
+	for _, d := range testSets {
+		t.Run(d.Name(), func(t *testing.T) {
+			if !d.IsDir() {
+				t.Skip("not a directory")
+			}
+			setup, ok := testsetup.ByName(d.Name())
+			if !ok {
+				t.Fatalf("unknown test setup: %q", d.Name())
+			}
 
-// //go:embed assets/testassets
-// var testassets embed.FS
+			engine := playmon.New(setup.Config.ServicesEnabled[0])
 
-// type QueryModel struct {
-// 	Query         string   `yaml:"query"`
-// 	OperationName string   `yaml:"operationName"`
-// 	Variables     string   `yaml:"variables"`
-// 	Expect        []string `yaml:"expect"`
-// }
+			tests, err := fs.ReadDir(testsFS, filepath.Join("tests", d.Name()))
+			require.NoError(t, err)
+			for _, f := range tests {
+				name := strings.TrimSuffix(f.Name(), ".yaml")
+				t.Run(name, func(t *testing.T) {
+					if !strings.HasSuffix(f.Name(), ".yaml") {
+						t.Skip("missing '.yaml' extension")
+					}
+					if f.IsDir() {
+						t.Skip("directory")
+					}
+					c, err := fs.ReadFile(testsFS, filepath.Join("tests", d.Name(), f.Name()))
+					require.NoError(t, err)
+					var ts Test
+					err = yaml.Unmarshal(c, &ts)
+					require.NoError(t, err)
+					var errMsg string
+					var matches []string
+
+					var operationName []byte
+					if ts.OperationName != "" {
+						operationName = []byte(ts.OperationName)
+					}
+					var variablesJSON []byte
+					if ts.VariablesJSON != "" {
+						variablesJSON = []byte(ts.VariablesJSON)
+					}
+
+					engine.Match(
+						[]byte(ts.Query), operationName, variablesJSON,
+						func(operation, selectionSet []gqlparse.Token) (stop bool) {
+							return false
+						},
+						func(template *config.Template) (stop bool) {
+							matches = append(matches, template.ID)
+							return false
+						}, func(err error) {
+							errMsg = err.Error()
+						},
+					)
+					require.Equal(t, ts.ExpectError, errMsg)
+					require.Equal(t, ts.ExpectMatches, matches)
+				})
+			}
+		})
+	}
+}
+
+type Test struct {
+	Query         string   `yaml:"query"`
+	OperationName string   `yaml:"operation-name"`
+	VariablesJSON string   `yaml:"variables-json"`
+	ExpectError   string   `yaml:"expect-error"`
+	ExpectMatches []string `yaml:"expect-matches"`
+}
 
 // type MatchTest struct {
 // 	ID string
@@ -292,7 +184,7 @@ package engine_test
 // }
 
 // func TestMatchAllPartedQuery(t *testing.T) {
-// 	for _, td := range readTestAssets(testassets, "assets/testassets", "test_") {
+// 	for _, td := range readTestAssets(testsFS, "assets/testassets", "test_") {
 // 		t.Run(td.ID, func(t *testing.T) {
 // 			rules := make(map[string]gqt.Doc, len(td.Templates))
 // 			for _, r := range td.Templates {

@@ -1,0 +1,26 @@
+---
+tags:
+  - query
+  - field:hero
+  - field:hero.friends
+  - constraint:equal
+  - expression:or
+  - recursive
+---
+query {
+    hero(episode: EMPIRE || JEDI) {
+        id
+        name
+        appearsIn
+        friends {
+            id
+            name
+            appearsIn
+            friends {
+                id
+                name
+                appearsIn
+            }
+        }
+    }
+}

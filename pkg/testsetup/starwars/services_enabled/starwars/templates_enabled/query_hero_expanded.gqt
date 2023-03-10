@@ -1,0 +1,38 @@
+---
+tags:
+  - query
+  - field:hero
+  - field:hero.friends
+  - field:hero.friendsConnection
+  - field:reviews
+  - constraint:equal
+  - constraint:greater
+  - constraint:greaterOrEqual
+  - expression:or
+  - recursive
+---
+query {
+    hero(episode: EMPIRE || JEDI) {
+        id
+        name
+        appearsIn
+        friends {
+            id
+            name
+            appearsIn
+            friends {
+                id
+                name
+                appearsIn
+            }
+        }
+        friendsConnection(first: >= 0, after: len > 0) {
+            totalCount
+            friends {
+                id
+                name
+                appearsIn
+            }
+        }
+    }
+}

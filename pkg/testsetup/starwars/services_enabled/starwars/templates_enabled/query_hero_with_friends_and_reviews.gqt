@@ -1,0 +1,26 @@
+---
+tags:
+  - query
+  - field:hero
+  - field:hero.friends
+  - field:reviews
+  - constraint:equal
+  - expression:or
+---
+query {
+    hero(episode: JEDI) {
+        id
+        name
+        appearsIn
+        friends {
+            id
+            name
+            appearsIn
+        }
+    }
+    reviews(episode: EMPIRE || JEDI) {
+        stars
+        commentary
+        time
+    }
+}

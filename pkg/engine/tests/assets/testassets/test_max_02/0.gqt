@@ -1,7 +1,0 @@
-query {
-	combine 1 {
-		a
-		b
-		c
-	}
-}

@@ -1,0 +1,12 @@
+query: >
+  query {
+    hero(episode: JEDI) {
+      id
+      appearsIn
+    }
+  }
+expect-matches:
+  - query_hero_and_reviews
+  - query_hero_expanded
+  - query_hero_friends
+  - query_hero_with_friends_and_reviews

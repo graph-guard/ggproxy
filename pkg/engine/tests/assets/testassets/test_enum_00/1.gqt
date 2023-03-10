@@ -1,6 +1,0 @@
-query {
-	a(
-		a_0: val = [ ... val = JEDI || val = EMPIRE || val = NEWHOPE]
-		a_1: val = JEDI || val = EMPIRE || val = NEWHOPE
-	)
-}

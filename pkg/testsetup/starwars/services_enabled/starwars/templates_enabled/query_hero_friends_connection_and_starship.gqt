@@ -1,0 +1,30 @@
+---
+tags:
+  - query
+  - field:hero
+  - field:starship
+  - field:hero.friendsConnection
+  - fragments:inline
+  - constraint:any
+  - constraint:equal
+  - constraint:notEqual
+  - expression:or
+---
+query {
+	hero(episode: EMPIRE) {
+		id
+		name
+		... on Droid { primaryFunction }
+		... on Human { height(unit: *) mass }
+		appearsIn
+		friendsConnection {
+			totalCount
+			friends {
+				id name appearsIn
+				...on Droid { primaryFunction }
+				... on Human { height(unit: *) mass }
+			}
+		}
+	}
+	starship(id:"3001") { name length(unit: != METER) }
+}

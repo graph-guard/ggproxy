@@ -1,5 +1,0 @@
-proxy:
-  host: localhost:8080
-
-all-services: all_services
-enabled-services: enabled_services
