@@ -14,7 +14,7 @@ query: >
           appearsIn
         }
       }
-      friendsConnection(first: 0, after: "something") {
+      friendsConnection(first: 1, after: "something") {
         totalCount
         friends {
           id

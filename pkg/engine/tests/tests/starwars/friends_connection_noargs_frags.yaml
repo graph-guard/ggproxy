@@ -1,0 +1,24 @@
+query: >
+  query {
+    hero(episode: EMPIRE) {
+      friendsConnection {
+        friends {
+          appearsIn
+          name
+          id
+          ...humanFrag
+          ...droidFrag
+        }
+        totalCount
+      }
+    }
+  }
+  fragment humanFrag on Human {
+    mass
+    height(unit: METER)
+  }
+  fragment droidFrag on Droid {
+    primaryFunction
+  }
+expect-matches:
+  - query_hero_friends_connection_and_starship
