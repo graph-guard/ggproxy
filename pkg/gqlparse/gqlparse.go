@@ -419,11 +419,6 @@ func (r *Parser) Parse(
 			}
 		case gqlscan.TokenNamedSpread:
 			if r.schema != nil {
-				t := r.schemaTypeStack.Top()
-				r.schemaTypeStack.Push(typeStackFrame{
-					HostType: t.HostType,
-				})
-
 				hostType := r.schemaTypeStack.Top().HostType
 				index := len(r.fragSpreadHostTypes)
 				r.fragSpreadHostTypes = append(r.fragSpreadHostTypes, hostType)
