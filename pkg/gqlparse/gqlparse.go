@@ -333,7 +333,7 @@ func (r *Parser) Parse(
 					onError(&r.errFieldUndef)
 					return true
 				}
-				tp := r.schema.Types[recentField.Type.NamedType]
+				tp := r.schema.Types[getTypeName(recentField.Type)]
 				r.schemaTypeStack.TopOffsetFn(0, func(f *typeStackFrame) {
 					f.FieldType = tp
 				})
@@ -1442,4 +1442,10 @@ func astTypeKindToString(d *ast.Definition) string {
 		return "interface"
 	}
 	return string(d.Kind)
+}
+
+func getTypeName(t *ast.Type) string {
+	for ; t.Elem != nil; t = t.Elem {
+	}
+	return t.NamedType
 }
