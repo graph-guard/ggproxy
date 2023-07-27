@@ -1,0 +1,17 @@
+---
+tags:
+  - query
+  - field:hero
+  - field:hero.friends
+  - constraint:any
+---
+query {
+    hero(episode: *) {
+        id
+        name
+        friends {
+            id
+            name
+        }
+    }
+}

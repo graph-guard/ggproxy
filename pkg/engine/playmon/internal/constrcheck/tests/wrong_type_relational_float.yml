@@ -1,0 +1,33 @@
+schema: >
+  type Query { f(
+    gr:   Float!
+    le:   Float!
+    greq: Float!
+    leeq: Float!
+  ):Int }
+
+template: >
+  query { f(
+    gr:   > 1.1,
+    le:   < 2.22,
+    greq: >= 3.333,
+    leeq: <= 4.4444,
+  ) }
+
+inputs:
+  Query.f|gr:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|le:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|greq:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|leeq:
+    match: false
+    tokens:
+      - Str: "wrong type"

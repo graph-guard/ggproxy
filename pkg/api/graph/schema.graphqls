@@ -1,0 +1,155 @@
+scalar Time
+
+type Query {
+	# uptime provides the uptime of the server in seconds.
+	uptime: Int!
+
+	# version provides the version of ggproxy.
+	version: String!
+
+	# service provides a service by id,
+	# provides null if no service is associated with id.
+	service(id: ID!): Service
+
+	# service provides all services.
+	services: [Service!]!
+}
+
+# Service is a set of templates for a particular port.
+type Service {
+	# id provides the unique identifier of the service.
+	# The ID is also the service name.
+	id: ID!
+
+	# templatesEnabled provides a list of all enabled templates.
+	templatesEnabled: [Template!]!
+
+	# templatesDisabled provides a list of all disabled templates.
+	templatesDisabled: [Template!]!
+
+	# proxyURL provides the front-facing proxy URL of the service.
+	proxyURL: String!
+
+	# forwardURL provides the active forward endpoint URL
+	# that's targeted by the proxy.
+	forwardURL: String!
+
+	# forwardReduced provides false if forwarded requests
+	# shall mirror the original incoming request. Otherwise provides true,
+	# indicating that forwarded requests are forwarded with transformations,
+	# meaning that irrelevant operations are removed and
+	# fragments & variables are inlined.
+	forwardReduced: Boolean!
+
+	# enabled provides true if the service is enabled, otherwise provides false.
+	enabled: Boolean!
+
+	# matchAll provides insights into what templates match the given query.
+	matchAll(
+		query: String!
+		operationName: String
+		variablesJSON: String
+	): [MatchResult]!
+
+	# match provides matching results for the given query.
+	# It's similar to matchAll except that it matches one template only.
+	match(
+		query: String!
+		operationName: String
+		variablesJSON: String
+	): MatchResult!
+
+	# statistics provides all service statistics.
+	statistics: ServiceStatistics!
+}
+
+type MatchResult {
+	# template provides the template that matched the query.
+	# Provides an empty array if there was no match.
+	template: Template!
+	
+	# forwarded provides the forwarded query.
+	# Provides null if there was no match.
+	forwarded: String
+
+	# timeParsingNS provides the parsing time in nanoseconds.
+	timeParsingNS: Float!
+
+	# timeMatchingNS provides the matching time in nanoseconds.
+	timeMatchingNS: Float!
+}
+
+# Template is a query or mutation request template.
+type Template {
+	# id provides the unique identifier of the template.
+	# The ID is also the template name.
+	id: ID!
+
+	# tags provides the tags assigned to the template.
+	tags: [String!]!
+
+	# source provides the source code in GQT.
+	source: String!
+
+	# statistics provides all template related statistics.
+	statistics: TemplateStatistics!
+
+	# service provides the service the template is defined in.
+	service: Service!
+
+	# enabled provides true if the template is enabled, otherwise provides false.
+	enabled: Boolean!
+}
+
+type TemplateStatistics {
+	# matches provides the number of times the template matched a request.
+	matches: Int!
+
+	# lastMatch provides the time the template was last matched.
+	lastMatch: Time!
+
+	# highestProcessingTime provides the highest processing time
+	# for requests matching this template in milliseconds.
+	highestProcessingTime: Int!
+
+	# averageProcessingTime provides the average processing time
+	# for requests matching this template in milliseconds.
+	averageProcessingTime: Int!
+
+	# highestResponseTime provides the highest response time
+	# for requests matching this template in milliseconds.
+	highestResponseTime: Int!
+
+	# averageResponseTime provides the average response time
+	# for requests matching this template in milliseconds.
+	averageResponseTime: Int!
+}
+
+type ServiceStatistics {
+	# blockedRequests provides the total number of blocked requests.
+	blockedRequests: Int!
+
+	# forwardedRequests provides the total number of requests that matched
+	# a template and were forwarded.
+	forwardedRequests: Int!
+
+	# receivedBytes provides the total number of bytes received by the service.
+	receivedBytes: Int!
+	
+	# sentBytes provides the total number of bytes sent by the service.
+	sentBytes: Int!
+
+	# highestProcessingTime provides the highest processing time
+	# for requests matching this template in milliseconds.
+	highestProcessingTime: Int!
+
+	# averageProcessingTime provides the average processing time
+	# for requests matching this template in milliseconds.
+	averageProcessingTime: Int!
+
+	# highestResponseTime provides the highest response time in milliseconds.
+	highestResponseTime: Int!
+
+	# averageResponseTime provides the average response time in milliseconds.
+	averageResponseTime: Int!
+}

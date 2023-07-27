@@ -1,0 +1,69 @@
+schema: >
+  type Query {f(
+    ints: Boolean!
+    strs: Boolean!
+    floats: Boolean!
+    arrays_int0: Boolean!
+    arrays_int1: Boolean!
+    arrays_int2: Boolean!
+    arrays_strs: Boolean!
+    arrays_2d: Boolean!
+    arrays_2d_diff: Boolean!
+    arrays_3d_diff: Boolean!
+  ):Int}
+
+template: >
+  query {f(
+    ints: 10 != 11,
+    strs: "a" != "b",
+    floats: 3.1415 != 3.14,
+    arrays_int0: [] != [1],
+    arrays_int1: [1,2] != [1],
+    arrays_int2: [1,2] != [1,3],
+    arrays_strs: [] != ["okay"],
+    arrays_2d: [[]] != [[], []],
+    arrays_2d_diff: [[],[2]] != [[],[3]],
+    arrays_3d_diff: [[[],[2]]] != [[[],[3]]],
+  )}
+
+inputs:
+  Query.f|ints:
+    match: true
+    tokens:
+      - True:
+  Query.f|strs:
+    match: true
+    tokens:
+      - True:
+  Query.f|floats:
+    match: true
+    tokens:
+      - True:
+  Query.f|arrays_int0:
+    match: true
+    tokens:
+      - True:
+  Query.f|arrays_int1:
+    match: true
+    tokens:
+      - True:
+  Query.f|arrays_int2:
+    match: true
+    tokens:
+      - True:
+  Query.f|arrays_strs:
+    match: true
+    tokens:
+      - True:
+  Query.f|arrays_2d:
+    match: true
+    tokens:
+      - True:
+  Query.f|arrays_2d_diff:
+    match: true
+    tokens:
+      - True:
+  Query.f|arrays_3d_diff:
+    match: true
+    tokens:
+      - True:

@@ -1,0 +1,22 @@
+query: >
+  query {
+    hero(episode: EMPIRE) {
+      friendsConnection {
+        friends {
+          appearsIn
+          name
+          id
+          ... on Human {
+            mass
+            height(unit: METER)
+          }
+          ...on Droid {
+            primaryFunction
+          }
+        }
+        totalCount
+      }
+    }
+  }
+expect-matches:
+  - query_hero_friends_connection_and_starship

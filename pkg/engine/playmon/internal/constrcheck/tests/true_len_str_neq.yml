@@ -1,0 +1,15 @@
+schema: >
+  type Query { f(
+    neq: String!
+  ):Int }
+
+template: >
+  query { f(
+    neq: len != 0,
+  ) }
+
+inputs:
+  Query.f|neq:
+    match: true
+    tokens:
+      - Str: "123456789" # not eq

@@ -1,0 +1,38 @@
+schema: >
+  type Query { f(
+    ae: [I!]!
+    an: [I!]!
+  ):Int }
+  input I {
+    i: Int!
+  }
+
+template: >
+  query { f(
+    ae: [ ... {i: 42} ],
+    an: [... != {i: 42} ],
+  ) }
+
+inputs:
+  Query.f|ae:
+    match: false
+    tokens:
+      - Arr:
+      - Obj:
+      - ObjField: "i"
+      - Int: 42
+      - ObjField: "inexistent"
+      - Int: 42
+      - ObjEnd:
+      - ArrEnd:
+  Query.f|an:
+    match: false
+    tokens:
+      - Arr:
+      - Obj:
+      - ObjField: "i"
+      - Int: 42
+      - ObjField: "inexistent"
+      - Int: 42
+      - ObjEnd:
+      - ArrEnd:

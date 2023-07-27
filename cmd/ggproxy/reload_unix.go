@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/graph-guard/ggproxy/cli"
+	"github.com/graph-guard/ggproxy/pkg/cli"
 )
 
 func reload(w io.Writer, c cli.CommandReload) {

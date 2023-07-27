@@ -1,0 +1,45 @@
+schema: >
+  type Query { f(
+    neg_i: Int!
+    neg_f: Float!
+    var_i: Int!
+    var_f: Float!
+    neg_var_i: Int!
+    neg_var_f: Float!
+  ):Int }
+
+template: >
+  query { f(
+    neg_i: -(3),
+    neg_f: -(3.14),
+    var_i=$var_i: 3,
+    var_f=$var_f: 3.14,
+    neg_var_i: -$var_i,
+    neg_var_f: -$var_f,
+  ) }
+
+inputs:
+  Query.f|neg_i:
+    match: true
+    tokens:
+      - Int: -3
+  Query.f|neg_f:
+    match: true
+    tokens:
+      - Float: -3.14
+  Query.f|var_i:
+    match: true
+    tokens:
+      - Int: 3
+  Query.f|var_f:
+    match: true
+    tokens:
+      - Float: 3.14
+  Query.f|neg_var_i:
+    match: true
+    tokens:
+      - Int: -3
+  Query.f|neg_var_f:
+    match: true
+    tokens:
+      - Float: -3.14

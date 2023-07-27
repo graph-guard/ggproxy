@@ -1,0 +1,32 @@
+schema: >
+  type Query { f(
+    v:Int!
+    nonempty:[Int!]!
+    empty:[Int!]!
+  ):Int }
+
+template: >
+  query { f(
+    v=$v: *,
+    nonempty: [... > ($v + 2 * 200 / 10 % 7) - 3],
+    empty:    [... > ($v + 2 * 200 / 10 % 7) - 3],
+  ) }
+
+inputs:
+  Query.f|v:
+    match: true
+    tokens:
+      - Int: 2
+  Query.f|nonempty:
+    match: true
+    tokens:
+      - Arr:
+      - Int: 5
+      - Int: 6
+      - Int: 7
+      - ArrEnd:
+  Query.f|empty:
+    match: true
+    tokens:
+      - Arr:
+      - ArrEnd:

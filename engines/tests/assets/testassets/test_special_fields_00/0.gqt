@@ -1,4 +1,0 @@
-query {
-	__typename
-	a
-}

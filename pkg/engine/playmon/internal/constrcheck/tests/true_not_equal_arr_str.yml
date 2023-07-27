@@ -1,0 +1,46 @@
+schema: >
+  type Query {f(
+    strsDiff: [String!]!
+    strsShort: [String!]!
+    strsLong: [String!]!
+    strsEmpty: [String!]!
+  ):Int}
+
+template: >
+  query {f(
+    strsDiff: != ["1","2","3"],
+    strsShort: != ["1","2","3"],
+    strsLong: != ["1","2","3"],
+    strsEmpty: != ["1","2","3"],
+  )}
+
+inputs:
+  Query.f|strsDiff:
+    match: true
+    tokens:
+      - Arr:
+      - Str: "1"
+      - Str: "2"
+      - Str: "5"
+      - ArrEnd:
+  Query.f|strsShort:
+    match: true
+    tokens:
+      - Arr:
+      - Str: "1"
+      - Str: "2"
+      - ArrEnd:
+  Query.f|strsLong:
+    match: true
+    tokens:
+      - Arr:
+      - Str: "1"
+      - Str: "2"
+      - Str: "3"
+      - Str: "3"
+      - ArrEnd:
+  Query.f|strsEmpty:
+    match: true
+    tokens:
+      - Arr:
+      - ArrEnd:

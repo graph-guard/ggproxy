@@ -1,0 +1,58 @@
+schema: >
+  type Query {f(
+    int:      Int!
+    float:    Float!
+    string:   String!
+    bool_t:   Boolean!
+    bool_f:   Boolean!
+    enum:     TestEnum!
+    arrint:   [Int!]!
+    nullable: Int
+  ):Int}
+  enum TestEnum { something }
+
+template: >
+  query {f(
+    int:      42,
+    float:    3.14159,
+    string:   "something",
+    bool_t:   true,
+    bool_f:   false,
+    enum:     something,
+    arrint:   [1,2,3],
+    nullable: null
+  )}
+
+inputs:
+  Query.f|int:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|float:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|string:
+    match: false
+    tokens:
+      - EnumVal: "something"
+  Query.f|bool_t:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|bool_f:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|enum:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|arrint:
+    match: false
+    tokens:
+      - Str: "wrong type"
+  Query.f|nullable:
+    match: false
+    tokens:
+      - Str: "wrong type"

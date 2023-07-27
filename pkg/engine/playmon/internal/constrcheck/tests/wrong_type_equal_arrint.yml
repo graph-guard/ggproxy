@@ -1,0 +1,15 @@
+schema: >
+  type Query {f(
+    arrint: [Int!]!
+  ):Int}
+
+template: >
+  query {f(
+    arrint: [1,2,3],
+  )}
+
+inputs:
+  Query.f|arrint:
+    match: false
+    tokens:
+      - Str: "[1,2,3]"

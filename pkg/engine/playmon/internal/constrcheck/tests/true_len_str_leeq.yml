@@ -1,0 +1,15 @@
+schema: >
+  type Query { f(
+    leeq: String!
+  ):Int }
+
+template: >
+  query { f(
+    leeq: len <= 4,
+  ) }
+
+inputs:
+  Query.f|leeq:
+    match: true
+    tokens:
+      - Str: "1234" # eq

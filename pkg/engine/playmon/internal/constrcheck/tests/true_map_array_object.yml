@@ -1,0 +1,32 @@
+schema: >
+  type Query { f(
+    a: [I!]!
+  ):Int }
+  input I {
+    x: Float!
+    y: Float!
+  }
+
+template: >
+  query { f(
+    a: [ ...{x: > 0, y: > 0} ],
+  ) }
+
+inputs:
+  Query.f|a:
+    match: true
+    tokens:
+      - Arr:
+      - Obj:
+      - ObjField: "x"
+      - Float: 1
+      - ObjField: "y"
+      - Float: 1
+      - ObjEnd:
+      - Obj:
+      - ObjField: "x"
+      - Float: 0.1
+      - ObjField: "y"
+      - Float: 4.1
+      - ObjEnd:
+      - ArrEnd:

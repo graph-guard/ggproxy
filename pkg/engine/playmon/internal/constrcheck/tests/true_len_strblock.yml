@@ -1,0 +1,45 @@
+schema: >
+  type Query { f(
+    eq:String!
+    neq:String!
+    gr:String!
+    le:String!
+    greq:String!
+    leeq:String!
+  ):Int }
+
+template: >
+  query { f(
+    eq:   len 0,
+    neq:  len != 0,
+    gr:   len > 1,
+    le:   len < 2,
+    greq: len >= 3,
+    leeq: len <= 4,
+  ) }
+
+inputs:
+  Query.f|eq:
+    match: true
+    tokens:
+      - StrBlock: "" # eq
+  Query.f|neq:
+    match: true
+    tokens:
+      - StrBlock: "123456789" # not eq
+  Query.f|gr:
+    match: true
+    tokens:
+      - StrBlock: "12" # gr
+  Query.f|le:
+    match: true
+    tokens:
+      - StrBlock: "1" # le
+  Query.f|greq:
+    match: true
+    tokens:
+      - StrBlock: "123" # eq
+  Query.f|leeq:
+    match: true
+    tokens:
+      - StrBlock: "1234" # eq

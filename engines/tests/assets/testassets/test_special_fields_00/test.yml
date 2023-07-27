@@ -1,8 +1,0 @@
-query: |
-    query X {
-        a
-    }
-operationName: X
-variables:
-expect:
-    - 0

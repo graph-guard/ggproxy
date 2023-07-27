@@ -11,27 +11,19 @@ builds:
     gobinary: garble
     env:
       - CGO_ENABLED=0
-    ldflags:
-      - -X 'github.com/graph-guard/ggproxy/lvs.PublicKey={{ .Env.PUB_KEY }}'
     goos:
       - linux
       - darwin
     goarch:
-      - 386
-      - amd64
-      - arm
-      - arm64
+      - "386"
+      - "amd64"
+      - "arm"
+      - "arm64"
 archives:
   - id: ggproxy
     name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     replacements:
-      386: i386
-    files:
-      - src: assets/etc/
-        info:
-          owner: root
-          group: ggproxy
-          mode: 0664
+      "386": "i386"
 checksum:
   name_template: "{{ .ProjectName }}-{{ .Tag }}-checksums.txt"
 snapshot:
@@ -39,7 +31,7 @@ snapshot:
 release:
   draft: false
   replace_existing_draft: true
-  prerelease: true
+  prerelease: "true" # Don't remove the quotes, it's supposed to be a string, not a boolean.
   mode: append
   header: |
     **[CHANGELOG.md](https://github.com/graph-guard/ggproxy/blob/ci/CHANGELOG.md#{{ .Env.COMPACT_TAG }})**

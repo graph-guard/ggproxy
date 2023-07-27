@@ -1,0 +1,15 @@
+query: >
+  query {
+    hero(episode: EMPIRE) {
+      friendsConnection(first: 5, after: "x") {
+        friends {
+          appearsIn
+          name
+          id
+        }
+        totalCount
+      }
+    }
+  }
+expect-matches:
+  - query_hero_expanded

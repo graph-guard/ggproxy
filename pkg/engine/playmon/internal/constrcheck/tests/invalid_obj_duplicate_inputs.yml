@@ -1,0 +1,35 @@
+schema: >
+  type Query { f(
+    eq: I!
+    neq: I!
+  ):Int }
+  input I {
+    x: Int!
+    y: Int!
+  }
+
+template: >
+  query { f(
+    eq: {x: *, y: *},
+    neq: != {x: *, y: *},
+  ) }
+
+inputs:
+  Query.f|ie:
+    match: false
+    tokens: # {x:42,x:42}
+      - Obj:
+      - ObjField: "x"
+      - Int: 42
+      - ObjField: "x"
+      - Int: 42
+      - ObjEnd:
+  Query.f|in:
+    match: false
+    tokens: # {x:42,x:42}
+      - Obj:
+      - ObjField: "i"
+      - Int: 42
+      - ObjField: "x"
+      - Int: 42
+      - ObjEnd:

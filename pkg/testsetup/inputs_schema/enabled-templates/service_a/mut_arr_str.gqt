@@ -1,0 +1,10 @@
+---
+name: "Mutation Array of Strings"
+tags:
+  - mutation
+  - array
+  - string
+---
+mutation {
+	arr_str_eq(a: ["foo", "bar"])
+}

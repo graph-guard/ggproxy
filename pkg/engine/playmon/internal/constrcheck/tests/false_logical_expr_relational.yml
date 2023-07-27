@@ -1,0 +1,39 @@
+schema: >
+  type Query {f(
+    i: Int!
+    gr: Boolean!
+    le: Boolean!
+    greq: Boolean!
+    leeq: Boolean!
+  ):Int}
+
+template: >
+  query {f(
+    i=$v: 2,
+    gr: $v > 2,
+    le: $v < 2,
+    greq: $v >= 2,
+    leeq: $v <= 2,
+  )}
+
+inputs:
+  Query.f|i:
+    match: true
+    tokens:
+      - Int: 2
+  Query.f|gr:
+    match: false
+    tokens:
+      - True:
+  Query.f|le:
+    match: false
+    tokens:
+      - True:
+  Query.f|greq:
+    match: false
+    tokens:
+      - False:
+  Query.f|leeq:
+    match: false
+    tokens:
+      - False:

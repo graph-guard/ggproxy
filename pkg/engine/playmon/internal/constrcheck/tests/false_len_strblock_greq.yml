@@ -1,0 +1,15 @@
+schema: >
+  type Query { f(
+    greq: String!
+  ):Int }
+
+template: >
+  query { f(
+    greq: len >= 3,
+  ) }
+
+inputs:
+  Query.f|greq:
+    match: false
+    tokens:
+      - StrBlock: "12" # diff: -1

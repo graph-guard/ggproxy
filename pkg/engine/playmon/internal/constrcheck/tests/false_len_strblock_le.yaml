@@ -1,0 +1,15 @@
+schema: >
+  type Query { f(
+    le: String!
+  ):Int }
+
+template: >
+  query { f(
+    le: len < 2,
+  ) }
+
+inputs:
+  Query.f|le:
+    match: false
+    tokens:
+      - StrBlock: "12" # diff: +1

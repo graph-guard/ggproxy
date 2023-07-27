@@ -1,0 +1,70 @@
+schema: >
+  type Query { f(
+    eq:[Int]!
+    neq:[Int]!
+    gr:[Int]!
+    le:[Int]!
+    greq:[Int]!
+    leeq:[Int]!
+  ):Int }
+
+template: >
+  query { f(
+    eq:   len 0,
+    neq:  len != 0,
+    gr:   len > 1,
+    le:   len < 2,
+    greq: len >= 3,
+    leeq: len <= 4,
+  ) }
+
+inputs:
+  Query.f|eq:
+    match: true
+    tokens: # len eq
+      - Arr:
+      - ArrEnd:
+  Query.f|neq:
+    match: true
+    tokens: # len not eq
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - Int: 3
+      - Int: 4
+      - Int: 5
+      - Int: 6
+      - Int: 7
+      - Int: 8
+      - Int: 9
+      - ArrEnd:
+  Query.f|gr:
+    match: true
+    tokens: # len gr
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - ArrEnd:
+  Query.f|le:
+    match: true
+    tokens: # len le
+      - Arr:
+      - Int: 1
+      - ArrEnd:
+  Query.f|greq:
+    match: true
+    tokens: # len eq
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - Int: 3
+      - ArrEnd:
+  Query.f|leeq:
+    match: true
+    tokens: # len eq
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - Int: 3
+      - Int: 4
+      - ArrEnd:

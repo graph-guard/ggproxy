@@ -1,0 +1,15 @@
+schema: >
+  type Query {f(
+    float: Float!
+  ):Int}
+
+template: >
+  query {f(
+    float: 3.14159,
+  )}
+
+inputs:
+  Query.f|float:
+    match: true
+    tokens:
+      - Float: 3.14159

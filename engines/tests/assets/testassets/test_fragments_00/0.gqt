@@ -1,6 +1,0 @@
-query {
-	a
-	... on Something {
-		b
-	}
-}

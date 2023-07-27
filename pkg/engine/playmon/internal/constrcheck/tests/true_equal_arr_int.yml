@@ -1,0 +1,19 @@
+schema: >
+  type Query {f(
+    ints: [Int!]!
+  ):Int}
+
+template: >
+  query {f(
+    ints: [1,2,3],
+  )}
+
+inputs:
+  Query.f|ints:
+    match: true
+    tokens:
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - Int: 3
+      - ArrEnd:

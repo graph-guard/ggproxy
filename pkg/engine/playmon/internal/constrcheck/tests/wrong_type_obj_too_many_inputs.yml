@@ -1,0 +1,34 @@
+schema: >
+  type Query { f(
+    ie: I!
+    in: I!
+  ):Int }
+  input I {
+    i: Int!
+  }
+
+template: >
+  query { f(
+    ie: {i: 42},
+    in: != {i: 42},
+  ) }
+
+inputs:
+  Query.f|ie:
+    match: false
+    tokens: # {i:42,inexistent:42}
+      - Obj:
+      - ObjField: "i"
+      - Int: 42
+      - ObjField: "inexistent"
+      - Int: 42
+      - ObjEnd:
+  Query.f|in:
+    match: false
+    tokens: # {i:42,inexistent:42}
+      - Obj:
+      - ObjField: "i"
+      - Int: 42
+      - ObjField: "inexistent"
+      - Int: 42
+      - ObjEnd:

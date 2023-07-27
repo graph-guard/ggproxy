@@ -1,0 +1,21 @@
+schema: >
+  type Query { f(
+    a: Boolean!
+    b: Boolean!
+  ):Int }
+
+template: >
+  query { f(
+    a = $a: false,
+    b: (true && true) && $a,
+  ) }
+
+inputs:
+  Query.f|a:
+    match: true
+    tokens:
+      - False:
+  Query.f|b:
+    match: false
+    tokens:
+      - True:

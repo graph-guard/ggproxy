@@ -1,0 +1,51 @@
+schema: >
+  type Query { f(
+    eq:String!
+    neq:String!
+    gr:String!
+    le:String!
+    greq:String!
+    leeq:String!
+  ):Int }
+  enum Color { red }
+
+template: >
+  query { f(
+    eq:   len 0,
+    neq:  len != 0,
+    gr:   len > 1,
+    le:   len < 2,
+    greq: len >= 3,
+    leeq: len <= 4,
+  ) }
+
+inputs:
+  Query.f|eq:
+    match: false
+    tokens:
+      - Int: 42
+  Query.f|neq:
+    match: false
+    match-schemaless: true
+    tokens:
+      - Arr:
+      - Int: 1
+      - Int: 2
+      - Int: 3
+      - ArrEnd:
+  Query.f|gr:
+    match: false
+    tokens:
+      - EnumVal: "red"
+  Query.f|le:
+    match: false
+    tokens:
+      - True:
+  Query.f|greq:
+    match: false
+    tokens:
+      - False:
+  Query.f|leeq:
+    match: false
+    tokens:
+      - Null:

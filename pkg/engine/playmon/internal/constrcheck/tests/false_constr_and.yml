@@ -1,0 +1,27 @@
+schema: >
+  type Query {f(
+    a: Int!
+    b: Int!
+    c: Int!
+  ):Int}
+
+template: >
+  query {f(
+    a: >0 && <10,
+    b: >0 && <10,
+    c: >0 && <10 && != 5,
+  )}
+
+inputs:
+  Query.f|a:
+    match: false
+    tokens:
+      - Int: 10
+  Query.f|b:
+    match: false
+    tokens:
+      - Int: 0
+  Query.f|c:
+    match: false
+    tokens:
+      - Int: 5

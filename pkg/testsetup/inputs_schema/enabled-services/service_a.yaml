@@ -1,0 +1,7 @@
+name: "Service A"
+path: "/service_a"
+forward-url: "http://localhost:8081/service_a"
+forward-reduced: false
+all-templates: ../all-templates/service_a
+enabled-templates: ../enabled-templates/service_a
+schema: ../service_a.graphqls

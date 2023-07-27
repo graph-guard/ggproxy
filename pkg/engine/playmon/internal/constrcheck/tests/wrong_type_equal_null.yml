@@ -1,0 +1,15 @@
+schema: >
+  type Query {f(
+    nullable: Int
+  ):Int}
+
+template: >
+  query {f(
+    nullable: null
+  )}
+
+inputs:
+  Query.f|nullable:
+    match: false
+    tokens:
+      - Str: "null"
